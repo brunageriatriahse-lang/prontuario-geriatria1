@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prontuário de Geriatria — CEMPRE / HSE-PE</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.47.0/iconfont/tabler-icons.min.css" />
+    <style>
+      :root {
+        --color-background-primary: #ffffff;
+        --color-background-secondary: #f5f5f4;
+        --color-background-tertiary: #ececea;
+        --color-background-info: #e6f1fb;
+        --color-background-danger: #fcebeb;
+        --color-background-success: #eaf3de;
+        --color-background-warning: #faeeda;
+        --color-background-gray: #f1efe8;
+
+        --color-text-primary: #1a1a1a;
+        --color-text-secondary: #5f5e5a;
+        --color-text-tertiary: #888780;
+        --color-text-info: #0c447c;
+        --color-text-danger: #791f1f;
+        --color-text-success: #27500a;
+        --color-text-warning: #633806;
+        --color-text-gray: #444441;
+
+        --color-border-tertiary: rgba(0,0,0,0.12);
+        --color-border-secondary: rgba(0,0,0,0.22);
+        --color-border-primary: rgba(0,0,0,0.32);
+        --color-border-info: #378add;
+
+        --border-radius-md: 8px;
+        --border-radius-lg: 12px;
+        --border-radius-xl: 16px;
+
+        --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --color-background-primary: #1e1e1c;
+          --color-background-secondary: #2a2a27;
+          --color-background-tertiary: #161614;
+          --color-background-info: #0c447c;
+          --color-background-danger: #791f1f;
+          --color-background-success: #27500a;
+          --color-background-warning: #633806;
+          --color-background-gray: #2c2c2a;
+
+          --color-text-primary: #f1efe8;
+          --color-text-secondary: #b4b2a9;
+          --color-text-tertiary: #888780;
+          --color-text-info: #b5d4f4;
+          --color-text-danger: #f7c1c1;
+          --color-text-success: #c0dd97;
+          --color-text-warning: #fac775;
+          --color-text-gray: #d3d1c7;
+
+          --color-border-tertiary: rgba(255,255,255,0.14);
+          --color-border-secondary: rgba(255,255,255,0.24);
+          --color-border-primary: rgba(255,255,255,0.34);
+        }
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: var(--font-sans);
+        background: var(--color-background-tertiary);
+        color: var(--color-text-primary);
+      }
+      #root {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 24px 16px 80px;
+      }
+      h1 { font-size: 22px; font-weight: 500; margin: 0; }
+      h2 { font-size: 18px; font-weight: 500; }
+      h3 { font-size: 16px; font-weight: 500; }
+
+      input, select, textarea, button {
+        font-family: var(--font-sans);
+        font-size: 14px;
+        color: var(--color-text-primary);
+      }
+      input, select, textarea {
+        width: 100%;
+        background: var(--color-background-primary);
+        border: 0.5px solid var(--color-border-tertiary);
+        border-radius: var(--border-radius-md);
+        padding: 8px 10px;
+        outline: none;
+      }
+      input:focus, select:focus, textarea:focus {
+        border-color: var(--color-border-info);
+        box-shadow: 0 0 0 2px rgba(55,138,221,0.2);
+      }
+      input:disabled, textarea:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+      }
+      textarea { resize: vertical; min-height: 36px; }
+
+      button {
+        background: var(--color-background-primary);
+        border: 0.5px solid var(--color-border-secondary);
+        border-radius: var(--border-radius-md);
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      button:hover { background: var(--color-background-secondary); }
+      button:active { transform: scale(0.98); }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      input[type="checkbox"], input[type="radio"] {
+        width: auto;
+        accent-color: #378add;
+      }
+
+      a { color: var(--color-text-info); }
+
+      ::placeholder { color: var(--color-text-tertiary); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
