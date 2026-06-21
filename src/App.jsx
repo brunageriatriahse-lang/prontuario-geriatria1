@@ -141,9 +141,9 @@ const RECEITA_BLOCOS = [
     { nome: "CARBONATO DE CÁLCIO 500MG", qtd: "60CP/MÊS", posologia: "TOMAR 1 COMPRIMIDO JUNTO AO CAFÉ DA MANHÃ E JANTAR." },
     { nome: "ALENDRONATO DE SÓDIO 70MG", qtd: "4 COMPRIMIDOS/MÊS", posologia: "TOMAR 1 COMPRIMIDO 1 VEZ POR SEMANA, EM JEJUM, COM COPO DE ÁGUA FERVIDA CHEIO (250ML). ESPERAR 30 MINUTOS PARA TOMAR CAFÉ DA MANHÃ. NÃO DEITAR POR PELO MENOS 2 HORAS APÓS USO." },
     { nome: "RISEDRONATO DE SÓDIO 150MG", qtd: "1 COMPRIMIDO/MÊS", posologia: "TOMAR 1 COMPRIMIDO 1 VEZ POR MÊS, EM JEJUM, COM COPO DE ÁGUA FERVIDA CHEIO (250ML). ESPERAR 30 MINUTOS PARA TOMAR CAFÉ DA MANHÃ. NÃO DEITAR POR PELO MENOS 2 HORAS APÓS USO." },
-    { nome: "DENOSUMABE 60MG/ML", qtd: "1 UNIDADE/SEMESTRE", posologia: "APLICAR 1 UNIDADE, VIA SUBCUTÂNEA EM BRAÇO, COXA OU ABDOME, 1 VEZ A CADA 6 MESES, POR TOTAL DE 3 ANOS. NÃO INTERROMPER MEDICAÇÃO DURANTE TRATAMENTO." },
+    { nome: "DENOSUMABE 60MG/ML", qtd: "1 UNIDADE/SEMESTRE", via: "USO SUBCUTÂNEO", posologia: "APLICAR 1 UNIDADE, VIA SUBCUTÂNEA EM BRAÇO, COXA OU ABDOME, 1 VEZ A CADA 6 MESES, POR TOTAL DE 3 ANOS. NÃO INTERROMPER MEDICAÇÃO DURANTE TRATAMENTO." },
     { nome: "TERIPARATIDA 20MCG", qtd: "30 UNIDADES/MÊS", posologia: "APLICAR 1 UNIDADE, VIA SUBCUTÂNEA EM COXA OU ABDOME, 1 VEZ AO DIA, POR TOTAL DE 2 ANOS." },
-    { nome: "ÁCIDO ZOLEDRÔNICO 5MG", qtd: "1 UNIDADE/ANO", posologia: "APLICAR 1 AMPOLA + 100ML SF 0,9%, EV, CORRER EM 30 MINUTOS. DOSE ANUAL. TOTAL DE 3 ANOS. É COMUM SENTIR SINTOMAS SEMELHANTES À QUADRO GRIPAL 24-72 HORAS APÓS APLICAÇÃO DA MEDICAÇÃO." },
+    { nome: "ÁCIDO ZOLEDRÔNICO 5MG", qtd: "1 UNIDADE/ANO", via: "USO ENDOVENOSO", posologia: "APLICAR 1 AMPOLA + 100ML SF 0,9%, EV, CORRER EM 30 MINUTOS. DOSE ANUAL. TOTAL DE 3 ANOS. É COMUM SENTIR SINTOMAS SEMELHANTES À QUADRO GRIPAL 24-72 HORAS APÓS APLICAÇÃO DA MEDICAÇÃO." },
   ]},
   { categoria: "PARA DEPRESSÃO / ANSIEDADE / INSÔNIA", itens: [
     { nome: "DULOXETINA 30MG", qtd: "30CP/MÊS", posologia: "TOMAR 1 COMPRIMIDO PELA MANHÃ." },
@@ -169,8 +169,8 @@ const RECEITA_BLOCOS = [
     { nome: "PROLOPA 100/25MG", qtd: "90 CP/MÊS", posologia: "TOMAR 1 COMPRIMIDO, PELA MANHÃ, À TARDE E À NOITE, 30 MINUTOS ANTES DAS REFEIÇÕES OU 2 HORAS APÓS REFEIÇÕES." },
   ]},
   { categoria: "PARA DOR", itens: [
-    { nome: "DIPIRONA 1G", qtd: "01 CAIXA", posologia: "TOMAR 1 COMPRIMIDO ATÉ DE 6/6 HORAS SE DOR." },
-    { nome: "CAPSAICINA 0,025% (USO TÓPICO)", qtd: "1 UNIDADE", posologia: "APLICAR EM REGIÃO DOLOROSA, 3 VEZES AO DIA, SE DOR. LAVAR AS MÃOS APÓS APLICAÇÃO. A SENSAÇÃO DE ARDOR INICIAL É ESPERADA." },
+    { nome: "DIPIRONA 1G", qtd: "01 CAIXA", via: "USO ORAL", posologia: "TOMAR 1 COMPRIMIDO ATÉ DE 6/6 HORAS SE DOR." },
+    { nome: "CAPSAICINA 0,025%", qtd: "1 UNIDADE", via: "USO TÓPICO", posologia: "APLICAR EM REGIÃO DOLOROSA, 3 VEZES AO DIA, SE DOR. LAVAR AS MÃOS APÓS APLICAÇÃO. A SENSAÇÃO DE ARDOR INICIAL É ESPERADA." },
   ]},
   { categoria: "PARA NÁUSEAS/VÔMITOS/DOR ABDOMINAL", itens: [
     { nome: "ONDANSETRONA 8MG", qtd: "01 CAIXA", posologia: "TOMAR 1 COMPRIMIDO ATÉ DE 8/8 HORAS SE NÁUSEAS OU VÔMITOS." },
@@ -343,10 +343,48 @@ function RadioGroup({ value, onChange, options, name }) {
 
 function PrintShell({ title, children, onClose }) {
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 50 }}>
-      <div style={{ minHeight: "100vh", background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
-        <div style={{ background: "#ffffff", color: "#111111", width: "100%", maxWidth: "680px", borderRadius: "12px", padding: "0", boxSizing: "border-box" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #e0e0e0" }}>
+    <div className="print-shell-overlay" style={{ position: "fixed", inset: 0, zIndex: 50 }}>
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .print-shell-overlay, .print-shell-overlay * { visibility: visible; }
+          .print-shell-overlay {
+            position: absolute !important;
+            inset: auto !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            background: #fff !important;
+          }
+          .print-shell-backdrop {
+            position: static !important;
+            min-height: 0 !important;
+            background: none !important;
+            padding: 0 !important;
+            display: block !important;
+            overflow: visible !important;
+          }
+          .print-shell-card {
+            max-width: 100% !important;
+            width: 100% !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+          }
+          .print-shell-toolbar { display: none !important; }
+          .print-shell-content {
+            padding: 10px 14px !important;
+            font-size: 9px !important;
+            line-height: 1.3 !important;
+          }
+          .print-shell-content * { font-size: 9px !important; }
+          .print-shell-content table, .print-shell-content td, .print-shell-content th {
+            font-size: 9px !important;
+          }
+        }
+      `}</style>
+      <div className="print-shell-backdrop" style={{ minHeight: "100vh", background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
+        <div className="print-shell-card" style={{ background: "#ffffff", color: "#111111", width: "100%", maxWidth: "680px", borderRadius: "12px", padding: "0", boxSizing: "border-box" }}>
+          <div className="print-shell-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #e0e0e0" }}>
             <div style={{ fontWeight: 500, fontSize: "14px", color: "#333" }}>Pré-visualização — {title}</div>
             <div style={{ display: "flex", gap: "8px" }}>
               <button onClick={() => window.print()} style={{ fontSize: "13px", padding: "5px 12px", border: "1px solid #ccc", borderRadius: "6px", background: "#f5f5f5", cursor: "pointer" }}>
@@ -357,7 +395,7 @@ function PrintShell({ title, children, onClose }) {
               </button>
             </div>
           </div>
-          <div style={{ padding: "28px 32px", fontFamily: "Arial, sans-serif", fontSize: "13px", lineHeight: 1.45, color: "#111" }}>
+          <div className="print-shell-content" style={{ padding: "28px 32px", fontFamily: "Arial, sans-serif", fontSize: "13px", lineHeight: 1.45, color: "#111" }}>
             {children}
           </div>
         </div>
@@ -1457,7 +1495,12 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
 
         {RECEITA_BLOCOS.map(bloco => (
           <div key={bloco.categoria} style={{ marginBottom: "18px" }}>
-            <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "8px" }}>{bloco.categoria}:</div>
+            <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "8px" }}>
+              {bloco.categoria}:
+              {(bloco.usoTopico || bloco.usoInalatorio) && (
+                <span style={{ fontWeight: 400 }}> {bloco.usoTopico ? "USO TÓPICO" : "USO INALATÓRIO"}</span>
+              )}
+            </div>
             {bloco.itens.map(item => {
               const key = bloco.categoria + "::" + item.nome;
               const edit = edits[key] || {};
@@ -1466,6 +1509,7 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
               counter++;
               return (
                 <div key={key} style={{ marginBottom: "10px", paddingLeft: "16px" }}>
+                  {item.via && <div style={{ fontSize: "12px", fontStyle: "italic", color: "#555" }}>{item.via}</div>}
                   <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "13px" }}>
                     <span style={{ flexShrink: 0 }}>{counter}.</span>
                     <input
@@ -1785,6 +1829,7 @@ function ReceitaPrint({ patient, consulta, onClose }) {
           nome: edit.nome !== undefined ? edit.nome : item.nome,
           qtd: edit.qtd !== undefined ? edit.qtd : item.qtd,
           posologia: edit.posologia !== undefined ? edit.posologia : item.posologia,
+          via: item.via,
         };
       })
       .filter(item => item.nome.trim())
@@ -1802,11 +1847,14 @@ function ReceitaPrint({ patient, consulta, onClose }) {
       {blocosComItens.length === 0 && extrasLinhas.length === 0 && <p style={{ textAlign: "center", color: "#888" }}>Nenhum item preenchido.</p>}
       {blocosComItens.map(bloco => (
         <div key={bloco.categoria} style={{ marginBottom: "12px" }}>
-          <div style={{ fontWeight: 700, marginBottom: "6px" }}>{bloco.categoria}:</div>
+          <div style={{ fontWeight: 700, marginBottom: "6px" }}>
+            {bloco.categoria}:{(bloco.usoTopico || bloco.usoInalatorio) && (bloco.usoTopico ? " USO TÓPICO" : " USO INALATÓRIO")}
+          </div>
           {bloco.itensSelecionados.map((item, idx) => {
             counter++;
             return (
               <div key={bloco.categoria + idx} style={{ marginBottom: "8px", paddingLeft: "18px" }}>
+                {item.via && <div style={{ fontStyle: "italic" }}>{item.via}</div>}
                 <div>{counter}. {item.nome} {"-".repeat(8)} {item.qtd}</div>
                 <div style={{ paddingLeft: "18px" }}>{item.posologia}</div>
               </div>
