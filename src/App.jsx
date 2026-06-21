@@ -240,6 +240,7 @@ function emptyConsulta(base) {
     pendencias: [],
     pendenciasConsultaAtual: "",
     docs: {
+      receitaSelecionados: {},
       receitaItensEditados: {},
       receitaExtras: "",
       receitaEspecial: { medicoNome: "", crm: "", crmUf: "PE", crmNum: "", enderecoMedico: "", cidadeMedico: "Recife", ufMedico: "PE", prescricao: "" },
@@ -343,20 +344,15 @@ function RadioGroup({ value, onChange, options, name }) {
 
 function PrintShell({ title, children, onClose }) {
   return (
-    <div className="print-shell-overlay" style={{ position: "fixed", inset: 0, zIndex: 50 }}>
+    <div id="print-shell-overlay" style={{ position: "fixed", inset: 0, zIndex: 50 }}>
       <style>{`
         @media print {
-          body * { visibility: hidden; }
-          .print-shell-overlay, .print-shell-overlay * { visibility: visible; }
-          .print-shell-overlay {
-            position: absolute !important;
+          #root > *:not(#print-shell-overlay) { display: none !important; }
+          #print-shell-overlay {
+            position: static !important;
             inset: auto !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            background: #fff !important;
           }
-          .print-shell-backdrop {
+          #print-shell-backdrop {
             position: static !important;
             min-height: 0 !important;
             background: none !important;
@@ -364,27 +360,26 @@ function PrintShell({ title, children, onClose }) {
             display: block !important;
             overflow: visible !important;
           }
-          .print-shell-card {
+          #print-shell-card {
             max-width: 100% !important;
             width: 100% !important;
             border-radius: 0 !important;
             box-shadow: none !important;
+            margin: 0 !important;
           }
-          .print-shell-toolbar { display: none !important; }
-          .print-shell-content {
-            padding: 10px 14px !important;
+          #print-shell-toolbar { display: none !important; }
+          #print-shell-content {
+            padding: 6px 10px !important;
+          }
+          #print-shell-content, #print-shell-content * {
             font-size: 9px !important;
             line-height: 1.3 !important;
           }
-          .print-shell-content * { font-size: 9px !important; }
-          .print-shell-content table, .print-shell-content td, .print-shell-content th {
-            font-size: 9px !important;
-          }
         }
       `}</style>
-      <div className="print-shell-backdrop" style={{ minHeight: "100vh", background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
-        <div className="print-shell-card" style={{ background: "#ffffff", color: "#111111", width: "100%", maxWidth: "680px", borderRadius: "12px", padding: "0", boxSizing: "border-box" }}>
-          <div className="print-shell-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #e0e0e0" }}>
+      <div id="print-shell-backdrop" style={{ minHeight: "100vh", background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
+        <div id="print-shell-card" style={{ background: "#ffffff", color: "#111111", width: "100%", maxWidth: "680px", borderRadius: "12px", padding: "0", boxSizing: "border-box" }}>
+          <div id="print-shell-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #e0e0e0" }}>
             <div style={{ fontWeight: 500, fontSize: "14px", color: "#333" }}>Pré-visualização — {title}</div>
             <div style={{ display: "flex", gap: "8px" }}>
               <button onClick={() => window.print()} style={{ fontSize: "13px", padding: "5px 12px", border: "1px solid #ccc", borderRadius: "6px", background: "#f5f5f5", cursor: "pointer" }}>
@@ -395,7 +390,7 @@ function PrintShell({ title, children, onClose }) {
               </button>
             </div>
           </div>
-          <div className="print-shell-content" style={{ padding: "28px 32px", fontFamily: "Arial, sans-serif", fontSize: "13px", lineHeight: 1.45, color: "#111" }}>
+          <div id="print-shell-content" style={{ padding: "28px 32px", fontFamily: "Arial, sans-serif", fontSize: "13px", lineHeight: 1.45, color: "#111" }}>
             {children}
           </div>
         </div>
@@ -883,6 +878,16 @@ function ProblemasTab({ consulta, updateConsulta }) {
     <div>
       <SectionCard title="Lista de problemas" icon="ti-list-check">
         <p style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: 0 }}>Marque as comorbidades ativas. Clique no nome de uma comorbidade marcada para adicionar detalhes (ex: "HAS - diagnóstico há 3 anos"). Os itens de prevenção específica correspondentes aparecem automaticamente na aba "Prevenção".</p>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
+          <input
+            value={novoNome}
+            onChange={e => setNovoNome(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && addCustom()}
+            placeholder="Adicionar comorbidade que não está na lista..."
+            style={{ flex: 1 }}
+          />
+          <button onClick={addCustom}><i className="ti ti-plus" aria-hidden="true"></i></button>
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "2px" }}>
           {PROBLEMAS.map(nome => (
             <ComorbidadeItem
@@ -894,23 +899,6 @@ function ProblemasTab({ consulta, updateConsulta }) {
               onNotaChange={(v) => setNota(nome, v)}
             />
           ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Comorbidades adicionadas" icon="ti-plus">
-        <p style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: 0 }}>Adicione comorbidades que não estão na lista padrão.</p>
-        <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-          <input
-            value={novoNome}
-            onChange={e => setNovoNome(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && addCustom()}
-            placeholder="Nome da comorbidade..."
-            style={{ flex: 1 }}
-          />
-          <button onClick={addCustom}><i className="ti ti-plus" aria-hidden="true"></i></button>
-        </div>
-        {custom.length === 0 && <p style={{ fontSize: "13px", color: "var(--color-text-tertiary)" }}>Nenhuma comorbidade adicionada ainda.</p>}
-        <div style={{ display: "grid", gap: "2px" }}>
           {custom.map(c => (
             <ComorbidadeItem
               key={c.id}
@@ -1434,14 +1422,6 @@ function PendenciasTab({ consulta, updateConsulta, patient }) {
         ) : (
           <Alert type="success">Todos os campos verificados estão preenchidos.</Alert>
         )}
-        <Field label="Observações adicionais sobre pendências">
-          <textarea
-            rows={4}
-            value={consulta.pendenciasConsultaAtual || ""}
-            onChange={e => updateConsulta(p => ({ ...p, pendenciasConsultaAtual: e.target.value }))}
-            placeholder="ex: GDS-15 não aplicado por tempo, completar na próxima consulta"
-          />
-        </Field>
       </SectionCard>
     </div>
   );
@@ -1473,20 +1453,26 @@ function DocumentosView({ patient, consulta, updateConsulta, activeDocTab, setAc
 }
 
 function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
+  const sel = (consulta.docs && consulta.docs.receitaSelecionados) || {};
   const edits = (consulta.docs && consulta.docs.receitaItensEditados) || {};
   const extras = (consulta.docs && consulta.docs.receitaExtras) || "";
 
+  const toggleItem = (categoria, nome) => {
+    const key = categoria + "::" + nome;
+    updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaSelecionados: { ...(p.docs.receitaSelecionados || {}), [key]: !(p.docs.receitaSelecionados || {})[key] } } }));
+  };
   const setEditField = (categoria, nome, campo, valor) => {
     const key = categoria + "::" + nome;
     updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaItensEditados: { ...p.docs.receitaItensEditados, [key]: { ...(p.docs.receitaItensEditados[key] || {}), [campo]: valor } } } }));
   };
   const setExtras = (valor) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaExtras: valor } }));
 
+  const countSelecionados = Object.values(sel).filter(Boolean).length;
   let counter = 0;
 
   return (
     <div>
-      <Alert type="info">Todos os itens abaixo já entram na receita gerada. Edite nome, quantidade e posologia livremente. Itens que não se aplicam a este paciente podem ser apagados (deixe o nome em branco).</Alert>
+      <Alert type="info">Marque os itens que deseja incluir na receita. Depois de marcado, você pode editar nome, quantidade e posologia livremente.</Alert>
 
       <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif" }}>
         <div style={{ textAlign: "center", fontWeight: 700, fontSize: "16px", marginBottom: "16px" }}>RECEITUÁRIO</div>
@@ -1504,32 +1490,41 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
             {bloco.itens.map(item => {
               const key = bloco.categoria + "::" + item.nome;
               const edit = edits[key] || {};
+              const isSelected = !!sel[key];
               const nomeAtual = edit.nome !== undefined ? edit.nome : item.nome;
-              if (!nomeAtual.trim()) return null;
-              counter++;
+              if (isSelected) counter++;
               return (
-                <div key={key} style={{ marginBottom: "10px", paddingLeft: "16px" }}>
-                  {item.via && <div style={{ fontSize: "12px", fontStyle: "italic", color: "#555" }}>{item.via}</div>}
-                  <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "13px" }}>
-                    <span style={{ flexShrink: 0 }}>{counter}.</span>
-                    <input
-                      value={nomeAtual}
-                      onChange={e => setEditField(bloco.categoria, item.nome, "nome", e.target.value)}
-                      style={{ flex: 2, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px" }}
-                    />
-                    <span>—</span>
-                    <input
-                      value={edit.qtd !== undefined ? edit.qtd : item.qtd}
-                      onChange={e => setEditField(bloco.categoria, item.nome, "qtd", e.target.value)}
-                      style={{ width: "110px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px" }}
-                    />
-                  </div>
-                  <textarea
-                    value={edit.posologia !== undefined ? edit.posologia : item.posologia}
-                    onChange={e => setEditField(bloco.categoria, item.nome, "posologia", e.target.value)}
-                    rows={2}
-                    style={{ width: "100%", border: "none", borderBottom: "1px dashed #eee", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px", marginTop: "4px", resize: "vertical" }}
-                  />
+                <div key={key} style={{ marginBottom: "8px", paddingLeft: "16px" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleItem(bloco.categoria, item.nome)} />
+                    <span style={{ fontSize: "13px" }}>
+                      {isSelected ? `${counter}. ` : ""}{item.nome} — {item.qtd}
+                      {item.via && <span style={{ fontStyle: "italic", color: "#555" }}> ({item.via})</span>}
+                    </span>
+                  </label>
+                  {isSelected && (
+                    <div style={{ paddingLeft: "24px", marginTop: "4px" }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "13px" }}>
+                        <input
+                          value={nomeAtual}
+                          onChange={e => setEditField(bloco.categoria, item.nome, "nome", e.target.value)}
+                          style={{ flex: 2, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px" }}
+                        />
+                        <span>—</span>
+                        <input
+                          value={edit.qtd !== undefined ? edit.qtd : item.qtd}
+                          onChange={e => setEditField(bloco.categoria, item.nome, "qtd", e.target.value)}
+                          style={{ width: "110px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px" }}
+                        />
+                      </div>
+                      <textarea
+                        value={edit.posologia !== undefined ? edit.posologia : item.posologia}
+                        onChange={e => setEditField(bloco.categoria, item.nome, "posologia", e.target.value)}
+                        rows={2}
+                        style={{ width: "100%", border: "none", borderBottom: "1px dashed #eee", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px", marginTop: "4px", resize: "vertical" }}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1554,8 +1549,8 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
       </div>
 
       <div style={{ position: "sticky", bottom: "8px", display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={() => onPrint({ type: "receita" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <i className="ti ti-printer" aria-hidden="true"></i>Gerar receita
+        <button onClick={() => onPrint({ type: "receita" })} disabled={countSelecionados === 0 && !extras.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <i className="ti ti-printer" aria-hidden="true"></i>Gerar receita ({countSelecionados} {countSelecionados === 1 ? "item" : "itens"})
         </button>
       </div>
     </div>
@@ -1817,12 +1812,14 @@ function PrintDocRenderer({ doc, patient, consulta, onClose }) {
 }
 
 function ReceitaPrint({ patient, consulta, onClose }) {
+  const sel = (consulta.docs && consulta.docs.receitaSelecionados) || {};
   const edits = (consulta.docs && consulta.docs.receitaItensEditados) || {};
   const extras = (consulta.docs && consulta.docs.receitaExtras) || "";
 
   const blocosComItens = RECEITA_BLOCOS.map(bloco => ({
     ...bloco,
     itensSelecionados: bloco.itens
+      .filter(item => sel[bloco.categoria + "::" + item.nome])
       .map(item => {
         const edit = edits[bloco.categoria + "::" + item.nome] || {};
         return {
@@ -2160,7 +2157,6 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
           </ul>
         </>
       )}
-      {consulta.pendenciasConsultaAtual && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Observações:</div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.pendenciasConsultaAtual}</div></>)}
 
       <DocFooter />
     </PrintShell>
