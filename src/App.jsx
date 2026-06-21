@@ -199,13 +199,11 @@ const EXAMES_LABORATORIAIS_PADRAO = [
 
 function emptyConsulta(base) {
   if (base) {
-    // Cópia profunda da consulta anterior como ponto de partida, com novo id/data
     const copy = JSON.parse(JSON.stringify(base));
     copy.id = uid();
     copy.data = new Date().toISOString().slice(0, 10);
     copy.createdAt = new Date().toISOString();
     copy.updatedAt = new Date().toISOString();
-    // Pendências da consulta atual (texto livre) não deve se repetir; pendências (lista) sim, mantém continuidade
     copy.pendenciasConsultaAtual = "";
     return copy;
   }
@@ -242,7 +240,6 @@ function emptyConsulta(base) {
     pendencias: [],
     pendenciasConsultaAtual: "",
     docs: {
-      receitaSelecionados: {},
       receitaItensEditados: {},
       receitaExtras: "",
       receitaEspecial: { medicoNome: "", crm: "", crmUf: "PE", crmNum: "", enderecoMedico: "", cidadeMedico: "Recife", ufMedico: "PE", prescricao: "" },
@@ -261,7 +258,6 @@ function emptyPatient() {
     ident: { prontuario: "", nome: "", cpf: "", sexo: "", dn: "", maeNome: "", natural: "", procedente: "", profissao: "", escolaridade: "", estadoCivil: "", religiao: "", acompanhante: "", cuidador: "", moraCom: "", telefone: "" },
     consultas: [emptyConsulta()],
   };
-
 }
 
 const TABS = [
@@ -395,7 +391,7 @@ export default function App() {
   const [patients, setPatients] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [activeConsultaId, setActiveConsultaId] = useState(null);
-  const [view, setView] = useState("list"); // list | consultas | record
+  const [view, setView] = useState("list");
   const [mode, setMode] = useState("prontuario");
   const [activeTab, setActiveTab] = useState("ident");
   const [activeDocTab, setActiveDocTab] = useState("receita");
@@ -414,7 +410,6 @@ export default function App() {
         const migrated = list.map(p => {
           if (p.consultas) return p;
           anyMigrated = true;
-          // Migração de pacientes antigos (estrutura plana) para o novo formato com consultas[]
           const { id, createdAt, updatedAt, ident, ...rest } = p;
           return { id, createdAt, updatedAt, ident, consultas: [{ id: uid(), data: (createdAt || new Date().toISOString()).slice(0,10), createdAt: createdAt || new Date().toISOString(), updatedAt: updatedAt || new Date().toISOString(), ...rest }] };
         });
@@ -606,7 +601,7 @@ export default function App() {
           </div>
 
           {mode === "prontuario" && (
-            <RecordView patient={activePatient} updatePatient={updateActivePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeTab={activeTab} setActiveTab={setActiveTab} />
+            <RecordView patient={activePatient} updatePatient={updateActivePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeTab={activeTab} setActiveTab={setActiveTab} onPrint={setPrintDoc} />
           )}
           {mode === "documentos" && (
             <DocumentosView patient={activePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeDocTab={activeDocTab} setActiveDocTab={setActiveDocTab} onPrint={setPrintDoc} />
@@ -700,7 +695,7 @@ function PatientList({ patients, search, setSearch, onOpen, onCreate, onDelete }
   );
 }
 
-function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab }) {
+function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint }) {
   return (
     <div>
       <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
@@ -727,7 +722,13 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "pendencias" && <PendenciasTab consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "pendencias" && <PendenciasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px", paddingTop: "16px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+        <button onClick={() => onPrint({ type: "consultaCompleta" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <i className="ti ti-printer" aria-hidden="true"></i>Imprimir consulta completa
+        </button>
+      </div>
     </div>
   );
 }
@@ -1289,7 +1290,56 @@ function PlanoTab({ consulta, updateConsulta }) {
   );
 }
 
-function PendenciasTab({ consulta, updateConsulta }) {
+function calcPendenciasAutomaticas(patient, consulta) {
+  const pendencias = [];
+  const add = (cond, label) => { if (cond) pendencias.push(label); };
+
+  const ident = patient.ident || {};
+  add(!ident.nome, "Identificação: nome não preenchido");
+  add(!ident.prontuario, "Identificação: prontuário não preenchido");
+  add(!ident.dn, "Identificação: data de nascimento não preenchida");
+  add(!ident.sexo, "Identificação: sexo não preenchido");
+
+  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+  add(ativos.length === 0 && (consulta.problemasCustom || []).filter(c => c.checked).length === 0, "Lista de problemas: nenhuma comorbidade marcada");
+
+  const a = consulta.antecedentes || {};
+  add(!a.tabagismo, "Antecedentes: tabagismo não preenchido");
+  add(!a.etilismo, "Antecedentes: etilismo não preenchido");
+  add(!a.atividadeFisica, "Antecedentes: atividade física não preenchida");
+  add(!a.alergias, "Antecedentes: alergias não preenchidas");
+
+  add(!consulta.medicacoesTexto || !consulta.medicacoesTexto.trim(), "Medicações: nenhuma medicação em uso registrada");
+  add(!consulta.queixas || !consulta.queixas.trim(), "Queixas: não preenchidas");
+
+  const aga = consulta.aga || {};
+  add(!aga.marcha, "AGA: marcha não preenchida");
+  add(!aga.minicog && !aga.meem && !aga.moca, "AGA: nenhum teste cognitivo preenchido (Mini-Cog/MEEM/MoCA)");
+  add(!aga.gds15, "AGA: GDS-15 não preenchido");
+  add(!aga.peso, "AGA: peso não preenchido");
+  add(!aga.altura, "AGA: altura não preenchida");
+  add(!aga.sono || !aga.sono.trim(), "AGA: padrão de sono não descrito");
+  add(!aga.atividadeFisicaLazer && !aga.lazer, "AGA: atividade física/lazer não preenchidos");
+
+  const vac = consulta.vacinas || {};
+  add(!vac.influenza || !vac.influenza.dose, "Prevenção: data de Influenza não registrada");
+  add(!vac.covid || !vac.covid.dose, "Prevenção: data de COVID-19 não registrada");
+  add((!vac.pneumo || !vac.pneumo.vpc20) && (!vac.pneumo || !vac.pneumo.vpc13), "Prevenção: vacina pneumocócica não registrada");
+
+  const ee = consulta.exameFisico || {};
+  add(!ee.pa, "Exame físico: PA não preenchida");
+  add(!ee.fc, "Exame físico: FC não preenchida");
+
+  add(!consulta.labsTexto || !consulta.labsTexto.trim(), "Exames: nenhum exame laboratorial registrado");
+
+  const pl = consulta.plano || {};
+  add(!pl.ajuste && !pl.exames && !pl.encaminhamentos && !pl.orientacoes, "Plano terapêutico: nenhum campo preenchido");
+  add(!pl.retorno, "Plano: retorno não agendado");
+
+  return pendencias;
+}
+
+function PendenciasTab({ consulta, updateConsulta, patient }) {
   const pend = consulta.pendencias || [];
   const [text, setText] = useState("");
   const add = () => {
@@ -1302,6 +1352,8 @@ function PendenciasTab({ consulta, updateConsulta }) {
 
   const pendentes = pend.filter(x => !x.done);
   const feitas = pend.filter(x => x.done);
+
+  const automaticas = useMemo(() => calcPendenciasAutomaticas(patient, consulta), [patient, consulta]);
 
   return (
     <div>
@@ -1333,18 +1385,29 @@ function PendenciasTab({ consulta, updateConsulta }) {
       </SectionCard>
 
       <SectionCard title="Pendências não preenchidas na consulta atual" icon="ti-file-alert">
-        <p style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: 0 }}>Descreva itens da Avaliação Geriátrica Ampla, exames ou outras partes do prontuário que não foi possível preencher nesta consulta, para retomar depois.</p>
-        <textarea
-          rows={4}
-          value={consulta.pendenciasConsultaAtual || ""}
-          onChange={e => updateConsulta(p => ({ ...p, pendenciasConsultaAtual: e.target.value }))}
-          placeholder="ex: GDS-15 não aplicado por tempo, completar na próxima consulta"
-        />
+        <p style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: 0 }}>Gerado automaticamente a partir dos campos vazios em todas as abas. Edite ou complemente livremente abaixo.</p>
+        {automaticas.length > 0 ? (
+          <Alert type="warning">
+            {automaticas.length} campo(s) não preenchido(s) detectado(s):
+            <ul style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
+              {automaticas.map((p, idx) => <li key={idx} style={{ marginBottom: "2px" }}>{p}</li>)}
+            </ul>
+          </Alert>
+        ) : (
+          <Alert type="success">Todos os campos verificados estão preenchidos.</Alert>
+        )}
+        <Field label="Observações adicionais sobre pendências">
+          <textarea
+            rows={4}
+            value={consulta.pendenciasConsultaAtual || ""}
+            onChange={e => updateConsulta(p => ({ ...p, pendenciasConsultaAtual: e.target.value }))}
+            placeholder="ex: GDS-15 não aplicado por tempo, completar na próxima consulta"
+          />
+        </Field>
       </SectionCard>
     </div>
   );
 }
-
 
 function DocumentosView({ patient, consulta, updateConsulta, activeDocTab, setActiveDocTab, onPrint }) {
   return (
@@ -1372,61 +1435,82 @@ function DocumentosView({ patient, consulta, updateConsulta, activeDocTab, setAc
 }
 
 function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
-  const sel = (consulta.docs && consulta.docs.receitaSelecionados) || {};
   const edits = (consulta.docs && consulta.docs.receitaItensEditados) || {};
   const extras = (consulta.docs && consulta.docs.receitaExtras) || "";
 
-  const toggleItem = (categoria, nome) => {
-    const key = categoria + "::" + nome;
-    updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaSelecionados: { ...p.docs.receitaSelecionados, [key]: !p.docs.receitaSelecionados[key] } } }));
-  };
   const setEditField = (categoria, nome, campo, valor) => {
     const key = categoria + "::" + nome;
     updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaItensEditados: { ...p.docs.receitaItensEditados, [key]: { ...(p.docs.receitaItensEditados[key] || {}), [campo]: valor } } } }));
   };
   const setExtras = (valor) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaExtras: valor } }));
 
-  const countSelecionados = Object.values(sel).filter(Boolean).length;
+  let counter = 0;
 
   return (
     <div>
-      <Alert type="info">Marque os itens que deseja incluir na receita. Você pode editar o nome, quantidade e posologia de cada item antes de gerar o documento. Use o campo no final para adicionar medicações que não estão nos blocos.</Alert>
-      {RECEITA_BLOCOS.map(bloco => (
-        <SectionCard key={bloco.categoria} title={bloco.categoria} icon="ti-pill" defaultOpen={false}>
-          {bloco.itens.map(item => {
-            const key = bloco.categoria + "::" + item.nome;
-            const edit = edits[key] || {};
-            const isSelected = !!sel[key];
-            return (
-              <div key={key} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "8px 0" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", marginBottom: isSelected ? "8px" : 0 }}>
-                  <input type="checkbox" checked={isSelected} onChange={() => toggleItem(bloco.categoria, item.nome)} />
-                  <span style={{ fontWeight: 500, fontSize: "13px" }}>{edit.nome !== undefined ? edit.nome : item.nome}</span>
-                  <span style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>— {edit.qtd !== undefined ? edit.qtd : item.qtd}</span>
-                </label>
-                {isSelected && (
-                  <div style={{ paddingLeft: "24px", display: "grid", gap: "6px" }}>
-                    <Row cols="2fr 1fr">
-                      <Field label="Nome/dose"><input value={edit.nome !== undefined ? edit.nome : item.nome} onChange={e => setEditField(bloco.categoria, item.nome, "nome", e.target.value)} /></Field>
-                      <Field label="Quantidade"><input value={edit.qtd !== undefined ? edit.qtd : item.qtd} onChange={e => setEditField(bloco.categoria, item.nome, "qtd", e.target.value)} /></Field>
-                    </Row>
-                    <Field label="Posologia"><textarea rows={2} value={edit.posologia !== undefined ? edit.posologia : item.posologia} onChange={e => setEditField(bloco.categoria, item.nome, "posologia", e.target.value)} /></Field>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </SectionCard>
-      ))}
+      <Alert type="info">Todos os itens abaixo já entram na receita gerada. Edite nome, quantidade e posologia livremente. Itens que não se aplicam a este paciente podem ser apagados (deixe o nome em branco).</Alert>
 
-      <SectionCard title="Medicações adicionais (fora dos blocos)" icon="ti-plus">
-        <Field label="Digite as medicações extras, uma por linha" hint="Serão incluídas no final da receita gerada">
-          <textarea rows={4} value={extras} onChange={e => setExtras(e.target.value)} placeholder={"ex:\nVITAMINA C 500MG — 30CP/MÊS\nTOMAR 1 COMPRIMIDO PELA MANHÃ."} />
-        </Field>
-      </SectionCard>
+      <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif" }}>
+        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "16px", marginBottom: "16px" }}>RECEITUÁRIO</div>
+        <div style={{ marginBottom: "10px", fontSize: "14px" }}><strong>Paciente:</strong> {patient.ident.nome || "(sem nome)"}</div>
+        <div style={{ textAlign: "center", fontSize: "13px", marginBottom: "16px" }}>USO ORAL</div>
+
+        {RECEITA_BLOCOS.map(bloco => (
+          <div key={bloco.categoria} style={{ marginBottom: "18px" }}>
+            <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "8px" }}>{bloco.categoria}:</div>
+            {bloco.itens.map(item => {
+              const key = bloco.categoria + "::" + item.nome;
+              const edit = edits[key] || {};
+              const nomeAtual = edit.nome !== undefined ? edit.nome : item.nome;
+              if (!nomeAtual.trim()) return null;
+              counter++;
+              return (
+                <div key={key} style={{ marginBottom: "10px", paddingLeft: "16px" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "13px" }}>
+                    <span style={{ flexShrink: 0 }}>{counter}.</span>
+                    <input
+                      value={nomeAtual}
+                      onChange={e => setEditField(bloco.categoria, item.nome, "nome", e.target.value)}
+                      style={{ flex: 2, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px" }}
+                    />
+                    <span>—</span>
+                    <input
+                      value={edit.qtd !== undefined ? edit.qtd : item.qtd}
+                      onChange={e => setEditField(bloco.categoria, item.nome, "qtd", e.target.value)}
+                      style={{ width: "110px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px" }}
+                    />
+                  </div>
+                  <textarea
+                    value={edit.posologia !== undefined ? edit.posologia : item.posologia}
+                    onChange={e => setEditField(bloco.categoria, item.nome, "posologia", e.target.value)}
+                    rows={2}
+                    style={{ width: "100%", border: "none", borderBottom: "1px dashed #eee", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px", marginTop: "4px", resize: "vertical" }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ))}
+
+        <div style={{ marginBottom: "10px" }}>
+          <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "8px" }}>OUTRAS MEDICAÇÕES (adicionar manualmente):</div>
+          <textarea
+            value={extras}
+            onChange={e => setExtras(e.target.value)}
+            rows={4}
+            placeholder={"ex:\nVITAMINA C 500MG — 30CP/MÊS\nTOMAR 1 COMPRIMIDO PELA MANHÃ."}
+            style={{ width: "100%", border: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "6px 8px", borderRadius: "6px" }}
+          />
+        </div>
+
+        <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
+          Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
+          CNPJ nº 11944899/0001-17 Telefone: 3183-4500
+        </div>
+      </div>
 
       <div style={{ position: "sticky", bottom: "8px", display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={() => onPrint({ type: "receita" })} disabled={countSelecionados === 0 && !extras.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <button onClick={() => onPrint({ type: "receita" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <i className="ti ti-printer" aria-hidden="true"></i>Gerar receita
         </button>
       </div>
@@ -1440,22 +1524,77 @@ function ReceitaEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
   return (
     <div>
       <Alert type="warning">Receituário de controle especial (notificação B/A). Use para psicotrópicos e entorpecentes sujeitos a controle especial. Os campos do comprador são preenchidos no momento da impressão/entrega, conforme quem retira a medicação.</Alert>
-      <SectionCard title="Identificação do emitente" icon="ti-stethoscope">
-        <Row cols="repeat(2, 1fr)">
-          <Field label="Nome completo do médico"><input value={re.medicoNome} onChange={e => set("medicoNome", e.target.value)} /></Field>
-          <Field label="CRM / UF / Nº"><input value={re.crmNum} onChange={e => set("crmNum", e.target.value)} placeholder="ex: 12345" /></Field>
-        </Row>
-        <Field label="Endereço completo e telefone"><input value={re.enderecoMedico} onChange={e => set("enderecoMedico", e.target.value)} /></Field>
-        <Row cols="repeat(2, 1fr)">
-          <Field label="Cidade"><input value={re.cidadeMedico} onChange={e => set("cidadeMedico", e.target.value)} /></Field>
-          <Field label="UF"><input value={re.ufMedico} onChange={e => set("ufMedico", e.target.value)} style={{ maxWidth: "80px" }} /></Field>
-        </Row>
-      </SectionCard>
-      <SectionCard title="Prescrição" icon="ti-prescription">
-        <Field label="Uso e medicação prescrita" hint="ex: USO ORAL / DULOXETINA 30MG — 30 CP / TOMAR 1 COMPRIMIDO PELA MANHÃ.">
-          <textarea rows={6} value={re.prescricao} onChange={e => set("prescricao", e.target.value)} />
-        </Field>
-      </SectionCard>
+
+      <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
+        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "16px" }}>RECEITUÁRIO DE CONTROLE ESPECIAL</div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>IDENTIFICAÇÃO DO EMITENTE</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>Nome completo:</span>
+              <input value={re.medicoNome} onChange={e => set("medicoNome", e.target.value)} style={{ flex: 1, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
+            </div>
+          </div>
+          <div style={{ textAlign: "right", fontWeight: 700, fontSize: "11px", whiteSpace: "nowrap", marginLeft: "16px" }}>
+            <div>1ª VIA - Farmácia</div>
+            <div>2ª VIA - Paciente</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", marginBottom: "6px", alignItems: "center" }}>
+          <span>CRM</span>
+          <input value={re.crmNum} onChange={e => set("crmNum", e.target.value)} placeholder="nº" style={{ width: "90px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
+          <span>UF</span>
+          <input value={re.ufMedico} onChange={e => set("ufMedico", e.target.value)} style={{ width: "50px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
+        </div>
+        <div style={{ display: "flex", gap: "6px", marginBottom: "6px", alignItems: "center" }}>
+          <span style={{ whiteSpace: "nowrap" }}>Endereço completo e telefone:</span>
+          <input value={re.enderecoMedico} onChange={e => set("enderecoMedico", e.target.value)} style={{ flex: 1, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
+        </div>
+        <div style={{ display: "flex", gap: "8px", marginBottom: "14px", alignItems: "center" }}>
+          <span>Cidade:</span>
+          <input value={re.cidadeMedico} onChange={e => set("cidadeMedico", e.target.value)} style={{ flex: 1, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
+          <span>UF:</span>
+          <input value={re.ufMedico} onChange={e => set("ufMedico", e.target.value)} style={{ width: "50px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
+        </div>
+
+        <div style={{ marginBottom: "6px" }}><strong>Paciente:</strong> {patient.ident.nome || "(sem nome)"}</div>
+        <div style={{ marginBottom: "6px" }}><strong>Endereço:</strong></div>
+        <div style={{ marginBottom: "8px" }}><strong>Prescrição:</strong></div>
+        <textarea
+          value={re.prescricao}
+          onChange={e => set("prescricao", e.target.value)}
+          rows={8}
+          placeholder={"USO ORAL\nDULOXETINA 30MG — 30 CP\nTOMAR 1 COMPRIMIDO PELA MANHÃ."}
+          style={{ width: "100%", border: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "8px", borderRadius: "6px", marginBottom: "20px" }}
+        />
+
+        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, marginTop: "10px" }}>
+          <div>IDENTIFICAÇÃO DO COMPRADOR</div>
+          <div>IDENTIFICAÇÃO DO FORNECEDOR</div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginTop: "6px" }}>
+          <div>
+            <div>Nome:</div>
+            <div>Ident.: Org. Emissor:</div>
+            <div>End.:</div>
+            <div>Cidade: UF:</div>
+            <div>Telefone:</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div>______/______/______</div>
+            <div style={{ fontSize: "10px", marginTop: "20px" }}>ASSINATURA DO FARMACÊUTICO</div>
+            <div style={{ fontSize: "10px" }}>DATA</div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
+          Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
+          CNPJ nº 11944899/0001-17 Telefone: 3183-4500
+        </div>
+      </div>
+
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
         <button onClick={() => onPrint({ type: "receitaEspecial" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <i className="ti ti-printer" aria-hidden="true"></i>Gerar receita especial
@@ -1472,10 +1611,24 @@ function ExameSimplesTab({ patient, consulta, updateConsulta, onPrint }) {
 
   return (
     <div>
-      <Alert type="info">Lista padrão de exames laboratoriais já preenchida. Edite livremente — adicione, remova ou modifique exames conforme necessário.</Alert>
-      <SectionCard title="Exames laboratoriais" icon="ti-flask">
-        <textarea rows={16} value={texto} onChange={e => setTexto(e.target.value)} placeholder="Liste os exames, um por linha..." />
-      </SectionCard>
+      <Alert type="info">Edite a lista de exames livremente — adicione, remova ou modifique itens conforme necessário.</Alert>
+
+      <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
+        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "12px" }}>RECEITUÁRIO</div>
+        <div style={{ marginBottom: "10px" }}><strong>Paciente:</strong> {patient.ident.nome || "(sem nome)"}</div>
+        <div style={{ textAlign: "center", fontWeight: 700, marginBottom: "14px" }}>SOLICITAÇÃO DE EXAMES LABORATORIAIS</div>
+        <textarea
+          rows={20}
+          value={texto}
+          onChange={e => setTexto(e.target.value)}
+          style={{ width: "100%", border: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "8px", borderRadius: "6px" }}
+        />
+        <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
+          Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
+          CNPJ nº 11944899/0001-17 Telefone: 3183-4500
+        </div>
+      </div>
+
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
         <button onClick={() => onPrint({ type: "exameSimples" })} disabled={!texto.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <i className="ti ti-printer" aria-hidden="true"></i>Gerar solicitação
@@ -1488,44 +1641,91 @@ function ExameSimplesTab({ patient, consulta, updateConsulta, onPrint }) {
 function ExameEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
   const ee = (consulta.docs && consulta.docs.examesEspecial) || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, examesEspecial: { ...p.docs.examesEspecial, [k]: v } } }));
+  const idade = calcIdade(patient.ident.dn);
+  const carLabel = { urgencia_absoluta: "URGÊNCIA ABSOLUTA", urgencia_relativa: "URGÊNCIA RELATIVA", rotina: "ROTINA", controle: "CONTROLE" };
+  const cellStyle = { border: "1px solid #999", padding: "5px 8px", fontSize: "12px" };
+  const headStyle = { border: "1px solid #999", padding: "4px 8px", fontWeight: 700, fontSize: "11px", background: "#f0f0f0" };
+
   return (
     <div>
-      <Alert type="info">Solicitação e autorização de exames especiais (imagem / procedimentos). Os dados de identificação do paciente são preenchidos automaticamente a partir da aba Identificação.</Alert>
-      <SectionCard title="Dados puxados automaticamente da Identificação" icon="ti-id" defaultOpen={true}>
-        <Row cols="repeat(3, 1fr)">
-          <Field label="Nome da mãe"><input value={patient.ident.maeNome} disabled style={{ background: "var(--color-background-secondary)" }} /></Field>
-          <Field label="Idade"><input value={calcIdade(patient.ident.dn) != null ? calcIdade(patient.ident.dn) + " anos" : ""} disabled style={{ background: "var(--color-background-secondary)" }} /></Field>
-          <Field label="Sexo"><input value={patient.ident.sexo === "M" ? "Masculino" : patient.ident.sexo === "F" ? "Feminino" : ""} disabled style={{ background: "var(--color-background-secondary)" }} /></Field>
-        </Row>
-        <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Para alterar esses dados, edite a aba Identificação do prontuário.</p>
-      </SectionCard>
-      <SectionCard title="Dados administrativos" icon="ti-id-badge-2">
-        <Row cols="repeat(2, 1fr)">
-          <Field label="Registro / prontuário" hint="Preenchido a partir da Identificação, se vazio"><input value={ee.registro} onChange={e => set("registro", e.target.value)} placeholder={patient.ident.prontuario} /></Field>
-          <Field label="Enfermaria (ENF.)"><input value={ee.enf} onChange={e => set("enf", e.target.value)} /></Field>
-        </Row>
-        <Row cols="repeat(2, 1fr)">
-          <Field label="Leito"><input value={ee.leito} onChange={e => set("leito", e.target.value)} /></Field>
-          <Field label="Setor solicitante"><input value={ee.setorSolicitante} onChange={e => set("setorSolicitante", e.target.value)} placeholder="GERIATRIA" /></Field>
-        </Row>
-      </SectionCard>
-      <SectionCard title="Informações clínicas" icon="ti-clipboard-heart">
-        <Field label="Exames já realizados"><textarea rows={3} value={ee.examesRealizados} onChange={e => set("examesRealizados", e.target.value)} /></Field>
-        <Field label="Dados clínicos"><textarea rows={3} value={ee.dadosClinicos} onChange={e => set("dadosClinicos", e.target.value)} /></Field>
-        <Field label="Hipótese diagnóstica"><textarea rows={2} value={ee.hipoteseDiagnostica} onChange={e => set("hipoteseDiagnostica", e.target.value)} /></Field>
-        <Field label="Exame solicitado"><textarea rows={2} value={ee.exameSolicitado} onChange={e => set("exameSolicitado", e.target.value)} placeholder="ex: TC de crânio sem contraste" /></Field>
-      </SectionCard>
-      <SectionCard title="Caráter da solicitação" icon="ti-alert-circle">
-        <RadioGroup name="carater" value={ee.carater} onChange={v => set("carater", v)} options={[
-          { value: "urgencia_absoluta", label: "Urgência absoluta" },
-          { value: "urgencia_relativa", label: "Urgência relativa" },
-          { value: "rotina", label: "Rotina" },
-          { value: "controle", label: "Controle" },
-        ]} />
-      </SectionCard>
-      <SectionCard title="Observações" icon="ti-notes" defaultOpen={false}>
-        <textarea rows={2} value={ee.observacoes} onChange={e => set("observacoes", e.target.value)} />
-      </SectionCard>
+      <Alert type="info">Os dados de nome, mãe, idade e sexo são preenchidos automaticamente a partir da aba Identificação do prontuário.</Alert>
+
+      <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
+        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "14px", marginBottom: "14px" }}>
+          HOSPITAL DOS SERVIDORES DO ESTADO<br />SOLICITAÇÃO E AUTORIZAÇÃO DE EXAMES ESPECIAIS
+        </div>
+
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "10px" }}>
+          <tbody>
+            <tr>
+              <td style={cellStyle}><strong>PACIENTE:</strong> {patient.ident.nome || "(sem nome)"}</td>
+              <td style={cellStyle}>
+                <strong>REGISTRO:</strong>{" "}
+                <input value={ee.registro} onChange={e => set("registro", e.target.value)} placeholder={patient.ident.prontuario} style={{ border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "12px", width: "100px" }} />
+              </td>
+            </tr>
+            <tr>
+              <td style={cellStyle}><strong>MÃE:</strong> {patient.ident.maeNome || "—"}</td>
+              <td style={cellStyle}>
+                <strong>ENF.:</strong>{" "}
+                <input value={ee.enf} onChange={e => set("enf", e.target.value)} style={{ border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "12px", width: "120px" }} />
+              </td>
+            </tr>
+            <tr>
+              <td style={cellStyle}>
+                <strong>LEITO:</strong>{" "}
+                <input value={ee.leito} onChange={e => set("leito", e.target.value)} style={{ border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "12px", width: "60px" }} />
+                {" "}&nbsp;&nbsp;<strong>IDADE:</strong> {idade != null ? idade : "—"}
+                {" "}&nbsp;&nbsp;<strong>SEXO:</strong> {patient.ident.sexo || "—"}
+              </td>
+              <td style={cellStyle}>
+                <strong>SETOR SOLICITANTE:</strong>{" "}
+                <input value={ee.setorSolicitante} onChange={e => set("setorSolicitante", e.target.value)} placeholder="GERIATRIA" style={{ border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "12px", width: "120px" }} />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style={headStyle}>EXAMES REALIZADOS</div>
+        <textarea value={ee.examesRealizados} onChange={e => set("examesRealizados", e.target.value)} rows={2} style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", marginBottom: "8px", fontFamily: "Arial, sans-serif" }} />
+
+        <div style={headStyle}>DADOS CLÍNICOS</div>
+        <textarea value={ee.dadosClinicos} onChange={e => set("dadosClinicos", e.target.value)} rows={3} style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", marginBottom: "8px", fontFamily: "Arial, sans-serif" }} />
+
+        <div style={headStyle}>HIPÓTESE DIAGNÓSTICA</div>
+        <textarea value={ee.hipoteseDiagnostica} onChange={e => set("hipoteseDiagnostica", e.target.value)} rows={2} style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", marginBottom: "8px", fontFamily: "Arial, sans-serif" }} />
+
+        <div style={headStyle}>EXAME SOLICITADO</div>
+        <textarea value={ee.exameSolicitado} onChange={e => set("exameSolicitado", e.target.value)} rows={2} placeholder="ex: TC de crânio sem contraste" style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", marginBottom: "8px", fontFamily: "Arial, sans-serif" }} />
+
+        <div style={headStyle}>CARÁTER</div>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "10px" }}>
+          <tbody>
+            <tr>
+              {["urgencia_absoluta","urgencia_relativa","rotina","controle"].map(c => (
+                <td key={c} onClick={() => set("carater", c)} style={{ ...cellStyle, cursor: "pointer", fontWeight: ee.carater === c ? 700 : 400, background: ee.carater === c ? "#dde" : "transparent" }}>
+                  {ee.carater === c ? "[X] " : "[ ] "}{carLabel[c]}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+
+        <div style={{ ...cellStyle, marginBottom: "8px", borderStyle: "solid" }}>Data: {fmtDateShort()}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", margin: "20px 0", fontSize: "11px" }}>
+          <div>Carimbo e Assinatura do Solicitante</div>
+          <div>Carimbo e Assinatura da Chefia</div>
+        </div>
+
+        <div style={headStyle}>OBSERVAÇÕES</div>
+        <textarea value={ee.observacoes} onChange={e => set("observacoes", e.target.value)} rows={2} style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", fontFamily: "Arial, sans-serif" }} />
+
+        <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
+          Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
+          CNPJ nº 11944899/0001-17 Telefone: 3183-4500
+        </div>
+      </div>
+
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
         <button onClick={() => onPrint({ type: "exameEspecial" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <i className="ti ti-printer" aria-hidden="true"></i>Gerar solicitação de exame especial
@@ -1568,18 +1768,17 @@ function PrintDocRenderer({ doc, patient, consulta, onClose }) {
   if (doc.type === "exameSimples") return <ExameSimplesPrint patient={patient} consulta={consulta} onClose={onClose} />;
   if (doc.type === "exameEspecial") return <ExameEspecialPrint patient={patient} consulta={consulta} onClose={onClose} />;
   if (doc.type === "vacinacao") return <VacinacaoPrint patient={patient} consulta={consulta} onClose={onClose} />;
+  if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} />;
   return null;
 }
 
 function ReceitaPrint({ patient, consulta, onClose }) {
-  const sel = (consulta.docs && consulta.docs.receitaSelecionados) || {};
   const edits = (consulta.docs && consulta.docs.receitaItensEditados) || {};
   const extras = (consulta.docs && consulta.docs.receitaExtras) || "";
 
   const blocosComItens = RECEITA_BLOCOS.map(bloco => ({
     ...bloco,
     itensSelecionados: bloco.itens
-      .filter(item => sel[bloco.categoria + "::" + item.nome])
       .map(item => {
         const edit = edits[bloco.categoria + "::" + item.nome] || {};
         return {
@@ -1588,6 +1787,7 @@ function ReceitaPrint({ patient, consulta, onClose }) {
           posologia: edit.posologia !== undefined ? edit.posologia : item.posologia,
         };
       })
+      .filter(item => item.nome.trim())
   })).filter(b => b.itensSelecionados.length > 0);
 
   const extrasLinhas = extras.split("\n").map(l => l.trim()).filter(Boolean);
@@ -1599,7 +1799,7 @@ function ReceitaPrint({ patient, consulta, onClose }) {
       <DocHeader title="RECEITUÁRIO" />
       <div style={{ marginBottom: "14px" }}><strong>Paciente:</strong> {patient.ident.nome || ""}</div>
       <div style={{ textAlign: "center", marginBottom: "14px" }}>USO ORAL</div>
-      {blocosComItens.length === 0 && extrasLinhas.length === 0 && <p style={{ textAlign: "center", color: "#888" }}>Nenhum item selecionado.</p>}
+      {blocosComItens.length === 0 && extrasLinhas.length === 0 && <p style={{ textAlign: "center", color: "#888" }}>Nenhum item preenchido.</p>}
       {blocosComItens.map(bloco => (
         <div key={bloco.categoria} style={{ marginBottom: "12px" }}>
           <div style={{ fontWeight: 700, marginBottom: "6px" }}>{bloco.categoria}:</div>
@@ -1810,6 +2010,110 @@ function VacinacaoPrint({ patient, consulta, onClose }) {
           </div>
         </div>
       )}
+      <DocFooter />
+    </PrintShell>
+  );
+}
+
+function ConsultaCompletaPrint({ patient, consulta, onClose }) {
+  const idade = calcIdade(patient.ident.dn);
+  const i = patient.ident;
+  const a = consulta.antecedentes || {};
+  const aga = consulta.aga || {};
+  const ef = consulta.exameFisico || {};
+  const pl = consulta.plano || {};
+  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+  const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
+  const notas = consulta.problemasNotas || {};
+  const pend = consulta.pendencias || [];
+  const automaticas = calcPendenciasAutomaticas(patient, consulta);
+
+  const sectionTitle = { fontWeight: 700, fontSize: "13px", marginTop: "16px", marginBottom: "6px", borderBottom: "1px solid #ccc", paddingBottom: "3px" };
+  const label = { fontWeight: 700 };
+
+  return (
+    <PrintShell title="Consulta completa" onClose={onClose}>
+      <DocHeader title="PRONTUÁRIO — CONSULTA COMPLETA" />
+      <div style={{ marginBottom: "4px" }}><span style={label}>Paciente:</span> {i.nome || "—"}</div>
+      <div style={{ marginBottom: "4px" }}><span style={label}>Data da consulta:</span> {fmtDate(consulta.data)}</div>
+
+      <div style={sectionTitle}>IDENTIFICAÇÃO</div>
+      <div>Prontuário: {i.prontuario || "—"} · CPF: {i.cpf || "—"} · Sexo: {i.sexo || "—"} · Idade: {idade != null ? idade + " anos" : "—"}</div>
+      <div>Nome da mãe: {i.maeNome || "—"} · Naturalidade: {i.natural || "—"} · Procedência: {i.procedente || "—"}</div>
+      <div>Profissão: {i.profissao || "—"} · Escolaridade: {i.escolaridade || "—"} · Estado civil: {i.estadoCivil || "—"}</div>
+      <div>Acompanhante: {i.acompanhante || "—"} · Cuidador: {i.cuidador || "—"} · Mora com: {i.moraCom || "—"} · Telefone: {i.telefone || "—"}</div>
+
+      <div style={sectionTitle}>LISTA DE PROBLEMAS</div>
+      {ativos.length === 0 && customAtivos.length === 0 ? <div>Nenhuma comorbidade ativa registrada.</div> : (
+        <ul style={{ margin: 0, paddingLeft: "18px" }}>
+          {ativos.map(p => <li key={p}>{p}{notas[p] ? ` - ${notas[p]}` : ""}</li>)}
+          {customAtivos.map(c => <li key={c.id}>{c.nome}{c.nota ? ` - ${c.nota}` : ""}</li>)}
+        </ul>
+      )}
+
+      <div style={sectionTitle}>ANTECEDENTES</div>
+      <div>Tabagismo: {a.tabagismo || "—"} {a.cargaTabagica && `(${a.cargaTabagica})`}</div>
+      <div>Etilismo: {a.etilismo || "—"} {a.etilismoDetalhe && `(${a.etilismoDetalhe})`}</div>
+      <div>Atividade física: {a.atividadeFisica || "—"}</div>
+      <div>Cirurgias prévias: {a.cirurgias || "—"}</div>
+      <div>Internamentos no último ano: {a.internamentos || "—"}</div>
+      <div>Alergias: {a.alergias || "—"}</div>
+      <div>Histórico familiar: {a.historicoFamiliar || "—"}</div>
+
+      <div style={sectionTitle}>MEDICAÇÕES EM USO</div>
+      <div style={{ whiteSpace: "pre-wrap" }}>{consulta.medicacoesTexto || "—"}</div>
+      {consulta.medicacoesPrevias && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Uso prévio:</div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.medicacoesPrevias}</div></>)}
+
+      <div style={sectionTitle}>QUEIXAS</div>
+      <div style={{ whiteSpace: "pre-wrap" }}>{consulta.queixas || "—"}</div>
+
+      <div style={sectionTitle}>AVALIAÇÃO GERIÁTRICA AMPLA</div>
+      <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}</div>
+      <div>Mini-Cog: {aga.minicog || "—"} · MEEM: {aga.meem || "—"} · MoCA: {aga.moca || "—"}</div>
+      <div>GDS-15: {aga.gds15 || "—"}</div>
+      <div>Quedas no último ano: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})` : "Nega"} · Fraturas: {aga.fraturas || "—"} · TCE: {aga.tce || "—"}</div>
+      <div>Sono: {aga.sono || "—"}</div>
+      <div>Peso: {aga.peso || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
+      <div>Apetite: {aga.apetite || "—"} · Disfagia: {aga.disfagia || "—"} {aga.disfagiaDieta && `(${aga.disfagiaDieta})`}</div>
+      <div>TGI: {aga.tgi || "—"} · TGU: {aga.tgu || "—"}</div>
+      <div>Visão: {aga.visao || "—"} · Audição: {aga.audicao || "—"}</div>
+
+      <div style={sectionTitle}>EXAME FÍSICO</div>
+      <div>PA: {ef.pa || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}</div>
+      <div>Geral: {ef.geral || "—"}</div>
+      <div>ACV: {ef.acv || "—"}</div>
+      <div>AR: {ef.ar || "—"}</div>
+      <div>ABD: {ef.abd || "—"}</div>
+      <div>EXT: {ef.ext || "—"}</div>
+      <div>SN: {ef.sn || "—"}</div>
+
+      <div style={sectionTitle}>EXAMES</div>
+      <div style={{ whiteSpace: "pre-wrap" }}>{consulta.labsTexto || "—"}</div>
+      {consulta.imagemTexto && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Imagem/outros:</div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.imagemTexto}</div></>)}
+
+      <div style={sectionTitle}>PLANO TERAPÊUTICO</div>
+      <div>Ajuste medicamentoso: {pl.ajuste || "—"}</div>
+      <div>Exames solicitados: {pl.exames || "—"}</div>
+      <div>Encaminhamentos: {pl.encaminhamentos || "—"}</div>
+      <div>Orientações: {pl.orientacoes || "—"}</div>
+      <div>Retorno: {pl.retorno ? fmtDate(pl.retorno) : "—"}</div>
+
+      <div style={sectionTitle}>PENDÊNCIAS</div>
+      {pend.length === 0 ? <div>Nenhuma pendência registrada.</div> : (
+        <ul style={{ margin: 0, paddingLeft: "18px" }}>
+          {pend.map(p => <li key={p.id} style={{ textDecoration: p.done ? "line-through" : "none" }}>{p.text}</li>)}
+        </ul>
+      )}
+      {automaticas.length > 0 && (
+        <>
+          <div style={{ fontWeight: 700, marginTop: "6px", fontSize: "12px" }}>Campos não preenchidos detectados automaticamente:</div>
+          <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px" }}>
+            {automaticas.map((p, idx) => <li key={idx}>{p}</li>)}
+          </ul>
+        </>
+      )}
+      {consulta.pendenciasConsultaAtual && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Observações:</div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.pendenciasConsultaAtual}</div></>)}
+
       <DocFooter />
     </PrintShell>
   );
