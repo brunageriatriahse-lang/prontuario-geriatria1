@@ -224,8 +224,8 @@ function emptyConsulta(base) {
       aivd: {"Telefone":true,"Transporte":true,"Compras":true,"Preparar refeições":true,"Tarefas domésticas":true,"Trabalhos manuais":true,"Lavar roupas":true,"Medicações":true,"Finanças":true},
       abvd: {"Banho":true,"Vestir-se":true,"Higiene pessoal":true,"Transferência":true,"Continência":true,"Alimentação":true},
       marcha: "", dispositivo: "",
-      frail: {}, minicog: "", meem: "", moca: "",
-      gds15: "", quedas: "nega", quedasNum: "", fraturas: "nao", tce: "nao",
+      frail: {}, semQueixasCognitivas: false, minicog: "", meem: "", moca: "",
+      semQueixasHumor: false, gds15: "", quedas: "nega", quedasNum: "", quedasDescricao: "", fraturas: "nao", tce: "nao",
       sono: "", peso: "", altura: "", perdaPeso: "nao", perdaPesoPerc: "", perdaPesoMeses: "",
       apetite: "preservado", disfagia: "ausente", disfagiaDieta: "", dentarios: "nao",
       tgi: "continente", tgu: "continente", visao: "preservada", audicao: "preservada",
@@ -273,7 +273,6 @@ const TABS = [
   { id: "exame", label: "Exame físico", icon: "ti-stethoscope" },
   { id: "exames", label: "Exames", icon: "ti-flask" },
   { id: "plano", label: "Plano", icon: "ti-target-arrow" },
-  { id: "pendencias", label: "Pendências", icon: "ti-checklist" },
 ];
 
 const DOC_TABS = [
@@ -946,7 +945,6 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "pendencias" && <PendenciasTab consulta={consulta} updateConsulta={updateConsulta} />}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px", paddingTop: "16px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
         <button onClick={() => onPrint({ type: "consultaCompleta" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -1260,25 +1258,48 @@ function AgaTab({ consulta, updateConsulta }) {
       </SectionCard>
 
       <SectionCard title="Cognição" icon="ti-brain">
-        <Row cols="repeat(3, 1fr)">
-          <Field label="Mini-Cog"><input value={aga.minicog} onChange={e => set("minicog", e.target.value)} /></Field>
-          <Field label="MEEM"><input value={aga.meem} onChange={e => set("meem", e.target.value)} /></Field>
-          <Field label="MoCA"><input value={aga.moca} onChange={e => set("moca", e.target.value)} /></Field>
-        </Row>
+        <Field label="">
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", cursor: "pointer" }}>
+            <input type="checkbox" checked={!!aga.semQueixasCognitivas} onChange={e => set("semQueixasCognitivas", e.target.checked)} />
+            Sem queixas cognitivas
+          </label>
+        </Field>
+        {!aga.semQueixasCognitivas && (
+          <Row cols="repeat(3, 1fr)">
+            <Field label="Mini-Cog"><input value={aga.minicog} onChange={e => set("minicog", e.target.value)} /></Field>
+            <Field label="MEEM"><input value={aga.meem} onChange={e => set("meem", e.target.value)} /></Field>
+            <Field label="MoCA"><input value={aga.moca} onChange={e => set("moca", e.target.value)} /></Field>
+          </Row>
+        )}
       </SectionCard>
 
       <SectionCard title="Humor" icon="ti-mood-sad">
-        <Field label="GDS-15 (pontuação)" hint="Pontuação ≥6 sugere rastreio positivo para sintomas depressivos">
-          <input type="number" min="0" max="15" value={aga.gds15} onChange={e => set("gds15", e.target.value)} style={{ maxWidth: "100px" }} />
+        <Field label="">
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", cursor: "pointer" }}>
+            <input type="checkbox" checked={!!aga.semQueixasHumor} onChange={e => set("semQueixasHumor", e.target.checked)} />
+            Sem queixas de humor
+          </label>
         </Field>
-        {gdsPositive && <Alert type="warning">GDS-15 = {gdsNum}: rastreio positivo para sintomas depressivos. Considerar avaliação complementar.</Alert>}
+        {!aga.semQueixasHumor && (
+          <>
+            <Field label="GDS-15 (pontuação)" hint="Pontuação ≥6 sugere rastreio positivo para sintomas depressivos">
+              <input type="number" min="0" max="15" value={aga.gds15} onChange={e => set("gds15", e.target.value)} style={{ maxWidth: "100px" }} />
+            </Field>
+            {gdsPositive && <Alert type="warning">GDS-15 = {gdsNum}: rastreio positivo para sintomas depressivos. Considerar avaliação complementar.</Alert>}
+          </>
+        )}
       </SectionCard>
 
       <SectionCard title="Quedas" icon="ti-alert-octagon">
         <Field label="Quedas no último ano">
           <RadioGroup name="quedas" value={aga.quedas} onChange={v => set("quedas", v)} options={[{value:"nega",label:"Nega"},{value:"sim",label:"Sim"}]} />
         </Field>
-        {aga.quedas === "sim" && <Field label="Número de quedas"><input value={aga.quedasNum} onChange={e => set("quedasNum", e.target.value)} style={{ maxWidth: "100px" }} /></Field>}
+        {aga.quedas === "sim" && (
+          <>
+            <Field label="Número de quedas"><input value={aga.quedasNum} onChange={e => set("quedasNum", e.target.value)} style={{ maxWidth: "100px" }} /></Field>
+            <Field label="Descreva como foi a queda"><textarea rows={2} value={aga.quedasDescricao} onChange={e => set("quedasDescricao", e.target.value)} placeholder="ex: circunstância, local, mecanismo, consequências..." /></Field>
+          </>
+        )}
         <Field label="Fraturas associadas"><RadioGroup name="fraturas" value={aga.fraturas} onChange={v => set("fraturas", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
         <Field label="TCE associado"><RadioGroup name="tce" value={aga.tce} onChange={v => set("tce", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
       </SectionCard>
@@ -1378,6 +1399,41 @@ function PrevencaoTab({ consulta, updateConsulta }) {
 
   return (
     <div>
+      <SectionCard title="Prevenção — rastreio geral" icon="ti-shield-check" defaultOpen={false}>
+        {RASTREIO_GERAL.map(r => {
+          const data = rg[r.nome] || {};
+          return (
+            <div key={r.nome} style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "8px 0" }}>
+              <div style={{ minWidth: "160px", flex: "1 1 220px" }}>
+                <div style={{ fontWeight: 500, fontSize: "14px" }}>{r.nome}</div>
+                <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>{r.criterio}</div>
+              </div>
+              <Field label="Realizado em"><input type="date" value={data.data || ""} onChange={e => setRg(r.nome, "data", e.target.value)} /></Field>
+              <Field label="Resultado"><input value={data.resultado || ""} onChange={e => setRg(r.nome, "resultado", e.target.value)} /></Field>
+            </div>
+          );
+        })}
+      </SectionCard>
+
+      <SectionCard title="Prevenção específica por comorbidade ativa" icon="ti-stethoscope">
+        {ativos.length === 0 && <p style={{ fontSize: "13px", color: "var(--color-text-secondary)" }}>Nenhuma comorbidade com rastreio específico foi marcada na aba Lista de problemas.</p>}
+        {ativos.map(comorbidade => (
+          <div key={comorbidade} style={{ marginBottom: "14px" }}>
+            <div style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-text-info)", marginBottom: "6px" }}>{comorbidade}</div>
+            {PREVENCAO_ESPECIFICA[comorbidade].map(item => {
+              const key = comorbidade + "::" + item;
+              const data = re[key] || {};
+              return (
+                <div key={key} style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", padding: "6px 0" }}>
+                  <div style={{ minWidth: "200px", flex: "1 1 240px", fontSize: "13px" }}>{item}</div>
+                  <Field label="Data"><input type="date" value={data.data || ""} onChange={e => setRe(key, "data", e.target.value)} /></Field>
+                  <Field label="Resultado"><input value={data.resultado || ""} onChange={e => setRe(key, "resultado", e.target.value)} /></Field>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </SectionCard>
       <SectionCard title="Situação vacinal" icon="ti-vaccine">
         <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Campos de data conforme o esquema completo de cada vacina (calendário de vacinação do idoso). Ao preencher uma dose, a próxima data é sugerida automaticamente — você pode ajustar livremente.</p>
 
@@ -1442,42 +1498,6 @@ function PrevencaoTab({ consulta, updateConsulta }) {
           </Row>
         </div>
       </SectionCard>
-
-      <SectionCard title="Prevenção — rastreio geral" icon="ti-shield-check" defaultOpen={false}>
-        {RASTREIO_GERAL.map(r => {
-          const data = rg[r.nome] || {};
-          return (
-            <div key={r.nome} style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "8px 0" }}>
-              <div style={{ minWidth: "160px", flex: "1 1 220px" }}>
-                <div style={{ fontWeight: 500, fontSize: "14px" }}>{r.nome}</div>
-                <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>{r.criterio}</div>
-              </div>
-              <Field label="Realizado em"><input type="date" value={data.data || ""} onChange={e => setRg(r.nome, "data", e.target.value)} /></Field>
-              <Field label="Resultado"><input value={data.resultado || ""} onChange={e => setRg(r.nome, "resultado", e.target.value)} /></Field>
-            </div>
-          );
-        })}
-      </SectionCard>
-
-      <SectionCard title="Prevenção específica por comorbidade ativa" icon="ti-stethoscope">
-        {ativos.length === 0 && <p style={{ fontSize: "13px", color: "var(--color-text-secondary)" }}>Nenhuma comorbidade com rastreio específico foi marcada na aba Lista de problemas.</p>}
-        {ativos.map(comorbidade => (
-          <div key={comorbidade} style={{ marginBottom: "14px" }}>
-            <div style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-text-info)", marginBottom: "6px" }}>{comorbidade}</div>
-            {PREVENCAO_ESPECIFICA[comorbidade].map(item => {
-              const key = comorbidade + "::" + item;
-              const data = re[key] || {};
-              return (
-                <div key={key} style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", padding: "6px 0" }}>
-                  <div style={{ minWidth: "200px", flex: "1 1 240px", fontSize: "13px" }}>{item}</div>
-                  <Field label="Data"><input type="date" value={data.data || ""} onChange={e => setRe(key, "data", e.target.value)} /></Field>
-                  <Field label="Resultado"><input value={data.resultado || ""} onChange={e => setRe(key, "resultado", e.target.value)} /></Field>
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </SectionCard>
     </div>
   );
 }
@@ -1532,18 +1552,7 @@ function ExamesTab({ consulta, updateConsulta }) {
 function PlanoTab({ consulta, updateConsulta }) {
   const pl = consulta.plano;
   const set = (k, v) => updateConsulta(p => ({ ...p, plano: { ...p.plano, [k]: v } }));
-  return (
-    <SectionCard title="Plano terapêutico" icon="ti-target-arrow">
-      <Field label="Ajuste medicamentoso"><textarea rows={3} value={pl.ajuste} onChange={e => set("ajuste", e.target.value)} /></Field>
-      <Field label="Exames solicitados"><textarea rows={3} value={pl.exames} onChange={e => set("exames", e.target.value)} /></Field>
-      <Field label="Encaminhamentos"><textarea rows={2} value={pl.encaminhamentos} onChange={e => set("encaminhamentos", e.target.value)} /></Field>
-      <Field label="Orientações gerais"><textarea rows={2} value={pl.orientacoes} onChange={e => set("orientacoes", e.target.value)} /></Field>
-      <Field label="Retorno agendado em"><input type="date" value={pl.retorno} onChange={e => set("retorno", e.target.value)} /></Field>
-    </SectionCard>
-  );
-}
 
-function PendenciasTab({ consulta, updateConsulta }) {
   const pend = consulta.pendencias || [];
   const [text, setText] = useState("");
   const add = () => {
@@ -1559,6 +1568,14 @@ function PendenciasTab({ consulta, updateConsulta }) {
 
   return (
     <div>
+      <SectionCard title="Plano terapêutico" icon="ti-target-arrow">
+        <Field label="Orientações gerais"><textarea rows={2} value={pl.orientacoes} onChange={e => set("orientacoes", e.target.value)} /></Field>
+        <Field label="Ajuste medicamentoso"><textarea rows={3} value={pl.ajuste} onChange={e => set("ajuste", e.target.value)} /></Field>
+        <Field label="Exames solicitados"><textarea rows={3} value={pl.exames} onChange={e => set("exames", e.target.value)} /></Field>
+        <Field label="Encaminhamentos"><textarea rows={2} value={pl.encaminhamentos} onChange={e => set("encaminhamentos", e.target.value)} /></Field>
+        <Field label="Retorno agendado em"><input type="date" value={pl.retorno} onChange={e => set("retorno", e.target.value)} /></Field>
+      </SectionCard>
+
       <SectionCard title="Pendências para próxima consulta" icon="ti-checklist">
         <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
           <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === "Enter" && add()} placeholder="Nova pendência..." style={{ flex: 1 }} />
@@ -2304,9 +2321,9 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div>ABVD independentes: {Object.values(aga.abvd || {}).filter(Boolean).length}/6 ({Object.keys(aga.abvd || {}).filter(k => aga.abvd[k]).join(", ") || "—"})</div>
       <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}</div>
       <div>FRAIL: {Object.values(aga.frail || {}).filter(Boolean).length}/5 critérios ({Object.keys(aga.frail || {}).filter(k => aga.frail[k]).join(", ") || "nenhum"})</div>
-      <div>Mini-Cog: {aga.minicog || "—"} · MEEM: {aga.meem || "—"} · MoCA: {aga.moca || "—"}</div>
-      <div>GDS-15: {aga.gds15 || "—"}</div>
-      <div>Quedas no último ano: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})` : "Nega"} · Fraturas: {aga.fraturas || "—"} · TCE: {aga.tce || "—"}</div>
+      <div>Cognição: {aga.semQueixasCognitivas ? "Sem queixas cognitivas" : `Mini-Cog: ${aga.minicog || "—"} · MEEM: ${aga.meem || "—"} · MoCA: ${aga.moca || "—"}`}</div>
+      <div>Humor: {aga.semQueixasHumor ? "Sem queixas de humor" : `GDS-15: ${aga.gds15 || "—"}`}</div>
+      <div>Quedas no último ano: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Nega"} · Fraturas: {aga.fraturas || "—"} · TCE: {aga.tce || "—"}</div>
       <div>Sono: {aga.sono || "—"}</div>
       <div>Peso: {aga.peso || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
       <div>Perda de peso não intencional: {aga.perdaPeso === "sim" ? `Sim (${aga.perdaPesoPerc || "?"}% em ${aga.perdaPesoMeses || "?"} meses)` : "Não"}</div>
