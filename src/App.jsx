@@ -252,9 +252,9 @@ function emptyConsulta(base) {
     pendenciasConsultaAtual: "",
     docs: {
       receitas: [],
-      receitaEspecial: { medicoNome: "", crm: "", crmUf: "PE", crmNum: "", enderecoMedico: "", cidadeMedico: "Recife", ufMedico: "PE", prescricao: "" },
-      examesSimples: { texto: EXAMES_LABORATORIAIS_PADRAO.join("\n") },
-      examesEspecial: { registro: "", enf: "", leito: "", setorSolicitante: "GERIATRIA", examesRealizados: "", dadosClinicos: "", hipoteseDiagnostica: "", exameSolicitado: "", carater: "rotina", observacoes: "" },
+      receitasEspeciais: [],
+      examesSimplesLista: [],
+      examesEspeciais: [],
       vacinacao: { selecionados: { "Influenza": true, "COVID-19": true, "Pneumocócica": true, "dT/dTpa": true, "Hepatite B": true, "Vírus sincicial respiratório (VSR)": true, "Herpes-zóster (VZR recombinante)": true } },
     },
   };
@@ -571,8 +571,58 @@ export default function App() {
           return p;
         });
 
+        // Migração genérica: Receita Especial, Exame Simples e Exame Especial também
+        // passaram de "um único documento por consulta" para "lista de documentos",
+        // permitindo gerar mais de um de cada por consulta.
+        function migrarDocUnicoParaLista(docs, campoAntigo, campoNovo, nomeBase, defaults) {
+          const valorAntigo = docs[campoAntigo];
+          const jaTemArray = Array.isArray(docs[campoNovo]);
+          if (jaTemArray) return null;
+          const temConteudoReal = valorAntigo && typeof valorAntigo === "object" &&
+            Object.entries(valorAntigo).some(([k, v]) => {
+              const padrao = defaults[k];
+              return v !== undefined && v !== padrao && (typeof v === "string" ? v.trim() !== "" && v !== padrao : true);
+            });
+          if (temConteudoReal) {
+            return [{ id: uid(), nome: `${nomeBase} 1`, ...defaults, ...valorAntigo }];
+          }
+          return [];
+        }
+        let algumMigradoDocsUnicos = false;
+        const comDocsUnicosMigrados = comReceitasMigradas.map(p => {
+          let mudouPaciente = false;
+          const consultasMigradas = (p.consultas || []).map(c => {
+            const docs = c.docs || {};
+            const reEspecialLista = migrarDocUnicoParaLista(docs, "receitaEspecial", "receitasEspeciais", "Receita especial",
+              { medicoNome: "", crm: "", crmUf: "PE", crmNum: "", enderecoMedico: "", cidadeMedico: "Recife", ufMedico: "PE", prescricao: "" });
+            const exSimplesLista = migrarDocUnicoParaLista(docs, "examesSimples", "examesSimplesLista", "Exame simples",
+              { texto: EXAMES_LABORATORIAIS_PADRAO.join("\n") });
+            const exEspecialLista = migrarDocUnicoParaLista(docs, "examesEspecial", "examesEspeciais", "Exame especial",
+              { registro: "", enf: "", leito: "", setorSolicitante: "GERIATRIA", examesRealizados: "", dadosClinicos: "", hipoteseDiagnostica: "", exameSolicitado: "", carater: "rotina", observacoes: "" });
+            if (reEspecialLista === null && exSimplesLista === null && exEspecialLista === null) return c;
+            mudouPaciente = true;
+            algumMigradoDocsUnicos = true;
+            const { receitaEspecial, examesSimples, examesEspecial, ...restoDocs } = docs;
+            return {
+              ...c,
+              docs: {
+                ...restoDocs,
+                receitasEspeciais: reEspecialLista !== null ? reEspecialLista : (docs.receitasEspeciais || []),
+                examesSimplesLista: exSimplesLista !== null ? exSimplesLista : (docs.examesSimplesLista || []),
+                examesEspeciais: exEspecialLista !== null ? exEspecialLista : (docs.examesEspeciais || []),
+              },
+            };
+          });
+          if (mudouPaciente) {
+            const atualizado = { ...p, consultas: consultasMigradas };
+            savePatient(atualizado).catch(e => console.error("Falha ao migrar documentos únicos para lista", e));
+            return atualizado;
+          }
+          return p;
+        });
+
         let algumSaneado = false;
-        const sanitizados = comReceitasMigradas.map(p => {
+        const sanitizados = comDocsUnicosMigrados.map(p => {
           let mudouPaciente = false;
           const consultasSaneadas = (p.consultas || []).map(c => {
             if (!c.vacinas) return c;
@@ -2068,12 +2118,95 @@ function ReceitaEditor({ patient, receita, onRename, onRemove, updateReceita, on
 }
 
 function ReceitaEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
-  const re = (consulta.docs && consulta.docs.receitaEspecial) || {};
-  const set = (k, v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaEspecial: { ...(p.docs.receitaEspecial || {}), [k]: v } } }));
+  const itens = (consulta.docs && Array.isArray(consulta.docs.receitasEspeciais)) ? consulta.docs.receitasEspeciais : [];
+  const [activeId, setActiveId] = useState(itens[0]?.id || null);
+
+  useEffect(() => {
+    if (!itens.some(r => r.id === activeId)) setActiveId(itens[0]?.id || null);
+  }, [consulta.id]);
+
+  const addItem = () => {
+    const novo = { id: uid(), nome: `Receita especial ${itens.length + 1}`, medicoNome: "", crm: "", crmUf: "PE", crmNum: "", enderecoMedico: "", cidadeMedico: "Recife", ufMedico: "PE", prescricao: "" };
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.receitasEspeciais)) ? p.docs.receitasEspeciais : [];
+      return { ...p, docs: { ...p.docs, receitasEspeciais: [...atuais, novo] } };
+    });
+    setActiveId(novo.id);
+  };
+  const removeItem = (id) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.receitasEspeciais)) ? p.docs.receitasEspeciais : [];
+      return { ...p, docs: { ...p.docs, receitasEspeciais: atuais.filter(r => r.id !== id) } };
+    });
+    if (activeId === id) setActiveId(null);
+  };
+  const renameItem = (id, nome) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.receitasEspeciais)) ? p.docs.receitasEspeciais : [];
+      return { ...p, docs: { ...p.docs, receitasEspeciais: atuais.map(r => r.id === id ? { ...r, nome } : r) } };
+    });
+  };
+  const updateItem = (id, updater) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.receitasEspeciais)) ? p.docs.receitasEspeciais : [];
+      return { ...p, docs: { ...p.docs, receitasEspeciais: atuais.map(r => r.id === id ? updater(r) : r) } };
+    });
+  };
+
+  const activeItem = itens.find(r => r.id === activeId) || null;
+
   return (
     <div>
       <MedicacoesReferencia consulta={consulta} />
-      <Alert type="warning">Receituário de controle especial (notificação B/A). Use para psicotrópicos e entorpecentes sujeitos a controle especial. Os campos do comprador são preenchidos no momento da impressão/entrega, conforme quem retira a medicação.</Alert>
+      <Alert type="info">Você pode criar mais de uma receita especial para esta consulta. Cada uma é um documento separado.</Alert>
+
+      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
+        {itens.map(r => (
+          <button key={r.id} onClick={() => setActiveId(r.id)} style={{
+            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
+            border: activeId === r.id ? "0.5px solid var(--color-border-info)" : "0.5px solid var(--color-border-tertiary)",
+            background: activeId === r.id ? "var(--color-background-info)" : "transparent",
+            color: activeId === r.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
+            borderRadius: "8px"
+          }}>
+            {(r.nome || "").trim() || "Receita especial"}
+          </button>
+        ))}
+        <button onClick={addItem} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+          <i className="ti ti-plus" aria-hidden="true"></i>Nova receita especial
+        </button>
+      </div>
+
+      {itens.length === 0 && (
+        <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-secondary)" }}>
+          <i className="ti ti-shield-lock" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
+          Nenhuma receita especial criada ainda nesta consulta.
+        </div>
+      )}
+
+      {activeItem && (
+        <ReceitaEspecialEditor
+          patient={patient}
+          item={activeItem}
+          onRename={(nome) => renameItem(activeItem.id, nome)}
+          onRemove={() => { if (confirm(`Excluir "${activeItem.nome}"?`)) removeItem(activeItem.id); }}
+          updateItem={(updater) => updateItem(activeItem.id, updater)}
+          onPrint={() => onPrint({ type: "receitaEspecial", itemId: activeItem.id })}
+        />
+      )}
+    </div>
+  );
+}
+
+function ReceitaEspecialEditor({ patient, item, onRename, onRemove, updateItem, onPrint }) {
+  const re = item;
+  const set = (k, v) => updateItem(r => ({ ...r, [k]: v }));
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+        <input value={item.nome || ""} onChange={e => onRename(e.target.value)} placeholder="Nome desta receita especial" style={{ flex: 1, fontWeight: 500 }} />
+        <button onClick={onRemove} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
+      </div>
 
       <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
         <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "16px" }}>RECEITUÁRIO DE CONTROLE ESPECIAL</div>
@@ -2146,7 +2279,7 @@ function ReceitaEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={() => onPrint({ type: "receitaEspecial" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <button onClick={onPrint} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <i className="ti ti-printer" aria-hidden="true"></i>Gerar receita especial
         </button>
       </div>
@@ -2155,42 +2288,189 @@ function ReceitaEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
 }
 
 function ExameSimplesTab({ patient, consulta, updateConsulta, onPrint }) {
-  const es = (consulta.docs && consulta.docs.examesSimples) || { texto: "" };
-  const texto = es.texto !== undefined ? es.texto : EXAMES_LABORATORIAIS_PADRAO.join("\n");
-  const setTexto = (v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, examesSimples: { ...(p.docs.examesSimples || {}), texto: v } } }));
+  const itens = (consulta.docs && Array.isArray(consulta.docs.examesSimplesLista)) ? consulta.docs.examesSimplesLista : [];
+  const [activeId, setActiveId] = useState(itens[0]?.id || null);
+
+  useEffect(() => {
+    if (!itens.some(r => r.id === activeId)) setActiveId(itens[0]?.id || null);
+  }, [consulta.id]);
+
+  const addItem = () => {
+    const novo = { id: uid(), nome: `Exame simples ${itens.length + 1}`, texto: EXAMES_LABORATORIAIS_PADRAO.join("\n") };
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.examesSimplesLista)) ? p.docs.examesSimplesLista : [];
+      return { ...p, docs: { ...p.docs, examesSimplesLista: [...atuais, novo] } };
+    });
+    setActiveId(novo.id);
+  };
+  const removeItem = (id) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.examesSimplesLista)) ? p.docs.examesSimplesLista : [];
+      return { ...p, docs: { ...p.docs, examesSimplesLista: atuais.filter(r => r.id !== id) } };
+    });
+    if (activeId === id) setActiveId(null);
+  };
+  const renameItem = (id, nome) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.examesSimplesLista)) ? p.docs.examesSimplesLista : [];
+      return { ...p, docs: { ...p.docs, examesSimplesLista: atuais.map(r => r.id === id ? { ...r, nome } : r) } };
+    });
+  };
+  const setTexto = (id, v) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.examesSimplesLista)) ? p.docs.examesSimplesLista : [];
+      return { ...p, docs: { ...p.docs, examesSimplesLista: atuais.map(r => r.id === id ? { ...r, texto: v } : r) } };
+    });
+  };
+
+  const activeItem = itens.find(r => r.id === activeId) || null;
+  const texto = activeItem ? (activeItem.texto !== undefined ? activeItem.texto : EXAMES_LABORATORIAIS_PADRAO.join("\n")) : "";
 
   return (
     <div>
-      <Alert type="info">Edite a lista de exames livremente — adicione, remova ou modifique itens conforme necessário.</Alert>
+      <Alert type="info">Você pode criar mais de uma solicitação de exames simples para esta consulta. Cada uma é um documento separado.</Alert>
 
-      <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
-        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "12px" }}>RECEITUÁRIO</div>
-        <div style={{ marginBottom: "10px" }}><strong>Paciente:</strong> {patient.ident.nome || "(sem nome)"}</div>
-        <div style={{ textAlign: "center", fontWeight: 700, marginBottom: "14px" }}>SOLICITAÇÃO DE EXAMES LABORATORIAIS</div>
-        <textarea
-          rows={20}
-          value={texto}
-          onChange={e => setTexto(e.target.value)}
-          style={{ width: "100%", border: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "8px", borderRadius: "6px" }}
-        />
-        <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
-          Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
-          CNPJ nº 11944899/0001-17 Telefone: 3183-4500
-        </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={() => onPrint({ type: "exameSimples" })} disabled={!texto.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <i className="ti ti-printer" aria-hidden="true"></i>Gerar solicitação
+      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
+        {itens.map(r => (
+          <button key={r.id} onClick={() => setActiveId(r.id)} style={{
+            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
+            border: activeId === r.id ? "0.5px solid var(--color-border-info)" : "0.5px solid var(--color-border-tertiary)",
+            background: activeId === r.id ? "var(--color-background-info)" : "transparent",
+            color: activeId === r.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
+            borderRadius: "8px"
+          }}>
+            {(r.nome || "").trim() || "Exame simples"}
+          </button>
+        ))}
+        <button onClick={addItem} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+          <i className="ti ti-plus" aria-hidden="true"></i>Novo exame simples
         </button>
       </div>
+
+      {itens.length === 0 && (
+        <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-secondary)" }}>
+          <i className="ti ti-flask" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
+          Nenhuma solicitação criada ainda nesta consulta.
+        </div>
+      )}
+
+      {activeItem && (
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+            <input value={activeItem.nome || ""} onChange={e => renameItem(activeItem.id, e.target.value)} placeholder="Nome desta solicitação" style={{ flex: 1, fontWeight: 500 }} />
+            <button onClick={() => { if (confirm(`Excluir "${activeItem.nome}"?`)) removeItem(activeItem.id); }} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
+          </div>
+
+          <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
+            <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "12px" }}>RECEITUÁRIO</div>
+            <div style={{ marginBottom: "10px" }}><strong>Paciente:</strong> {patient.ident.nome || "(sem nome)"}</div>
+            <div style={{ textAlign: "center", fontWeight: 700, marginBottom: "14px" }}>SOLICITAÇÃO DE EXAMES LABORATORIAIS</div>
+            <textarea
+              rows={20}
+              value={texto}
+              onChange={e => setTexto(activeItem.id, e.target.value)}
+              style={{ width: "100%", border: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "8px", borderRadius: "6px" }}
+            />
+            <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
+              Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
+              CNPJ nº 11944899/0001-17 Telefone: 3183-4500
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
+            <button onClick={() => onPrint({ type: "exameSimples", itemId: activeItem.id })} disabled={!texto.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-printer" aria-hidden="true"></i>Gerar solicitação
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function ExameEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
-  const ee = (consulta.docs && consulta.docs.examesEspecial) || {};
-  const set = (k, v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, examesEspecial: { ...(p.docs.examesEspecial || {}), [k]: v } } }));
+  const itens = (consulta.docs && Array.isArray(consulta.docs.examesEspeciais)) ? consulta.docs.examesEspeciais : [];
+  const [activeId, setActiveId] = useState(itens[0]?.id || null);
+
+  useEffect(() => {
+    if (!itens.some(r => r.id === activeId)) setActiveId(itens[0]?.id || null);
+  }, [consulta.id]);
+
+  const addItem = () => {
+    const novo = { id: uid(), nome: `Exame especial ${itens.length + 1}`, registro: "", enf: "", leito: "", setorSolicitante: "GERIATRIA", examesRealizados: "", dadosClinicos: "", hipoteseDiagnostica: "", exameSolicitado: "", carater: "rotina", observacoes: "" };
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.examesEspeciais)) ? p.docs.examesEspeciais : [];
+      return { ...p, docs: { ...p.docs, examesEspeciais: [...atuais, novo] } };
+    });
+    setActiveId(novo.id);
+  };
+  const removeItem = (id) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.examesEspeciais)) ? p.docs.examesEspeciais : [];
+      return { ...p, docs: { ...p.docs, examesEspeciais: atuais.filter(r => r.id !== id) } };
+    });
+    if (activeId === id) setActiveId(null);
+  };
+  const renameItem = (id, nome) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.examesEspeciais)) ? p.docs.examesEspeciais : [];
+      return { ...p, docs: { ...p.docs, examesEspeciais: atuais.map(r => r.id === id ? { ...r, nome } : r) } };
+    });
+  };
+  const updateItem = (id, updater) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.examesEspeciais)) ? p.docs.examesEspeciais : [];
+      return { ...p, docs: { ...p.docs, examesEspeciais: atuais.map(r => r.id === id ? updater(r) : r) } };
+    });
+  };
+
+  const activeItem = itens.find(r => r.id === activeId) || null;
+
+  return (
+    <div>
+      <Alert type="info">Você pode criar mais de uma solicitação de exame especial para esta consulta. Cada uma é um documento separado.</Alert>
+
+      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
+        {itens.map(r => (
+          <button key={r.id} onClick={() => setActiveId(r.id)} style={{
+            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
+            border: activeId === r.id ? "0.5px solid var(--color-border-info)" : "0.5px solid var(--color-border-tertiary)",
+            background: activeId === r.id ? "var(--color-background-info)" : "transparent",
+            color: activeId === r.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
+            borderRadius: "8px"
+          }}>
+            {(r.nome || "").trim() || "Exame especial"}
+          </button>
+        ))}
+        <button onClick={addItem} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+          <i className="ti ti-plus" aria-hidden="true"></i>Novo exame especial
+        </button>
+      </div>
+
+      {itens.length === 0 && (
+        <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-secondary)" }}>
+          <i className="ti ti-x-ray" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
+          Nenhuma solicitação criada ainda nesta consulta.
+        </div>
+      )}
+
+      {activeItem && (
+        <ExameEspecialEditor
+          patient={patient}
+          item={activeItem}
+          onRename={(nome) => renameItem(activeItem.id, nome)}
+          onRemove={() => { if (confirm(`Excluir "${activeItem.nome}"?`)) removeItem(activeItem.id); }}
+          updateItem={(updater) => updateItem(activeItem.id, updater)}
+          onPrint={() => onPrint({ type: "exameEspecial", itemId: activeItem.id })}
+        />
+      )}
+    </div>
+  );
+}
+
+function ExameEspecialEditor({ patient, item, onRename, onRemove, updateItem, onPrint }) {
+  const ee = item;
+  const set = (k, v) => updateItem(r => ({ ...r, [k]: v }));
   const idade = calcIdade(patient.ident.dn);
   const carLabel = { urgencia_absoluta: "URGÊNCIA ABSOLUTA", urgencia_relativa: "URGÊNCIA RELATIVA", rotina: "ROTINA", controle: "CONTROLE" };
   const cellStyle = { border: "1px solid #999", padding: "5px 8px", fontSize: "12px" };
@@ -2198,6 +2478,11 @@ function ExameEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
 
   return (
     <div>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+        <input value={item.nome || ""} onChange={e => onRename(e.target.value)} placeholder="Nome desta solicitação" style={{ flex: 1, fontWeight: 500 }} />
+        <button onClick={onRemove} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
+      </div>
+
       <Alert type="info">Os dados de nome, mãe, idade e sexo são preenchidos automaticamente a partir da aba Identificação do prontuário.</Alert>
 
       <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
@@ -2277,7 +2562,7 @@ function ExameEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={() => onPrint({ type: "exameEspecial" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <button onClick={onPrint} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <i className="ti ti-printer" aria-hidden="true"></i>Gerar solicitação de exame especial
         </button>
       </div>
@@ -2313,9 +2598,9 @@ function VacinacaoDocTab({ patient, consulta, updateConsulta, onPrint }) {
 
 function PrintDocRenderer({ doc, patient, consulta, onClose }) {
   if (doc.type === "receita") return <ReceitaPrint patient={patient} consulta={consulta} receitaId={doc.receitaId} onClose={onClose} />;
-  if (doc.type === "receitaEspecial") return <ReceitaEspecialPrint patient={patient} consulta={consulta} onClose={onClose} />;
-  if (doc.type === "exameSimples") return <ExameSimplesPrint patient={patient} consulta={consulta} onClose={onClose} />;
-  if (doc.type === "exameEspecial") return <ExameEspecialPrint patient={patient} consulta={consulta} onClose={onClose} />;
+  if (doc.type === "receitaEspecial") return <ReceitaEspecialPrint patient={patient} consulta={consulta} itemId={doc.itemId} onClose={onClose} />;
+  if (doc.type === "exameSimples") return <ExameSimplesPrint patient={patient} consulta={consulta} itemId={doc.itemId} onClose={onClose} />;
+  if (doc.type === "exameEspecial") return <ExameEspecialPrint patient={patient} consulta={consulta} itemId={doc.itemId} onClose={onClose} />;
   if (doc.type === "vacinacao") return <VacinacaoPrint patient={patient} consulta={consulta} onClose={onClose} />;
   if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} />;
   return null;
@@ -2384,8 +2669,9 @@ function ReceitaPrint({ patient, consulta, receitaId, onClose }) {
   );
 }
 
-function ReceitaEspecialPrint({ patient, consulta, onClose }) {
-  const re = (consulta.docs && consulta.docs.receitaEspecial) || {};
+function ReceitaEspecialPrint({ patient, consulta, itemId, onClose }) {
+  const itens = (consulta.docs && Array.isArray(consulta.docs.receitasEspeciais)) ? consulta.docs.receitasEspeciais : [];
+  const re = itens.find(r => r.id === itemId) || {};
   return (
     <PrintShell title="Receituário de controle especial" onClose={onClose}>
       <DocHeader title="RECEITUÁRIO DE CONTROLE ESPECIAL" />
@@ -2429,8 +2715,9 @@ function ReceitaEspecialPrint({ patient, consulta, onClose }) {
   );
 }
 
-function ExameSimplesPrint({ patient, consulta, onClose }) {
-  const es = (consulta.docs && consulta.docs.examesSimples) || { texto: "" };
+function ExameSimplesPrint({ patient, consulta, itemId, onClose }) {
+  const itens = (consulta.docs && Array.isArray(consulta.docs.examesSimplesLista)) ? consulta.docs.examesSimplesLista : [];
+  const es = itens.find(r => r.id === itemId) || { texto: "" };
   const texto = es.texto !== undefined ? es.texto : EXAMES_LABORATORIAIS_PADRAO.join("\n");
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
   return (
@@ -2446,8 +2733,9 @@ function ExameSimplesPrint({ patient, consulta, onClose }) {
   );
 }
 
-function ExameEspecialPrint({ patient, consulta, onClose }) {
-  const ee = (consulta.docs && consulta.docs.examesEspecial) || {};
+function ExameEspecialPrint({ patient, consulta, itemId, onClose }) {
+  const itens = (consulta.docs && Array.isArray(consulta.docs.examesEspeciais)) ? consulta.docs.examesEspeciais : [];
+  const ee = itens.find(r => r.id === itemId) || {};
   const idade = calcIdade(patient.ident.dn);
   const carLabel = { urgencia_absoluta: "URGÊNCIA ABSOLUTA", urgencia_relativa: "URGÊNCIA RELATIVA", rotina: "ROTINA", controle: "CONTROLE" };
   const cellStyle = { border: "1px solid #000", padding: "5px 8px", fontSize: "12px" };
