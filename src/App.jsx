@@ -234,8 +234,8 @@ function emptyConsulta(base) {
       aivd: {"Telefone":true,"Transporte":true,"Compras":true,"Preparar refeições":true,"Tarefas domésticas":true,"Trabalhos manuais":true,"Lavar roupas":true,"Medicações":true,"Finanças":true},
       abvd: {"Banho":true,"Vestir-se":true,"Higiene pessoal":true,"Transferência":true,"Continência":true,"Alimentação":true},
       marcha: "", dispositivo: "",
-      frail: {}, semQueixasCognitivas: false, minicog: "", meem: "", moca: "",
-      semQueixasHumor: false, gds15: "", quedas: "nega", quedasNum: "", quedasDescricao: "", fraturas: "nao", tce: "nao",
+      frail: {}, semQueixasCognitivas: false, queixasCognitivasDescricao: "", minicog: "", meem: "", moca: "",
+      semQueixasHumor: false, queixasHumorDescricao: "", gds15: "", quedas: "nega", quedasNum: "", quedasDescricao: "", fraturas: "nao", tce: "nao",
       sono: "", peso: "", altura: "", perdaPeso: "nao", perdaPesoPerc: "", perdaPesoMeses: "",
       apetite: "preservado", disfagia: "ausente", disfagiaDieta: "", dentarios: "nao",
       tgi: "continente", tgu: "continente", visao: "preservada", audicao: "preservada",
@@ -251,9 +251,7 @@ function emptyConsulta(base) {
     pendencias: [],
     pendenciasConsultaAtual: "",
     docs: {
-      receitaSelecionados: {},
-      receitaItensEditados: {},
-      receitaExtras: "",
+      receitas: [],
       receitaEspecial: { medicoNome: "", crm: "", crmUf: "PE", crmNum: "", enderecoMedico: "", cidadeMedico: "Recife", ufMedico: "PE", prescricao: "" },
       examesSimples: { texto: EXAMES_LABORATORIAIS_PADRAO.join("\n") },
       examesEspecial: { registro: "", enf: "", leito: "", setorSolicitante: "GERIATRIA", examesRealizados: "", dadosClinicos: "", hipoteseDiagnostica: "", exameSolicitado: "", carater: "rotina", observacoes: "" },
@@ -267,7 +265,7 @@ function emptyPatient() {
     id: uid(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    ident: { prontuario: "", nome: "", cpf: "", sexo: "", dn: "", maeNome: "", natural: "", procedente: "", profissao: "", escolaridade: "", estadoCivil: "", religiao: "", acompanhante: "", cuidador: "", moraCom: "", telefone: "" },
+    ident: { prontuario: "", nome: "", cpf: "", sexo: "", dn: "", maeNome: "", natural: "", procedente: "", profissao: "", escolaridade: "", estadoCivil: "", religiao: "", acompanhante: "", cuidador: "", moraCom: "", podeContarCom: "", telefone: "" },
     consultas: [emptyConsulta()],
   };
 }
@@ -483,6 +481,44 @@ export default function App() {
             return p;
           });
 
+        // Migração: rastreioGeral/rastreioEspecifico passaram de "um registro único por exame"
+        // para "lista de registros por exame" (suporte a múltiplas datas/resultados ao longo do tempo).
+        function migrarParaArray(obj) {
+          if (!obj) return {};
+          const novo = {};
+          Object.keys(obj).forEach(chave => {
+            const valor = obj[chave];
+            if (Array.isArray(valor)) {
+              novo[chave] = valor;
+            } else if (valor && (valor.data || valor.resultado)) {
+              novo[chave] = [{ id: uid(), data: valor.data || "", resultado: valor.resultado || "" }];
+            } else {
+              novo[chave] = [];
+            }
+          });
+          return novo;
+        }
+        let algumMigradoRastreio = false;
+        const comRastreioMigrado = limpos.map(p => {
+          let mudouPaciente = false;
+          const consultasMigradas = (p.consultas || []).map(c => {
+            const precisaMigrarRg = c.rastreioGeral && Object.values(c.rastreioGeral).some(v => v && !Array.isArray(v));
+            const precisaMigrarRe = c.rastreioEspecifico && Object.values(c.rastreioEspecifico).some(v => v && !Array.isArray(v));
+            if (precisaMigrarRg || precisaMigrarRe) {
+              mudouPaciente = true;
+              algumMigradoRastreio = true;
+              return { ...c, rastreioGeral: migrarParaArray(c.rastreioGeral), rastreioEspecifico: migrarParaArray(c.rastreioEspecifico) };
+            }
+            return c;
+          });
+          if (mudouPaciente) {
+            const atualizado = { ...p, consultas: consultasMigradas };
+            savePatient(atualizado).catch(e => console.error("Falha ao migrar rastreio para array", e));
+            return atualizado;
+          }
+          return p;
+        });
+
         // Saneamento: campos de data de vacina com ano fora de uma faixa plausível
         // (ex: salvos por um bug de cálculo anterior) são limpos automaticamente.
         function dataPlausivel(s) {
@@ -490,8 +526,45 @@ export default function App() {
           const ano = parseInt(String(s).slice(0, 4), 10);
           return !isNaN(ano) && ano >= 2015 && ano <= 2100;
         }
+
+        // Migração: a Receita passou de "um único conjunto de campos por consulta"
+        // para "lista de receitas", permitindo gerar mais de uma receita por consulta.
+        let algumMigradoReceita = false;
+        const comReceitasMigradas = comRastreioMigrado.map(p => {
+          let mudouPaciente = false;
+          const consultasMigradas = (p.consultas || []).map(c => {
+            const docs = c.docs || {};
+            const temFormatoAntigo = docs.receitaSelecionados || docs.receitaItensEditados || docs.receitaExtras || docs.receitaTitulosEditados;
+            const jaTemArray = Array.isArray(docs.receitas);
+            if (temFormatoAntigo && !jaTemArray) {
+              mudouPaciente = true;
+              algumMigradoReceita = true;
+              const receitaMigrada = {
+                id: uid(),
+                nome: "Receita 1",
+                selecionados: docs.receitaSelecionados || {},
+                itensEditados: docs.receitaItensEditados || {},
+                extras: docs.receitaExtras || "",
+                titulosEditados: docs.receitaTitulosEditados || {},
+              };
+              const { receitaSelecionados, receitaItensEditados, receitaExtras, receitaTitulosEditados, ...restoDocs } = docs;
+              return { ...c, docs: { ...restoDocs, receitas: [receitaMigrada] } };
+            }
+            if (!jaTemArray) {
+              return { ...c, docs: { ...docs, receitas: [] } };
+            }
+            return c;
+          });
+          if (mudouPaciente) {
+            const atualizado = { ...p, consultas: consultasMigradas };
+            savePatient(atualizado).catch(e => console.error("Falha ao migrar receitas para array", e));
+            return atualizado;
+          }
+          return p;
+        });
+
         let algumSaneado = false;
-        const sanitizados = limpos.map(p => {
+        const sanitizados = comReceitasMigradas.map(p => {
           let mudouPaciente = false;
           const consultasSaneadas = (p.consultas || []).map(c => {
             if (!c.vacinas) return c;
@@ -1038,6 +1111,7 @@ function IdentTab({ patient, updatePatient }) {
         <Field label="Acompanhante"><input value={i.acompanhante} onChange={e => set("acompanhante", e.target.value)} /></Field>
         <Field label="Cuidador principal"><input value={i.cuidador} onChange={e => set("cuidador", e.target.value)} /></Field>
         <Field label="Mora com"><input value={i.moraCom} onChange={e => set("moraCom", e.target.value)} /></Field>
+        <Field label="Pode contar com"><input value={i.podeContarCom} onChange={e => set("podeContarCom", e.target.value)} placeholder="ex: filha, vizinha, cuidador contratado..." /></Field>
         <Field label="Telefone"><input value={i.telefone} onChange={e => set("telefone", e.target.value)} /></Field>
       </Row>
     </SectionCard>
@@ -1313,11 +1387,14 @@ function AgaTab({ consulta, updateConsulta }) {
           </label>
         </Field>
         {!aga.semQueixasCognitivas && (
-          <Row cols="repeat(3, 1fr)">
-            <Field label="Mini-Cog"><input value={aga.minicog} onChange={e => set("minicog", e.target.value)} /></Field>
-            <Field label="MEEM"><input value={aga.meem} onChange={e => set("meem", e.target.value)} /></Field>
-            <Field label="MoCA"><input value={aga.moca} onChange={e => set("moca", e.target.value)} /></Field>
-          </Row>
+          <>
+            <Field label="Descrição da queixa cognitiva"><textarea rows={2} value={aga.queixasCognitivasDescricao} onChange={e => set("queixasCognitivasDescricao", e.target.value)} placeholder="ex: esquecimento de compromissos, dificuldade para encontrar palavras..." /></Field>
+            <Row cols="repeat(3, 1fr)">
+              <Field label="Mini-Cog"><input value={aga.minicog} onChange={e => set("minicog", e.target.value)} /></Field>
+              <Field label="MEEM"><input value={aga.meem} onChange={e => set("meem", e.target.value)} /></Field>
+              <Field label="MoCA"><input value={aga.moca} onChange={e => set("moca", e.target.value)} /></Field>
+            </Row>
+          </>
         )}
       </SectionCard>
 
@@ -1330,6 +1407,7 @@ function AgaTab({ consulta, updateConsulta }) {
         </Field>
         {!aga.semQueixasHumor && (
           <>
+            <Field label="Descrição da queixa de humor"><textarea rows={2} value={aga.queixasHumorDescricao} onChange={e => set("queixasHumorDescricao", e.target.value)} placeholder="ex: tristeza, anedonia, irritabilidade, alterações de sono associadas..." /></Field>
             <Field label="GDS-15 (pontuação)" hint="Pontuação ≥6 sugere rastreio positivo para sintomas depressivos">
               <input type="number" min="0" max="15" value={aga.gds15} onChange={e => set("gds15", e.target.value)} style={{ maxWidth: "100px" }} />
             </Field>
@@ -1445,9 +1523,32 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
     });
   };
   const rg = consulta.rastreioGeral || {};
-  const setRg = (nome, k, v) => updateConsulta(p => ({ ...p, rastreioGeral: { ...p.rastreioGeral, [nome]: { ...(p.rastreioGeral[nome]||{}), [k]: v } } }));
+  const addRgRegistro = (nome) => updateConsulta(p => {
+    const atuais = Array.isArray((p.rastreioGeral || {})[nome]) ? p.rastreioGeral[nome] : [];
+    return { ...p, rastreioGeral: { ...p.rastreioGeral, [nome]: [...atuais, { id: uid(), data: "", resultado: "" }] } };
+  });
+  const setRgRegistro = (nome, registroId, campo, v) => updateConsulta(p => {
+    const atuais = Array.isArray((p.rastreioGeral || {})[nome]) ? p.rastreioGeral[nome] : [];
+    return { ...p, rastreioGeral: { ...p.rastreioGeral, [nome]: atuais.map(r => r.id === registroId ? { ...r, [campo]: v } : r) } };
+  });
+  const removeRgRegistro = (nome, registroId) => updateConsulta(p => {
+    const atuais = Array.isArray((p.rastreioGeral || {})[nome]) ? p.rastreioGeral[nome] : [];
+    return { ...p, rastreioGeral: { ...p.rastreioGeral, [nome]: atuais.filter(r => r.id !== registroId) } };
+  });
+
   const re = consulta.rastreioEspecifico || {};
-  const setRe = (nome, k, v) => updateConsulta(p => ({ ...p, rastreioEspecifico: { ...p.rastreioEspecifico, [nome]: { ...(p.rastreioEspecifico[nome]||{}), [k]: v } } }));
+  const addReRegistro = (key) => updateConsulta(p => {
+    const atuais = Array.isArray((p.rastreioEspecifico || {})[key]) ? p.rastreioEspecifico[key] : [];
+    return { ...p, rastreioEspecifico: { ...p.rastreioEspecifico, [key]: [...atuais, { id: uid(), data: "", resultado: "" }] } };
+  });
+  const setReRegistro = (key, registroId, campo, v) => updateConsulta(p => {
+    const atuais = Array.isArray((p.rastreioEspecifico || {})[key]) ? p.rastreioEspecifico[key] : [];
+    return { ...p, rastreioEspecifico: { ...p.rastreioEspecifico, [key]: atuais.map(r => r.id === registroId ? { ...r, [campo]: v } : r) } };
+  });
+  const removeReRegistro = (key, registroId) => updateConsulta(p => {
+    const atuais = Array.isArray((p.rastreioEspecifico || {})[key]) ? p.rastreioEspecifico[key] : [];
+    return { ...p, rastreioEspecifico: { ...p.rastreioEspecifico, [key]: atuais.filter(r => r.id !== registroId) } };
+  });
 
   const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p] && PREVENCAO_ESPECIFICA[p]);
 
@@ -1464,15 +1565,28 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
     <div>
       <SectionCard title="Prevenção — rastreio geral" icon="ti-shield-check" defaultOpen={false}>
         {rastreioGeralVisivel.map(r => {
-          const data = rg[r.nome] || {};
+          const registros = Array.isArray(rg[r.nome]) ? rg[r.nome] : [];
           return (
-            <div key={r.nome} style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "8px 0" }}>
-              <div style={{ minWidth: "160px", flex: "1 1 220px" }}>
-                <div style={{ fontWeight: 500, fontSize: "14px" }}>{r.nome}</div>
-                <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>{r.criterio}</div>
+            <div key={r.nome} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "10px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                <div>
+                  <div style={{ fontWeight: 500, fontSize: "14px" }}>{r.nome}</div>
+                  <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>{r.criterio}</div>
+                </div>
+                <button onClick={() => addRgRegistro(r.nome)} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", padding: "4px 8px" }}>
+                  <i className="ti ti-plus" aria-hidden="true"></i>Adicionar registro
+                </button>
               </div>
-              <Field label="Realizado em"><input type="date" value={data.data || ""} onChange={e => setRg(r.nome, "data", e.target.value)} /></Field>
-              <Field label="Resultado"><input value={data.resultado || ""} onChange={e => setRg(r.nome, "resultado", e.target.value)} /></Field>
+              {registros.length === 0 && <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", margin: "4px 0" }}>Nenhum registro ainda.</p>}
+              {registros.map((reg, idx) => (
+                <div key={reg.id} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "8px", paddingLeft: "8px", borderLeft: "2px solid var(--color-border-tertiary)" }}>
+                  <Field label={`Realizado em (registro ${idx + 1})`}><input type="date" value={reg.data || ""} onChange={e => setRgRegistro(r.nome, reg.id, "data", e.target.value)} /></Field>
+                  <div style={{ flex: "1 1 240px" }}>
+                    <Field label="Resultado"><textarea rows={3} value={reg.resultado || ""} onChange={e => setRgRegistro(r.nome, reg.id, "resultado", e.target.value)} /></Field>
+                  </div>
+                  <button onClick={() => removeRgRegistro(r.nome, reg.id)} aria-label="Remover registro" style={{ marginTop: "20px" }}><i className="ti ti-trash" aria-hidden="true"></i></button>
+                </div>
+              ))}
             </div>
           );
         })}
@@ -1485,12 +1599,25 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
             <div style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-text-info)", marginBottom: "6px" }}>{comorbidade}</div>
             {PREVENCAO_ESPECIFICA[comorbidade].map(item => {
               const key = comorbidade + "::" + item;
-              const data = re[key] || {};
+              const registros = Array.isArray(re[key]) ? re[key] : [];
               return (
-                <div key={key} style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", padding: "6px 0" }}>
-                  <div style={{ minWidth: "200px", flex: "1 1 240px", fontSize: "13px" }}>{item}</div>
-                  <Field label="Data"><input type="date" value={data.data || ""} onChange={e => setRe(key, "data", e.target.value)} /></Field>
-                  <Field label="Resultado"><input value={data.resultado || ""} onChange={e => setRe(key, "resultado", e.target.value)} /></Field>
+                <div key={key} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "8px 0" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                    <div style={{ fontSize: "13px" }}>{item}</div>
+                    <button onClick={() => addReRegistro(key)} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", padding: "4px 8px" }}>
+                      <i className="ti ti-plus" aria-hidden="true"></i>Adicionar registro
+                    </button>
+                  </div>
+                  {registros.length === 0 && <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", margin: "4px 0" }}>Nenhum registro ainda.</p>}
+                  {registros.map((reg, idx) => (
+                    <div key={reg.id} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "8px", paddingLeft: "8px", borderLeft: "2px solid var(--color-border-tertiary)" }}>
+                      <Field label={`Data (registro ${idx + 1})`}><input type="date" value={reg.data || ""} onChange={e => setReRegistro(key, reg.id, "data", e.target.value)} /></Field>
+                      <div style={{ flex: "1 1 240px" }}>
+                        <Field label="Resultado"><textarea rows={3} value={reg.resultado || ""} onChange={e => setReRegistro(key, reg.id, "resultado", e.target.value)} /></Field>
+                      </div>
+                      <button onClick={() => removeReRegistro(key, reg.id)} aria-label="Remover registro" style={{ marginTop: "20px" }}><i className="ti ti-trash" aria-hidden="true"></i></button>
+                    </div>
+                  ))}
                 </div>
               );
             })}
@@ -1694,39 +1821,137 @@ function DocumentosView({ patient, consulta, updateConsulta, activeDocTab, setAc
   );
 }
 
+function MedicacoesReferencia({ consulta }) {
+  const texto = (consulta.medicacoesTexto || "").trim();
+  if (!texto) return null;
+  return (
+    <SectionCard title="Medicações em uso (referência)" icon="ti-pill" defaultOpen={true}>
+      <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Copiado da aba Medicações, só para consulta — não aparece no documento impresso.</p>
+      <div style={{ whiteSpace: "pre-wrap", fontSize: "13px", background: "var(--color-background-secondary)", padding: "10px 12px", borderRadius: "8px" }}>{texto}</div>
+    </SectionCard>
+  );
+}
+
 function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
-  const sel = (consulta.docs && consulta.docs.receitaSelecionados) || {};
-  const edits = (consulta.docs && consulta.docs.receitaItensEditados) || {};
-  const extras = (consulta.docs && consulta.docs.receitaExtras) || "";
+  const receitas = (consulta.docs && Array.isArray(consulta.docs.receitas)) ? consulta.docs.receitas : [];
+  const [activeReceitaId, setActiveReceitaId] = useState(receitas[0]?.id || null);
+
+  const addReceita = () => {
+    const nova = { id: uid(), nome: `Receita ${receitas.length + 1}`, selecionados: {}, itensEditados: {}, extras: "", titulosEditados: {} };
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.receitas)) ? p.docs.receitas : [];
+      return { ...p, docs: { ...p.docs, receitas: [...atuais, nova] } };
+    });
+    setActiveReceitaId(nova.id);
+  };
+  const removeReceita = (id) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.receitas)) ? p.docs.receitas : [];
+      return { ...p, docs: { ...p.docs, receitas: atuais.filter(r => r.id !== id) } };
+    });
+    if (activeReceitaId === id) setActiveReceitaId(null);
+  };
+  const renameReceita = (id, nome) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.receitas)) ? p.docs.receitas : [];
+      return { ...p, docs: { ...p.docs, receitas: atuais.map(r => r.id === id ? { ...r, nome } : r) } };
+    });
+  };
+  const updateReceita = (id, updater) => {
+    updateConsulta(p => {
+      const atuais = (p.docs && Array.isArray(p.docs.receitas)) ? p.docs.receitas : [];
+      return { ...p, docs: { ...p.docs, receitas: atuais.map(r => r.id === id ? updater(r) : r) } };
+    });
+  };
+
+  const activeReceita = receitas.find(r => r.id === activeReceitaId) || null;
+
+  return (
+    <div>
+      <MedicacoesReferencia consulta={consulta} />
+      <Alert type="info">Você pode criar mais de uma receita para esta consulta — por exemplo, uma só com antibiótico e outra com as medicações de uso contínuo. Cada receita é um documento separado.</Alert>
+
+      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
+        {receitas.map(r => (
+          <button key={r.id} onClick={() => setActiveReceitaId(r.id)} style={{
+            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
+            border: activeReceitaId === r.id ? "0.5px solid var(--color-border-info)" : "0.5px solid var(--color-border-tertiary)",
+            background: activeReceitaId === r.id ? "var(--color-background-info)" : "transparent",
+            color: activeReceitaId === r.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
+            borderRadius: "8px"
+          }}>
+            {r.nome || "Receita"}
+          </button>
+        ))}
+        <button onClick={addReceita} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+          <i className="ti ti-plus" aria-hidden="true"></i>Nova receita
+        </button>
+      </div>
+
+      {receitas.length === 0 && (
+        <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-secondary)" }}>
+          <i className="ti ti-prescription" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
+          Nenhuma receita criada ainda nesta consulta. Clique em "Nova receita" para começar.
+        </div>
+      )}
+
+      {activeReceita && (
+        <ReceitaEditor
+          patient={patient}
+          receita={activeReceita}
+          onRename={(nome) => renameReceita(activeReceita.id, nome)}
+          onRemove={() => { if (confirm(`Excluir "${activeReceita.nome}"?`)) removeReceita(activeReceita.id); }}
+          updateReceita={(updater) => updateReceita(activeReceita.id, updater)}
+          onPrint={() => onPrint({ type: "receita", receitaId: activeReceita.id })}
+        />
+      )}
+    </div>
+  );
+}
+
+function ReceitaEditor({ patient, receita, onRename, onRemove, updateReceita, onPrint }) {
+  const sel = receita.selecionados || {};
+  const edits = receita.itensEditados || {};
+  const extras = receita.extras || "";
+  const titulos = receita.titulosEditados || {};
 
   const toggleItem = (categoria, nome) => {
     const key = categoria + "::" + nome;
-    updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaSelecionados: { ...(p.docs.receitaSelecionados || {}), [key]: !(p.docs.receitaSelecionados || {})[key] } } }));
+    updateReceita(r => ({ ...r, selecionados: { ...(r.selecionados || {}), [key]: !(r.selecionados || {})[key] } }));
   };
   const toggleBloco = (bloco) => {
     const algumDesmarcado = bloco.itens.some(item => !sel[bloco.categoria + "::" + item.nome]);
-    updateConsulta(p => {
-      const next = { ...(p.docs.receitaSelecionados || {}) };
+    updateReceita(r => {
+      const next = { ...(r.selecionados || {}) };
       bloco.itens.forEach(item => {
         next[bloco.categoria + "::" + item.nome] = algumDesmarcado;
       });
-      return { ...p, docs: { ...p.docs, receitaSelecionados: next } };
+      return { ...r, selecionados: next };
     });
   };
   const setEditField = (categoria, nome, campo, valor) => {
     const key = categoria + "::" + nome;
-    updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaItensEditados: { ...(p.docs.receitaItensEditados || {}), [key]: { ...((p.docs.receitaItensEditados || {})[key] || {}), [campo]: valor } } } }));
+    updateReceita(r => ({ ...r, itensEditados: { ...(r.itensEditados || {}), [key]: { ...((r.itensEditados || {})[key] || {}), [campo]: valor } } }));
   };
-  const setExtras = (valor) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaExtras: valor } }));
-  const titulos = (consulta.docs && consulta.docs.receitaTitulosEditados) || {};
-  const setTitulo = (categoria, valor) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaTitulosEditados: { ...(p.docs.receitaTitulosEditados || {}), [categoria]: valor } } }));
+  const setExtras = (valor) => updateReceita(r => ({ ...r, extras: valor }));
+  const setTitulo = (categoria, valor) => updateReceita(r => ({ ...r, titulosEditados: { ...(r.titulosEditados || {}), [categoria]: valor } }));
 
   const countSelecionados = Object.values(sel).filter(Boolean).length;
   let counter = 0;
 
   return (
     <div>
-      <Alert type="info">Marque os itens que deseja incluir na receita. Depois de marcado, você pode editar nome, quantidade e posologia livremente.</Alert>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+        <input
+          value={receita.nome || ""}
+          onChange={e => onRename(e.target.value)}
+          placeholder="Nome desta receita (ex: Antibiótico)"
+          style={{ flex: 1, fontWeight: 500 }}
+        />
+        <button onClick={onRemove} aria-label="Excluir receita"><i className="ti ti-trash" aria-hidden="true"></i></button>
+      </div>
+
+      <Alert type="info">Marque os itens que deseja incluir nesta receita. Depois de marcado, você pode editar nome, quantidade e posologia livremente.</Alert>
 
       <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif" }}>
         <div style={{ textAlign: "center", fontWeight: 700, fontSize: "16px", marginBottom: "16px" }}>RECEITUÁRIO</div>
@@ -1818,7 +2043,7 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
       </div>
 
       <div style={{ position: "sticky", bottom: "8px", display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={() => onPrint({ type: "receita" })} disabled={countSelecionados === 0 && !extras.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <button onClick={onPrint} disabled={countSelecionados === 0 && !extras.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <i className="ti ti-printer" aria-hidden="true"></i>Gerar receita ({countSelecionados} {countSelecionados === 1 ? "item" : "itens"})
         </button>
       </div>
@@ -1831,6 +2056,7 @@ function ReceitaEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
   const set = (k, v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaEspecial: { ...(p.docs.receitaEspecial || {}), [k]: v } } }));
   return (
     <div>
+      <MedicacoesReferencia consulta={consulta} />
       <Alert type="warning">Receituário de controle especial (notificação B/A). Use para psicotrópicos e entorpecentes sujeitos a controle especial. Os campos do comprador são preenchidos no momento da impressão/entrega, conforme quem retira a medicação.</Alert>
 
       <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
@@ -2070,7 +2296,7 @@ function VacinacaoDocTab({ patient, consulta, updateConsulta, onPrint }) {
 }
 
 function PrintDocRenderer({ doc, patient, consulta, onClose }) {
-  if (doc.type === "receita") return <ReceitaPrint patient={patient} consulta={consulta} onClose={onClose} />;
+  if (doc.type === "receita") return <ReceitaPrint patient={patient} consulta={consulta} receitaId={doc.receitaId} onClose={onClose} />;
   if (doc.type === "receitaEspecial") return <ReceitaEspecialPrint patient={patient} consulta={consulta} onClose={onClose} />;
   if (doc.type === "exameSimples") return <ExameSimplesPrint patient={patient} consulta={consulta} onClose={onClose} />;
   if (doc.type === "exameEspecial") return <ExameEspecialPrint patient={patient} consulta={consulta} onClose={onClose} />;
@@ -2079,11 +2305,13 @@ function PrintDocRenderer({ doc, patient, consulta, onClose }) {
   return null;
 }
 
-function ReceitaPrint({ patient, consulta, onClose }) {
-  const sel = (consulta.docs && consulta.docs.receitaSelecionados) || {};
-  const edits = (consulta.docs && consulta.docs.receitaItensEditados) || {};
-  const extras = (consulta.docs && consulta.docs.receitaExtras) || "";
-  const titulos = (consulta.docs && consulta.docs.receitaTitulosEditados) || {};
+function ReceitaPrint({ patient, consulta, receitaId, onClose }) {
+  const receitas = (consulta.docs && Array.isArray(consulta.docs.receitas)) ? consulta.docs.receitas : [];
+  const receita = receitas.find(r => r.id === receitaId) || {};
+  const sel = receita.selecionados || {};
+  const edits = receita.itensEditados || {};
+  const extras = receita.extras || "";
+  const titulos = receita.titulosEditados || {};
 
   const blocosComItens = RECEITA_BLOCOS.map(bloco => ({
     ...bloco,
@@ -2361,7 +2589,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div>Prontuário: {i.prontuario || "—"} · CPF: {i.cpf || "—"} · Sexo: {i.sexo || "—"} · Idade: {idade != null ? idade + " anos" : "—"}</div>
       <div>Nome da mãe: {i.maeNome || "—"} · Naturalidade: {i.natural || "—"} · Procedência: {i.procedente || "—"}</div>
       <div>Profissão: {i.profissao || "—"} · Escolaridade: {i.escolaridade || "—"} · Estado civil: {i.estadoCivil || "—"}</div>
-      <div>Acompanhante: {i.acompanhante || "—"} · Cuidador: {i.cuidador || "—"} · Mora com: {i.moraCom || "—"} · Telefone: {i.telefone || "—"}</div>
+      <div>Acompanhante: {i.acompanhante || "—"} · Cuidador: {i.cuidador || "—"} · Mora com: {i.moraCom || "—"} · Pode contar com: {i.podeContarCom || "—"} · Telefone: {i.telefone || "—"}</div>
 
       <div style={sectionTitle}>LISTA DE PROBLEMAS</div>
       {ativos.length === 0 && customAtivos.length === 0 ? <div>Nenhuma comorbidade ativa registrada.</div> : (
@@ -2395,8 +2623,8 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div>ABVD independentes: {Object.values(aga.abvd || {}).filter(Boolean).length}/6 ({Object.keys(aga.abvd || {}).filter(k => aga.abvd[k]).join(", ") || "—"})</div>
       <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}</div>
       <div>FRAIL: {Object.values(aga.frail || {}).filter(Boolean).length}/5 critérios ({Object.keys(aga.frail || {}).filter(k => aga.frail[k]).join(", ") || "nenhum"})</div>
-      <div>Cognição: {aga.semQueixasCognitivas ? "Sem queixas cognitivas" : `Mini-Cog: ${aga.minicog || "—"} · MEEM: ${aga.meem || "—"} · MoCA: ${aga.moca || "—"}`}</div>
-      <div>Humor: {aga.semQueixasHumor ? "Sem queixas de humor" : `GDS-15: ${aga.gds15 || "—"}`}</div>
+      <div>Cognição: {aga.semQueixasCognitivas ? "Sem queixas cognitivas" : `Mini-Cog: ${aga.minicog || "—"} · MEEM: ${aga.meem || "—"} · MoCA: ${aga.moca || "—"}${aga.queixasCognitivasDescricao ? " — " + aga.queixasCognitivasDescricao : ""}`}</div>
+      <div>Humor: {aga.semQueixasHumor ? "Sem queixas de humor" : `GDS-15: ${aga.gds15 || "—"}${aga.queixasHumorDescricao ? " — " + aga.queixasHumorDescricao : ""}`}</div>
       <div>Quedas no último ano: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Nega"} · Fraturas: {aga.fraturas || "—"} · TCE: {aga.tce || "—"}</div>
       <div>Sono: {aga.sono || "—"}</div>
       <div>Peso: {aga.peso || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
@@ -2413,8 +2641,8 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
         const rg = consulta.rastreioGeral || {};
         const re = consulta.rastreioEspecifico || {};
         const vac = consulta.vacinas || {};
-        const rgPreenchidos = RASTREIO_GERAL.filter(r => rg[r.nome] && (rg[r.nome].data || rg[r.nome].resultado));
-        const reChaves = Object.keys(re).filter(k => re[k] && (re[k].data || re[k].resultado));
+        const rgPreenchidos = RASTREIO_GERAL.filter(r => Array.isArray(rg[r.nome]) && rg[r.nome].some(reg => reg.data || reg.resultado));
+        const reChaves = Object.keys(re).filter(k => Array.isArray(re[k]) && re[k].some(reg => reg.data || reg.resultado));
         const vacLabels = { influenza: "Influenza", covid: "COVID-19", pneumo: "Pneumocócica", dtpa: "dT/dTpa", hepB: "Hepatite B", vsr: "VSR", vzr: "Herpes-zóster (VZR)" };
         const vacPreenchidas = Object.keys(vac).filter(k => vac[k] && Object.values(vac[k]).some(v => v));
         const nadaPreenchido = rgPreenchidos.length === 0 && reChaves.length === 0 && vacPreenchidas.length === 0;
@@ -2425,7 +2653,14 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
               <>
                 <div style={{ fontWeight: 700, marginTop: "6px" }}>Rastreio geral:</div>
                 {rgPreenchidos.map(r => (
-                  <div key={r.nome}>{r.nome}: {rg[r.nome].data ? fmtDate(rg[r.nome].data) : "—"} {rg[r.nome].resultado ? `— ${rg[r.nome].resultado}` : ""}</div>
+                  <div key={r.nome} style={{ marginBottom: "4px" }}>
+                    <div style={{ fontWeight: 500 }}>{r.nome}:</div>
+                    {rg[r.nome].filter(reg => reg.data || reg.resultado).map((reg, idx) => (
+                      <div key={reg.id || idx} style={{ paddingLeft: "12px", whiteSpace: "pre-wrap" }}>
+                        {reg.data ? fmtDate(reg.data) : "—"}{reg.resultado ? ` — ${reg.resultado}` : ""}
+                      </div>
+                    ))}
+                  </div>
                 ))}
               </>
             )}
@@ -2433,7 +2668,14 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
               <>
                 <div style={{ fontWeight: 700, marginTop: "6px" }}>Rastreio específico por comorbidade:</div>
                 {reChaves.map(k => (
-                  <div key={k}>{k.replace("::", " — ")}: {re[k].data ? fmtDate(re[k].data) : "—"} {re[k].resultado ? `— ${re[k].resultado}` : ""}</div>
+                  <div key={k} style={{ marginBottom: "4px" }}>
+                    <div style={{ fontWeight: 500 }}>{k.replace("::", " — ")}:</div>
+                    {re[k].filter(reg => reg.data || reg.resultado).map((reg, idx) => (
+                      <div key={reg.id || idx} style={{ paddingLeft: "12px", whiteSpace: "pre-wrap" }}>
+                        {reg.data ? fmtDate(reg.data) : "—"}{reg.resultado ? ` — ${reg.resultado}` : ""}
+                      </div>
+                    ))}
+                  </div>
                 ))}
               </>
             )}
