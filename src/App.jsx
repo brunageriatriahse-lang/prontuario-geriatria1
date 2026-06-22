@@ -41,7 +41,7 @@ const RASTREIO_GERAL = [
   { nome: "Citologia oncótica", criterio: "25–64 anos; a cada 3 anos", sexo: "F" },
   { nome: "PSA total e livre", criterio: "55–69 anos; a cada 2 anos", sexo: "M" },
   { nome: "TC tórax baixa dose", criterio: "Tabagista ≥20 maços-ano; anual", requerTabagismo: true },
-  { nome: "USG aorta abdominal", criterio: "Tabagista 65–75 anos; única vez", requerTabagismo: true },
+  { nome: "USG aorta abdominal", criterio: "Tabagista 65–75 anos; única vez", requerTabagismo: true, sexo: "M" },
 ];
 
 const BEERS_LIST = [
@@ -475,9 +475,46 @@ export default function App() {
             return p;
           });
 
-        setPatients(limpos);
+        // Saneamento: campos de data de vacina com ano fora de uma faixa plausível
+        // (ex: salvos por um bug de cálculo anterior) são limpos automaticamente.
+        function dataPlausivel(s) {
+          if (!s) return true;
+          const ano = parseInt(String(s).slice(0, 4), 10);
+          return !isNaN(ano) && ano >= 2015 && ano <= 2100;
+        }
+        let algumSaneado = false;
+        const sanitizados = limpos.map(p => {
+          let mudouPaciente = false;
+          const consultasSaneadas = (p.consultas || []).map(c => {
+            if (!c.vacinas) return c;
+            let mudouConsulta = false;
+            const vacinasLimpas = {};
+            Object.keys(c.vacinas).forEach(nomeVacina => {
+              const campos = c.vacinas[nomeVacina] || {};
+              const camposLimpos = {};
+              Object.keys(campos).forEach(campo => {
+                if (dataPlausivel(campos[campo])) {
+                  camposLimpos[campo] = campos[campo];
+                } else {
+                  mudouConsulta = true;
+                }
+              });
+              vacinasLimpas[nomeVacina] = camposLimpos;
+            });
+            if (mudouConsulta) { mudouPaciente = true; algumSaneado = true; return { ...c, vacinas: vacinasLimpas }; }
+            return c;
+          });
+          if (mudouPaciente) {
+            const atualizado = { ...p, consultas: consultasSaneadas };
+            savePatient(atualizado).catch(e => console.error("Falha ao sanear datas de vacina", e));
+            return atualizado;
+          }
+          return p;
+        });
+
+        setPatients(sanitizados);
         if (anyMigrated) {
-          limpos.forEach(p => { savePatient(p).catch(e => console.error("Falha ao persistir migração", e)); });
+          sanitizados.forEach(p => { savePatient(p).catch(e => console.error("Falha ao persistir migração", e)); });
         }
         expurgados.forEach(({ id }) => { apiDeletePatient(id).catch(e => console.error("Falha ao expurgar paciente antigo", e)); });
       } catch (e) {
@@ -2361,6 +2398,49 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div>Visão: {aga.visao || "—"} · Audição: {aga.audicao || "—"}</div>
       <div>Atividade física habitual: {aga.atividadeFisicaLazer || "—"}</div>
       <div>Atividades de lazer/interação social: {aga.lazer || "—"}</div>
+
+      <div style={sectionTitle}>PREVENÇÃO E VACINAS</div>
+      {(() => {
+        const rg = consulta.rastreioGeral || {};
+        const re = consulta.rastreioEspecifico || {};
+        const vac = consulta.vacinas || {};
+        const rgPreenchidos = RASTREIO_GERAL.filter(r => rg[r.nome] && (rg[r.nome].data || rg[r.nome].resultado));
+        const reChaves = Object.keys(re).filter(k => re[k] && (re[k].data || re[k].resultado));
+        const vacLabels = { influenza: "Influenza", covid: "COVID-19", pneumo: "Pneumocócica", dtpa: "dT/dTpa", hepB: "Hepatite B", vsr: "VSR", vzr: "Herpes-zóster (VZR)" };
+        const vacPreenchidas = Object.keys(vac).filter(k => vac[k] && Object.values(vac[k]).some(v => v));
+        const nadaPreenchido = rgPreenchidos.length === 0 && reChaves.length === 0 && vacPreenchidas.length === 0;
+        if (nadaPreenchido) return <div>Nenhum item de prevenção ou vacina preenchido nesta consulta.</div>;
+        return (
+          <>
+            {rgPreenchidos.length > 0 && (
+              <>
+                <div style={{ fontWeight: 700, marginTop: "6px" }}>Rastreio geral:</div>
+                {rgPreenchidos.map(r => (
+                  <div key={r.nome}>{r.nome}: {rg[r.nome].data ? fmtDate(rg[r.nome].data) : "—"} {rg[r.nome].resultado ? `— ${rg[r.nome].resultado}` : ""}</div>
+                ))}
+              </>
+            )}
+            {reChaves.length > 0 && (
+              <>
+                <div style={{ fontWeight: 700, marginTop: "6px" }}>Rastreio específico por comorbidade:</div>
+                {reChaves.map(k => (
+                  <div key={k}>{k.replace("::", " — ")}: {re[k].data ? fmtDate(re[k].data) : "—"} {re[k].resultado ? `— ${re[k].resultado}` : ""}</div>
+                ))}
+              </>
+            )}
+            {vacPreenchidas.length > 0 && (
+              <>
+                <div style={{ fontWeight: 700, marginTop: "6px" }}>Vacinas:</div>
+                {vacPreenchidas.map(k => (
+                  <div key={k}>
+                    {vacLabels[k] || k}: {Object.entries(vac[k]).filter(([, v]) => v).map(([campo, v]) => `${campo}: ${fmtDate(v)}`).join(" · ")}
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        );
+      })()}
 
       <div style={sectionTitle}>EXAME FÍSICO</div>
       <div>PA: {ef.pa || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}</div>
