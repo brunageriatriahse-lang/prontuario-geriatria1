@@ -347,7 +347,7 @@ function PrintShell({ title, children, onClose }) {
     <div id="print-shell-overlay" style={{ position: "fixed", inset: 0, zIndex: 50 }}>
       <style>{`
         @media print {
-          #root > *:not(#print-shell-overlay) { display: none !important; }
+          #app-main-content { display: none !important; }
           #print-shell-overlay {
             position: static !important;
             inset: auto !important;
@@ -563,7 +563,8 @@ export default function App() {
   });
 
   return (
-    <div style={{ width: "100%" }}>
+    <>
+    <div id="app-main-content" style={{ width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem", flexWrap: "wrap", gap: "8px" }}>
         <div>
           <h1 style={{ margin: 0 }}>Prontuário de geriatria — CEMPRE</h1>
@@ -641,9 +642,10 @@ export default function App() {
           )}
         </div>
       )}
+    </div>
 
       {printDoc && <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} />}
-    </div>
+    </>
   );
 }
 
@@ -755,7 +757,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "pendencias" && <PendenciasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
+      {activeTab === "pendencias" && <PendenciasTab consulta={consulta} updateConsulta={updateConsulta} />}
 
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px", paddingTop: "16px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
         <button onClick={() => onPrint({ type: "consultaCompleta" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -1365,7 +1367,7 @@ function calcPendenciasAutomaticas(patient, consulta) {
   return pendencias;
 }
 
-function PendenciasTab({ consulta, updateConsulta, patient }) {
+function PendenciasTab({ consulta, updateConsulta }) {
   const pend = consulta.pendencias || [];
   const [text, setText] = useState("");
   const add = () => {
@@ -1378,8 +1380,6 @@ function PendenciasTab({ consulta, updateConsulta, patient }) {
 
   const pendentes = pend.filter(x => !x.done);
   const feitas = pend.filter(x => x.done);
-
-  const automaticas = useMemo(() => calcPendenciasAutomaticas(patient, consulta), [patient, consulta]);
 
   return (
     <div>
@@ -1407,20 +1407,6 @@ function PendenciasTab({ consulta, updateConsulta, patient }) {
               </div>
             ))}
           </div>
-        )}
-      </SectionCard>
-
-      <SectionCard title="Pendências não preenchidas na consulta atual" icon="ti-file-alert">
-        <p style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: 0 }}>Gerado automaticamente a partir dos campos vazios em todas as abas. Edite ou complemente livremente abaixo.</p>
-        {automaticas.length > 0 ? (
-          <Alert type="warning">
-            {automaticas.length} campo(s) não preenchido(s) detectado(s):
-            <ul style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
-              {automaticas.map((p, idx) => <li key={idx} style={{ marginBottom: "2px" }}>{p}</li>)}
-            </ul>
-          </Alert>
-        ) : (
-          <Alert type="success">Todos os campos verificados estão preenchidos.</Alert>
         )}
       </SectionCard>
     </div>
@@ -1461,6 +1447,16 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
     const key = categoria + "::" + nome;
     updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaSelecionados: { ...(p.docs.receitaSelecionados || {}), [key]: !(p.docs.receitaSelecionados || {})[key] } } }));
   };
+  const toggleBloco = (bloco) => {
+    const algumDesmarcado = bloco.itens.some(item => !sel[bloco.categoria + "::" + item.nome]);
+    updateConsulta(p => {
+      const next = { ...(p.docs.receitaSelecionados || {}) };
+      bloco.itens.forEach(item => {
+        next[bloco.categoria + "::" + item.nome] = algumDesmarcado;
+      });
+      return { ...p, docs: { ...p.docs, receitaSelecionados: next } };
+    });
+  };
   const setEditField = (categoria, nome, campo, valor) => {
     const key = categoria + "::" + nome;
     updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaItensEditados: { ...p.docs.receitaItensEditados, [key]: { ...(p.docs.receitaItensEditados[key] || {}), [campo]: valor } } } }));
@@ -1479,14 +1475,25 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
         <div style={{ marginBottom: "10px", fontSize: "14px" }}><strong>Paciente:</strong> {patient.ident.nome || "(sem nome)"}</div>
         <div style={{ textAlign: "center", fontSize: "13px", marginBottom: "16px" }}>USO ORAL</div>
 
-        {RECEITA_BLOCOS.map(bloco => (
+        {RECEITA_BLOCOS.map(bloco => {
+          const todosMarcados = bloco.itens.every(item => sel[bloco.categoria + "::" + item.nome]);
+          const algumMarcado = bloco.itens.some(item => sel[bloco.categoria + "::" + item.nome]);
+          return (
           <div key={bloco.categoria} style={{ marginBottom: "18px" }}>
-            <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "8px" }}>
-              {bloco.categoria}:
-              {(bloco.usoTopico || bloco.usoInalatorio) && (
-                <span style={{ fontWeight: 400 }}> {bloco.usoTopico ? "USO TÓPICO" : "USO INALATÓRIO"}</span>
-              )}
-            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13px", marginBottom: "8px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={todosMarcados}
+                ref={el => { if (el) el.indeterminate = algumMarcado && !todosMarcados; }}
+                onChange={() => toggleBloco(bloco)}
+              />
+              <span>
+                {bloco.categoria}:
+                {(bloco.usoTopico || bloco.usoInalatorio) && (
+                  <span style={{ fontWeight: 400 }}> {bloco.usoTopico ? "USO TÓPICO" : "USO INALATÓRIO"}</span>
+                )}
+              </span>
+            </label>
             {bloco.itens.map(item => {
               const key = bloco.categoria + "::" + item.nome;
               const edit = edits[key] || {};
@@ -1529,7 +1536,8 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
               );
             })}
           </div>
-        ))}
+          );
+        })}
 
         <div style={{ marginBottom: "10px" }}>
           <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "8px" }}>OUTRAS MEDICAÇÕES (adicionar manualmente):</div>
