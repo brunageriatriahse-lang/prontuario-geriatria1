@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { listPatients, savePatient, deletePatient as apiDeletePatient } from './api.js';
+import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 
 const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática","DRC","DAC","IC","FA","AVC","DPOC","Asma","HPB","Incontinência urinária","DRGE","Constipação crônica","Osteoporose","Osteoartrose","Hipotireoidismo","Transtorno depressivo","TAG","Insônia","Síndrome demencial","Doença de Parkinson","Neoplasia","DHC","Insuficiência venosa crônica","DAOP","Catarata","Glaucoma","Déficit auditivo A/E"];
 
@@ -446,10 +447,38 @@ export default function App() {
           const { id, createdAt, updatedAt, ident, ...rest } = p;
           return { id, createdAt, updatedAt, ident, consultas: [{ id: uid(), data: (createdAt || new Date().toISOString()).slice(0,10), createdAt: createdAt || new Date().toISOString(), updatedAt: updatedAt || new Date().toISOString(), ...rest }] };
         });
-        setPatients(migrated);
+
+        // Expurgo automático: pacientes excluídos há mais de 30 dias somem de vez;
+        // consultas excluídas há mais de 30 dias são removidas do array de consultas.
+        const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000;
+        const agora = Date.now();
+        const expurgados = [];
+        const limpos = migrated
+          .filter(p => {
+            if (p.deletedAt && (agora - new Date(p.deletedAt).getTime()) > TRINTA_DIAS_MS) {
+              expurgados.push({ type: "patient", id: p.id });
+              return false;
+            }
+            return true;
+          })
+          .map(p => {
+            const consultasLimpas = (p.consultas || []).filter(c => {
+              if (c.deletedAt && (agora - new Date(c.deletedAt).getTime()) > TRINTA_DIAS_MS) return false;
+              return true;
+            });
+            if (consultasLimpas.length !== (p.consultas || []).length) {
+              const atualizado = { ...p, consultas: consultasLimpas, updatedAt: new Date().toISOString() };
+              savePatient(atualizado).catch(e => console.error("Falha ao expurgar consultas antigas", e));
+              return atualizado;
+            }
+            return p;
+          });
+
+        setPatients(limpos);
         if (anyMigrated) {
-          migrated.forEach(p => { savePatient(p).catch(e => console.error("Falha ao persistir migração", e)); });
+          limpos.forEach(p => { savePatient(p).catch(e => console.error("Falha ao persistir migração", e)); });
         }
+        expurgados.forEach(({ id }) => { apiDeletePatient(id).catch(e => console.error("Falha ao expurgar paciente antigo", e)); });
       } catch (e) {
         console.error(e);
         setLoadError(e.message);
@@ -522,8 +551,26 @@ export default function App() {
   }
 
   async function handleDeletePatient(id) {
-    setPatients(prev => prev.filter(p => p.id !== id));
+    const now = new Date().toISOString();
+    setPatients(prev => prev.map(p => p.id === id ? { ...p, deletedAt: now, updatedAt: now } : p));
     if (activeId === id) { setActiveId(null); setView("list"); }
+    const target = (patients || []).find(p => p.id === id);
+    if (target) {
+      try { await savePatient({ ...target, deletedAt: now, updatedAt: now }); } catch (e) { console.error(e); }
+    }
+  }
+
+  async function restorePatient(id) {
+    const now = new Date().toISOString();
+    setPatients(prev => prev.map(p => p.id === id ? { ...p, deletedAt: null, updatedAt: now } : p));
+    const target = (patients || []).find(p => p.id === id);
+    if (target) {
+      try { await savePatient({ ...target, deletedAt: null, updatedAt: now }); } catch (e) { console.error(e); }
+    }
+  }
+
+  async function permanentlyDeletePatient(id) {
+    setPatients(prev => prev.filter(p => p.id !== id));
     try {
       await apiDeletePatient(id);
     } catch (e) {
@@ -554,13 +601,41 @@ export default function App() {
   }
 
   function removeConsulta(consultaId) {
-    updateActivePatient(p => ({ ...p, consultas: p.consultas.filter(c => c.id !== consultaId) }));
+    const now = new Date().toISOString();
+    updateActivePatient(p => ({ ...p, consultas: p.consultas.map(c => c.id === consultaId ? { ...c, deletedAt: now, updatedAt: now } : c) }));
   }
 
-  const filteredPatients = (patients || []).filter(p => {
+  function restoreConsulta(consultaId) {
+    const now = new Date().toISOString();
+    updateActivePatient(p => ({ ...p, consultas: p.consultas.map(c => c.id === consultaId ? { ...c, deletedAt: null, updatedAt: now } : c) }));
+  }
+
+  function restoreConsultaById(patientId, consultaId) {
+    const now = new Date().toISOString();
+    setPatients(prev => prev.map(p => p.id === patientId ? { ...p, consultas: p.consultas.map(c => c.id === consultaId ? { ...c, deletedAt: null, updatedAt: now } : c) } : p));
+    const target = (patients || []).find(p => p.id === patientId);
+    if (target) {
+      const updated = { ...target, consultas: target.consultas.map(c => c.id === consultaId ? { ...c, deletedAt: null, updatedAt: now } : c) };
+      savePatient(updated).catch(e => console.error(e));
+    }
+  }
+
+  function permanentlyDeleteConsulta(patientId, consultaId) {
+    setPatients(prev => prev.map(p => p.id === patientId ? { ...p, consultas: p.consultas.filter(c => c.id !== consultaId) } : p));
+    const target = (patients || []).find(p => p.id === patientId);
+    if (target) {
+      const updated = { ...target, consultas: target.consultas.filter(c => c.id !== consultaId) };
+      savePatient(updated).catch(e => console.error(e));
+    }
+  }
+
+  const filteredPatients = (patients || []).filter(p => !p.deletedAt).filter(p => {
     const q = search.toLowerCase();
     return !q || (p.ident.nome || "").toLowerCase().includes(q) || (p.ident.prontuario || "").toLowerCase().includes(q);
   });
+
+  const trashedPatients = (patients || []).filter(p => p.deletedAt);
+  const trashedConsultasCount = (patients || []).reduce((acc, p) => acc + (p.consultas || []).filter(c => c.deletedAt).length, 0);
 
   return (
     <>
@@ -574,6 +649,13 @@ export default function App() {
           {saveStatus === "saving" && <Pill color="info"><i className="ti ti-loader-2" aria-hidden="true"></i>Salvando</Pill>}
           {saveStatus === "saved" && <Pill color="success"><i className="ti ti-check" aria-hidden="true"></i>Salvo</Pill>}
           {saveStatus === "error" && <Pill color="danger"><i className="ti ti-alert-triangle" aria-hidden="true"></i>Erro ao salvar</Pill>}
+          {view === "list" && (trashedPatients.length > 0 || trashedConsultasCount > 0) && (
+            <button onClick={() => setView("trash")} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-trash" aria-hidden="true"></i>Lixeira
+              <span style={{ fontSize: "11px", background: "var(--color-background-secondary)", borderRadius: "999px", padding: "1px 7px" }}>{trashedPatients.length + trashedConsultasCount}</span>
+            </button>
+          )}
+          {view === "trash" && <button onClick={() => setView("list")}><i className="ti ti-arrow-left" aria-hidden="true" style={{marginRight:"4px"}}></i>Lista de pacientes</button>}
           {view === "consultas" && <button onClick={() => setView("list")}><i className="ti ti-arrow-left" aria-hidden="true" style={{marginRight:"4px"}}></i>Lista de pacientes</button>}
           {view === "record" && <button onClick={() => setView("consultas")}><i className="ti ti-arrow-left" aria-hidden="true" style={{marginRight:"4px"}}></i>Consultas do paciente</button>}
         </div>
@@ -593,6 +675,17 @@ export default function App() {
           onOpen={openPatient}
           onCreate={createPatient}
           onDelete={handleDeletePatient}
+        />
+      )}
+
+      {view === "trash" && (
+        <TrashView
+          trashedPatients={trashedPatients}
+          patients={patients}
+          onRestorePatient={restorePatient}
+          onPermanentlyDeletePatient={permanentlyDeletePatient}
+          onRestoreConsulta={restoreConsultaById}
+          onPermanentlyDeleteConsulta={permanentlyDeleteConsulta}
         />
       )}
 
@@ -650,7 +743,7 @@ export default function App() {
 }
 
 function ConsultasView({ patient, onOpenConsulta, onCreateConsulta, onRemoveConsulta, updatePatient }) {
-  const consultas = [...(patient.consultas || [])].sort((a, b) => new Date(b.data) - new Date(a.data));
+  const consultas = [...(patient.consultas || [])].filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data));
   return (
     <div>
       <div style={{ fontSize: "15px", fontWeight: 500, marginBottom: "4px" }}>{patient.ident.nome || "Paciente sem nome"}</div>
@@ -684,6 +777,102 @@ function ConsultasView({ patient, onOpenConsulta, onCreateConsulta, onRemoveCons
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function diasRestantes(deletedAt) {
+  const TRINTA_DIAS_MS = 30 * 24 * 60 * 60 * 1000;
+  const decorrido = Date.now() - new Date(deletedAt).getTime();
+  const restante = TRINTA_DIAS_MS - decorrido;
+  return Math.max(0, Math.ceil(restante / (24 * 60 * 60 * 1000)));
+}
+
+function TrashView({ trashedPatients, patients, onRestorePatient, onPermanentlyDeletePatient, onRestoreConsulta, onPermanentlyDeleteConsulta }) {
+  const patientesComConsultasNaLixeira = (patients || [])
+    .filter(p => !p.deletedAt)
+    .map(p => ({ patient: p, consultasLixeira: (p.consultas || []).filter(c => c.deletedAt) }))
+    .filter(x => x.consultasLixeira.length > 0);
+
+  const vazio = trashedPatients.length === 0 && patientesComConsultasNaLixeira.length === 0;
+
+  return (
+    <div>
+      <Alert type="info">Itens excluídos ficam aqui por 30 dias antes de serem removidos definitivamente. Você pode restaurá-los a qualquer momento dentro desse prazo.</Alert>
+
+      {vazio && (
+        <div style={{ textAlign: "center", padding: "3rem 1rem", color: "var(--color-text-secondary)" }}>
+          <i className="ti ti-trash" style={{ fontSize: "32px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
+          A lixeira está vazia.
+        </div>
+      )}
+
+      {trashedPatients.length > 0 && (
+        <SectionCard title="Pacientes excluídos" icon="ti-user-off">
+          <div style={{ display: "grid", gap: "8px" }}>
+            {trashedPatients.map(p => {
+              const dias = diasRestantes(p.deletedAt);
+              return (
+                <div key={p.id} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--color-background-primary)" }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, fontSize: "15px" }}>{p.ident.nome || "Paciente sem nome"}</div>
+                    <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: "2px" }}>
+                      {p.ident.prontuario ? `Prontuário ${p.ident.prontuario}` : "Sem prontuário"} · {(p.consultas || []).length} consulta(s)
+                      {" · "}
+                      <span style={{ color: dias <= 5 ? "var(--color-text-danger)" : "inherit" }}>
+                        {dias > 0 ? `exclusão definitiva em ${dias} dia(s)` : "será removido em breve"}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button onClick={() => onRestorePatient(p.id)} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <i className="ti ti-rotate" aria-hidden="true"></i>Restaurar
+                    </button>
+                    <button onClick={() => { if (confirm("Excluir definitivamente este paciente? Essa ação não pode ser desfeita.")) onPermanentlyDeletePatient(p.id); }} aria-label="Excluir definitivamente">
+                      <i className="ti ti-trash-x" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {patientesComConsultasNaLixeira.length > 0 && (
+        <SectionCard title="Consultas excluídas" icon="ti-calendar-off">
+          <div style={{ display: "grid", gap: "8px" }}>
+            {patientesComConsultasNaLixeira.map(({ patient, consultasLixeira }) => (
+              <div key={patient.id}>
+                <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>{patient.ident.nome || "Paciente sem nome"}</div>
+                {consultasLixeira.map(c => {
+                  const dias = diasRestantes(c.deletedAt);
+                  return (
+                    <div key={c.id} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--color-background-primary)", marginBottom: "8px" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: "14px" }}>Consulta de {fmtDate(c.data)}</div>
+                        <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: "2px" }}>
+                          <span style={{ color: dias <= 5 ? "var(--color-text-danger)" : "inherit" }}>
+                            {dias > 0 ? `exclusão definitiva em ${dias} dia(s)` : "será removida em breve"}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        <button onClick={() => onRestoreConsulta(patient.id, c.id)} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <i className="ti ti-rotate" aria-hidden="true"></i>Restaurar
+                        </button>
+                        <button onClick={() => { if (confirm("Excluir definitivamente esta consulta? Essa ação não pode ser desfeita.")) onPermanentlyDeleteConsulta(patient.id, c.id); }} aria-label="Excluir definitivamente">
+                          <i className="ti ti-trash-x" aria-hidden="true"></i>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
     </div>
   );
 }
@@ -1145,7 +1334,11 @@ function addMonths(dateStr, months) {
   if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
   if (isNaN(d.getTime())) return "";
+  const originalDay = d.getDate();
+  d.setDate(1); // evita o "vazamento" de mês ao somar, ajustando o dia depois
   d.setMonth(d.getMonth() + months);
+  const lastDayOfTargetMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(originalDay, lastDayOfTargetMonth));
   return d.toISOString().slice(0, 10);
 }
 
@@ -2068,7 +2261,11 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
 
   return (
     <PrintShell title="Consulta completa" onClose={onClose}>
-      <DocHeader title="PRONTUÁRIO — CONSULTA COMPLETA" />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+        <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
+        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>PRONTUÁRIO — CONSULTA COMPLETA</div>
+        <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
+      </div>
       <div style={{ marginBottom: "4px" }}><span style={label}>Paciente:</span> {i.nome || "—"}</div>
       <div style={{ marginBottom: "4px" }}><span style={label}>Data da consulta:</span> {fmtDate(consulta.data)}</div>
 
