@@ -864,9 +864,9 @@ function ProblemasTab({ consulta, updateConsulta }) {
   const toggle = (nome) => updateConsulta(p => ({ ...p, problemas: { ...p.problemas, [nome]: !p.problemas[nome] } }));
   const setNota = (nome, valor) => updateConsulta(p => ({ ...p, problemasNotas: { ...p.problemasNotas, [nome]: valor } }));
 
-  const toggleCustom = (id) => updateConsulta(p => ({ ...p, problemasCustom: p.problemasCustom.map(c => c.id === id ? { ...c, checked: !c.checked } : c) }));
-  const setNotaCustom = (id, valor) => updateConsulta(p => ({ ...p, problemasCustom: p.problemasCustom.map(c => c.id === id ? { ...c, nota: valor } : c) }));
-  const removeCustom = (id) => updateConsulta(p => ({ ...p, problemasCustom: p.problemasCustom.filter(c => c.id !== id) }));
+  const toggleCustom = (id) => updateConsulta(p => ({ ...p, problemasCustom: (p.problemasCustom || []).map(c => c.id === id ? { ...c, checked: !c.checked } : c) }));
+  const setNotaCustom = (id, valor) => updateConsulta(p => ({ ...p, problemasCustom: (p.problemasCustom || []).map(c => c.id === id ? { ...c, nota: valor } : c) }));
+  const removeCustom = (id) => updateConsulta(p => ({ ...p, problemasCustom: (p.problemasCustom || []).filter(c => c.id !== id) }));
   const addCustom = () => {
     if (!novoNome.trim()) return;
     updateConsulta(p => ({ ...p, problemasCustom: [...(p.problemasCustom || []), { id: uid(), nome: novoNome.trim(), checked: true, nota: "" }] }));
@@ -1141,9 +1141,41 @@ function AgaTab({ consulta, updateConsulta }) {
   );
 }
 
+function addMonths(dateStr, months) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return "";
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
+function addYears(dateStr, years) {
+  return addMonths(dateStr, years * 12);
+}
+
+// Mapeia, para cada vacina e campo de "dose anterior", qual campo de "próxima dose" deve
+// ser sugerido automaticamente e com qual intervalo (em meses).
+const VACINA_SUGESTOES = {
+  influenza: { dose: { campoDestino: "reforco", meses: 12 } },
+  covid: { dose: { campoDestino: "reforco", meses: 6 } },
+  pneumo: { vpc13: { campoDestino: "vpp23_1", meses: 2 }, vpp23_1: { campoDestino: "vpp23_2", meses: 60 } },
+  dtpa: { dt1: { campoDestino: "dt2", meses: 2 }, dt2: { campoDestino: "dtpa1", meses: 2 }, dtpa1: { campoDestino: "reforco", meses: 120 } },
+  hepB: { dose1: { campoDestino: "dose2", meses: 1 }, dose2: { campoDestino: "dose3", meses: 5 } },
+  vzr: { dose1: { campoDestino: "dose2", meses: 2 } },
+};
+
 function PrevencaoTab({ consulta, updateConsulta }) {
   const vac = consulta.vacinas || {};
-  const setVacField = (nome, campo, v) => updateConsulta(p => ({ ...p, vacinas: { ...p.vacinas, [nome]: { ...(p.vacinas[nome]||{}), [campo]: v } } }));
+  const setVacField = (nome, campo, v) => {
+    updateConsulta(p => {
+      const vacinaAtual = { ...((p.vacinas || {})[nome] || {}), [campo]: v };
+      const sugestao = VACINA_SUGESTOES[nome] && VACINA_SUGESTOES[nome][campo];
+      if (sugestao && v && !vacinaAtual[sugestao.campoDestino]) {
+        vacinaAtual[sugestao.campoDestino] = addMonths(v, sugestao.meses);
+      }
+      return { ...p, vacinas: { ...p.vacinas, [nome]: vacinaAtual } };
+    });
+  };
   const rg = consulta.rastreioGeral || {};
   const setRg = (nome, k, v) => updateConsulta(p => ({ ...p, rastreioGeral: { ...p.rastreioGeral, [nome]: { ...(p.rastreioGeral[nome]||{}), [k]: v } } }));
   const re = consulta.rastreioEspecifico || {};
@@ -1154,13 +1186,13 @@ function PrevencaoTab({ consulta, updateConsulta }) {
   return (
     <div>
       <SectionCard title="Situação vacinal" icon="ti-vaccine">
-        <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Campos de data conforme o esquema completo de cada vacina (calendário de vacinação do idoso).</p>
+        <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Campos de data conforme o esquema completo de cada vacina (calendário de vacinação do idoso). Ao preencher uma dose, a próxima data é sugerida automaticamente — você pode ajustar livremente.</p>
 
         <div style={{ marginBottom: "16px" }}>
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>Influenza (dose anual)</div>
           <Row cols="repeat(2, 1fr)">
             <Field label="Última dose"><input type="date" value={vac.influenza?.dose || ""} onChange={e => setVacField("influenza", "dose", e.target.value)} /></Field>
-            <Field label="Próximo reforço"><input type="date" value={vac.influenza?.reforco || ""} onChange={e => setVacField("influenza", "reforco", e.target.value)} /></Field>
+            <Field label="Próximo reforço (sugerido)"><input type="date" value={vac.influenza?.reforco || ""} onChange={e => setVacField("influenza", "reforco", e.target.value)} /></Field>
           </Row>
         </div>
 
@@ -1168,7 +1200,7 @@ function PrevencaoTab({ consulta, updateConsulta }) {
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>COVID-19 (reforço a cada 6 meses)</div>
           <Row cols="repeat(2, 1fr)">
             <Field label="Dose"><input type="date" value={vac.covid?.dose || ""} onChange={e => setVacField("covid", "dose", e.target.value)} /></Field>
-            <Field label="Próximo reforço (6 meses)"><input type="date" value={vac.covid?.reforco || ""} onChange={e => setVacField("covid", "reforco", e.target.value)} /></Field>
+            <Field label="Próximo reforço (sugerido, 6 meses)"><input type="date" value={vac.covid?.reforco || ""} onChange={e => setVacField("covid", "reforco", e.target.value)} /></Field>
           </Row>
         </div>
 
@@ -1178,8 +1210,8 @@ function PrevencaoTab({ consulta, updateConsulta }) {
           <p style={{ fontSize: "11px", color: "var(--color-text-tertiary)", margin: "0 0 8px" }}>Se indisponibilidade de VPC20:</p>
           <Row cols="repeat(3, 1fr)">
             <Field label="VPC13/15"><input type="date" value={vac.pneumo?.vpc13 || ""} onChange={e => setVacField("pneumo", "vpc13", e.target.value)} /></Field>
-            <Field label="VPP23 (após 2m)"><input type="date" value={vac.pneumo?.vpp23_1 || ""} onChange={e => setVacField("pneumo", "vpp23_1", e.target.value)} /></Field>
-            <Field label="VPP23 (reforço 5a)"><input type="date" value={vac.pneumo?.vpp23_2 || ""} onChange={e => setVacField("pneumo", "vpp23_2", e.target.value)} /></Field>
+            <Field label="VPP23 (sugerido, após 2m)"><input type="date" value={vac.pneumo?.vpp23_1 || ""} onChange={e => setVacField("pneumo", "vpp23_1", e.target.value)} /></Field>
+            <Field label="VPP23 (sugerido, reforço 5a)"><input type="date" value={vac.pneumo?.vpp23_2 || ""} onChange={e => setVacField("pneumo", "vpp23_2", e.target.value)} /></Field>
           </Row>
         </div>
 
@@ -1188,19 +1220,19 @@ function PrevencaoTab({ consulta, updateConsulta }) {
           <p style={{ fontSize: "11px", color: "var(--color-text-tertiary)", margin: "0 0 8px" }}>Sem esquema prévio:</p>
           <Row cols="repeat(3, 1fr)">
             <Field label="dT (1ª dose)"><input type="date" value={vac.dtpa?.dt1 || ""} onChange={e => setVacField("dtpa", "dt1", e.target.value)} /></Field>
-            <Field label="dT (após 2m)"><input type="date" value={vac.dtpa?.dt2 || ""} onChange={e => setVacField("dtpa", "dt2", e.target.value)} /></Field>
-            <Field label="dTpa (após 2m da última)"><input type="date" value={vac.dtpa?.dtpa1 || ""} onChange={e => setVacField("dtpa", "dtpa1", e.target.value)} /></Field>
+            <Field label="dT (sugerido, após 2m)"><input type="date" value={vac.dtpa?.dt2 || ""} onChange={e => setVacField("dtpa", "dt2", e.target.value)} /></Field>
+            <Field label="dTpa (sugerido, após 2m da última)"><input type="date" value={vac.dtpa?.dtpa1 || ""} onChange={e => setVacField("dtpa", "dtpa1", e.target.value)} /></Field>
           </Row>
           <p style={{ fontSize: "11px", color: "var(--color-text-tertiary)", margin: "8px 0" }}>Com esquema prévio:</p>
-          <Field label="dTpa (reforço a cada 10 anos)"><input type="date" value={vac.dtpa?.reforco || ""} onChange={e => setVacField("dtpa", "reforco", e.target.value)} /></Field>
+          <Field label="dTpa (reforço sugerido a cada 10 anos)"><input type="date" value={vac.dtpa?.reforco || ""} onChange={e => setVacField("dtpa", "reforco", e.target.value)} /></Field>
         </div>
 
         <div style={{ marginBottom: "16px" }}>
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>Hepatite B</div>
           <Row cols="repeat(3, 1fr)">
             <Field label="1ª dose"><input type="date" value={vac.hepB?.dose1 || ""} onChange={e => setVacField("hepB", "dose1", e.target.value)} /></Field>
-            <Field label="2ª dose (após 1 mês)"><input type="date" value={vac.hepB?.dose2 || ""} onChange={e => setVacField("hepB", "dose2", e.target.value)} /></Field>
-            <Field label="3ª dose (após 6 meses da 1ª)"><input type="date" value={vac.hepB?.dose3 || ""} onChange={e => setVacField("hepB", "dose3", e.target.value)} /></Field>
+            <Field label="2ª dose (sugerido, após 1 mês)"><input type="date" value={vac.hepB?.dose2 || ""} onChange={e => setVacField("hepB", "dose2", e.target.value)} /></Field>
+            <Field label="3ª dose (sugerido, após 6 meses da 1ª)"><input type="date" value={vac.hepB?.dose3 || ""} onChange={e => setVacField("hepB", "dose3", e.target.value)} /></Field>
           </Row>
         </div>
 
@@ -1213,7 +1245,7 @@ function PrevencaoTab({ consulta, updateConsulta }) {
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>Herpes-zóster (VZR recombinante)</div>
           <Row cols="repeat(2, 1fr)">
             <Field label="1ª dose"><input type="date" value={vac.vzr?.dose1 || ""} onChange={e => setVacField("vzr", "dose1", e.target.value)} /></Field>
-            <Field label="2ª dose (após 2 meses)"><input type="date" value={vac.vzr?.dose2 || ""} onChange={e => setVacField("vzr", "dose2", e.target.value)} /></Field>
+            <Field label="2ª dose (sugerido, após 2 meses)"><input type="date" value={vac.vzr?.dose2 || ""} onChange={e => setVacField("vzr", "dose2", e.target.value)} /></Field>
           </Row>
         </div>
       </SectionCard>
@@ -1316,55 +1348,6 @@ function PlanoTab({ consulta, updateConsulta }) {
       <Field label="Retorno agendado em"><input type="date" value={pl.retorno} onChange={e => set("retorno", e.target.value)} /></Field>
     </SectionCard>
   );
-}
-
-function calcPendenciasAutomaticas(patient, consulta) {
-  const pendencias = [];
-  const add = (cond, label) => { if (cond) pendencias.push(label); };
-
-  const ident = patient.ident || {};
-  add(!ident.nome, "Identificação: nome não preenchido");
-  add(!ident.prontuario, "Identificação: prontuário não preenchido");
-  add(!ident.dn, "Identificação: data de nascimento não preenchida");
-  add(!ident.sexo, "Identificação: sexo não preenchido");
-
-  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
-  add(ativos.length === 0 && (consulta.problemasCustom || []).filter(c => c.checked).length === 0, "Lista de problemas: nenhuma comorbidade marcada");
-
-  const a = consulta.antecedentes || {};
-  add(!a.tabagismo, "Antecedentes: tabagismo não preenchido");
-  add(!a.etilismo, "Antecedentes: etilismo não preenchido");
-  add(!a.atividadeFisica, "Antecedentes: atividade física não preenchida");
-  add(!a.alergias, "Antecedentes: alergias não preenchidas");
-
-  add(!consulta.medicacoesTexto || !consulta.medicacoesTexto.trim(), "Medicações: nenhuma medicação em uso registrada");
-  add(!consulta.queixas || !consulta.queixas.trim(), "Queixas: não preenchidas");
-
-  const aga = consulta.aga || {};
-  add(!aga.marcha, "AGA: marcha não preenchida");
-  add(!aga.minicog && !aga.meem && !aga.moca, "AGA: nenhum teste cognitivo preenchido (Mini-Cog/MEEM/MoCA)");
-  add(!aga.gds15, "AGA: GDS-15 não preenchido");
-  add(!aga.peso, "AGA: peso não preenchido");
-  add(!aga.altura, "AGA: altura não preenchida");
-  add(!aga.sono || !aga.sono.trim(), "AGA: padrão de sono não descrito");
-  add(!aga.atividadeFisicaLazer && !aga.lazer, "AGA: atividade física/lazer não preenchidos");
-
-  const vac = consulta.vacinas || {};
-  add(!vac.influenza || !vac.influenza.dose, "Prevenção: data de Influenza não registrada");
-  add(!vac.covid || !vac.covid.dose, "Prevenção: data de COVID-19 não registrada");
-  add((!vac.pneumo || !vac.pneumo.vpc20) && (!vac.pneumo || !vac.pneumo.vpc13), "Prevenção: vacina pneumocócica não registrada");
-
-  const ee = consulta.exameFisico || {};
-  add(!ee.pa, "Exame físico: PA não preenchida");
-  add(!ee.fc, "Exame físico: FC não preenchida");
-
-  add(!consulta.labsTexto || !consulta.labsTexto.trim(), "Exames: nenhum exame laboratorial registrado");
-
-  const pl = consulta.plano || {};
-  add(!pl.ajuste && !pl.exames && !pl.encaminhamentos && !pl.orientacoes, "Plano terapêutico: nenhum campo preenchido");
-  add(!pl.retorno, "Plano: retorno não agendado");
-
-  return pendencias;
 }
 
 function PendenciasTab({ consulta, updateConsulta }) {
@@ -2079,7 +2062,6 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
   const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
   const notas = consulta.problemasNotas || {};
   const pend = consulta.pendencias || [];
-  const automaticas = calcPendenciasAutomaticas(patient, consulta);
 
   const sectionTitle = { fontWeight: 700, fontSize: "13px", marginTop: "16px", marginBottom: "6px", borderBottom: "1px solid #ccc", paddingBottom: "3px" };
   const label = { fontWeight: 700 };
@@ -2121,15 +2103,22 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div style={{ whiteSpace: "pre-wrap" }}>{consulta.queixas || "—"}</div>
 
       <div style={sectionTitle}>AVALIAÇÃO GERIÁTRICA AMPLA</div>
+      <div>AIVD independentes: {Object.values(aga.aivd || {}).filter(Boolean).length}/9 ({Object.keys(aga.aivd || {}).filter(k => aga.aivd[k]).join(", ") || "—"})</div>
+      <div>ABVD independentes: {Object.values(aga.abvd || {}).filter(Boolean).length}/6 ({Object.keys(aga.abvd || {}).filter(k => aga.abvd[k]).join(", ") || "—"})</div>
       <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}</div>
+      <div>FRAIL: {Object.values(aga.frail || {}).filter(Boolean).length}/5 critérios ({Object.keys(aga.frail || {}).filter(k => aga.frail[k]).join(", ") || "nenhum"})</div>
       <div>Mini-Cog: {aga.minicog || "—"} · MEEM: {aga.meem || "—"} · MoCA: {aga.moca || "—"}</div>
       <div>GDS-15: {aga.gds15 || "—"}</div>
       <div>Quedas no último ano: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})` : "Nega"} · Fraturas: {aga.fraturas || "—"} · TCE: {aga.tce || "—"}</div>
       <div>Sono: {aga.sono || "—"}</div>
       <div>Peso: {aga.peso || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
+      <div>Perda de peso não intencional: {aga.perdaPeso === "sim" ? `Sim (${aga.perdaPesoPerc || "?"}% em ${aga.perdaPesoMeses || "?"} meses)` : "Não"}</div>
       <div>Apetite: {aga.apetite || "—"} · Disfagia: {aga.disfagia || "—"} {aga.disfagiaDieta && `(${aga.disfagiaDieta})`}</div>
+      <div>Problemas dentários/prótese: {aga.dentarios || "—"}</div>
       <div>TGI: {aga.tgi || "—"} · TGU: {aga.tgu || "—"}</div>
       <div>Visão: {aga.visao || "—"} · Audição: {aga.audicao || "—"}</div>
+      <div>Atividade física habitual: {aga.atividadeFisicaLazer || "—"}</div>
+      <div>Atividades de lazer/interação social: {aga.lazer || "—"}</div>
 
       <div style={sectionTitle}>EXAME FÍSICO</div>
       <div>PA: {ef.pa || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}</div>
@@ -2156,14 +2145,6 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
         <ul style={{ margin: 0, paddingLeft: "18px" }}>
           {pend.map(p => <li key={p.id} style={{ textDecoration: p.done ? "line-through" : "none" }}>{p.text}</li>)}
         </ul>
-      )}
-      {automaticas.length > 0 && (
-        <>
-          <div style={{ fontWeight: 700, marginTop: "6px", fontSize: "12px" }}>Campos não preenchidos detectados automaticamente:</div>
-          <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px" }}>
-            {automaticas.map((p, idx) => <li key={idx}>{p}</li>)}
-          </ul>
-        </>
       )}
 
       <DocFooter />
