@@ -534,7 +534,9 @@ export default function App() {
           let mudouPaciente = false;
           const consultasMigradas = (p.consultas || []).map(c => {
             const docs = c.docs || {};
-            const temFormatoAntigo = docs.receitaSelecionados || docs.receitaItensEditados || docs.receitaExtras || docs.receitaTitulosEditados;
+            const temConteudo = (obj) => obj && typeof obj === "object" && Object.keys(obj).length > 0;
+            const temCamposAntigosPresentes = "receitaSelecionados" in docs || "receitaItensEditados" in docs || "receitaExtras" in docs || "receitaTitulosEditados" in docs;
+            const temFormatoAntigo = temConteudo(docs.receitaSelecionados) || temConteudo(docs.receitaItensEditados) || (docs.receitaExtras && docs.receitaExtras.trim()) || temConteudo(docs.receitaTitulosEditados);
             const jaTemArray = Array.isArray(docs.receitas);
             if (temFormatoAntigo && !jaTemArray) {
               mudouPaciente = true;
@@ -549,6 +551,12 @@ export default function App() {
               };
               const { receitaSelecionados, receitaItensEditados, receitaExtras, receitaTitulosEditados, ...restoDocs } = docs;
               return { ...c, docs: { ...restoDocs, receitas: [receitaMigrada] } };
+            }
+            if (temCamposAntigosPresentes && !jaTemArray) {
+              // Campos antigos existem mas estão vazios (consulta nunca usou a receita) — só limpa.
+              mudouPaciente = true;
+              const { receitaSelecionados, receitaItensEditados, receitaExtras, receitaTitulosEditados, ...restoDocs } = docs;
+              return { ...c, docs: { ...restoDocs, receitas: [] } };
             }
             if (!jaTemArray) {
               return { ...c, docs: { ...docs, receitas: [] } };
@@ -1836,6 +1844,14 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
   const receitas = (consulta.docs && Array.isArray(consulta.docs.receitas)) ? consulta.docs.receitas : [];
   const [activeReceitaId, setActiveReceitaId] = useState(receitas[0]?.id || null);
 
+  useEffect(() => {
+    // Ao trocar de consulta (ou de paciente), garante que a receita ativa
+    // realmente existe na lista atual; caso contrário, seleciona a primeira disponível.
+    if (!receitas.some(r => r.id === activeReceitaId)) {
+      setActiveReceitaId(receitas[0]?.id || null);
+    }
+  }, [consulta.id]);
+
   const addReceita = () => {
     const nova = { id: uid(), nome: `Receita ${receitas.length + 1}`, selecionados: {}, itensEditados: {}, extras: "", titulosEditados: {} };
     updateConsulta(p => {
@@ -1880,7 +1896,7 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
             color: activeReceitaId === r.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
             borderRadius: "8px"
           }}>
-            {r.nome || "Receita"}
+            {(r.nome || "").trim() || "Receita"}
           </button>
         ))}
         <button onClick={addReceita} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
