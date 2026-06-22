@@ -32,14 +32,16 @@ const VACINAS = [
   { nome: "Hepatite B", esquema: "3 doses (0-1-6 meses)" },
 ];
 
+const VACINAS_DOC = ["Influenza", "COVID-19", "Pneumocócica", "dT/dTpa", "Hepatite B", "Vírus sincicial respiratório (VSR)", "Herpes-zóster (VZR recombinante)"];
+
 const RASTREIO_GERAL = [
   { nome: "Colonoscopia", criterio: "45–75 anos; a cada 10 anos" },
   { nome: "Densitometria óssea", criterio: "Homem ≥70 / Mulher ≥65 anos; 2–5 anos" },
-  { nome: "Mamografia bilateral", criterio: "50–75 anos; bianual" },
-  { nome: "Citologia oncótica", criterio: "25–64 anos; a cada 3 anos" },
-  { nome: "PSA total e livre", criterio: "55–69 anos; a cada 2 anos" },
-  { nome: "TC tórax baixa dose", criterio: "Tabagista ≥20 maços-ano; anual" },
-  { nome: "USG aorta abdominal", criterio: "Tabagista 65–75 anos; única vez" },
+  { nome: "Mamografia bilateral", criterio: "50–75 anos; bianual", sexo: "F" },
+  { nome: "Citologia oncótica", criterio: "25–64 anos; a cada 3 anos", sexo: "F" },
+  { nome: "PSA total e livre", criterio: "55–69 anos; a cada 2 anos", sexo: "M" },
+  { nome: "TC tórax baixa dose", criterio: "Tabagista ≥20 maços-ano; anual", requerTabagismo: true },
+  { nome: "USG aorta abdominal", criterio: "Tabagista 65–75 anos; única vez", requerTabagismo: true },
 ];
 
 const BEERS_LIST = [
@@ -247,7 +249,7 @@ function emptyConsulta(base) {
       receitaEspecial: { medicoNome: "", crm: "", crmUf: "PE", crmNum: "", enderecoMedico: "", cidadeMedico: "Recife", ufMedico: "PE", prescricao: "" },
       examesSimples: { texto: EXAMES_LABORATORIAIS_PADRAO.join("\n") },
       examesEspecial: { registro: "", enf: "", leito: "", setorSolicitante: "GERIATRIA", examesRealizados: "", dadosClinicos: "", hipoteseDiagnostica: "", exameSolicitado: "", carater: "rotina", observacoes: "" },
-      vacinacao: { selecionados: {} },
+      vacinacao: { selecionados: { "Influenza": true, "COVID-19": true, "Pneumocócica": true, "dT/dTpa": true, "Hepatite B": true, "Vírus sincicial respiratório (VSR)": true, "Herpes-zóster (VZR recombinante)": true } },
     },
   };
 }
@@ -941,7 +943,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "prevencao" && <PrevencaoTab consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "prevencao" && <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} />}
@@ -1355,8 +1357,12 @@ function addMonths(dateStr, months) {
   if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
   if (isNaN(d.getTime())) return "";
+  // Proteção contra valores intermediários inválidos vindos do <input type="date">
+  // (alguns navegadores disparam onChange enquanto o usuário ainda está digitando o ano,
+  // ex: ao teclar "2026" caractere por caractere, pode passar por "0002", "0020" etc.)
+  if (d.getFullYear() < 2015 || d.getFullYear() > 2100) return "";
   const originalDay = d.getDate();
-  d.setDate(1); // evita o "vazamento" de mês ao somar, ajustando o dia depois
+  d.setDate(1);
   d.setMonth(d.getMonth() + months);
   const lastDayOfTargetMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   d.setDate(Math.min(originalDay, lastDayOfTargetMonth));
@@ -1378,14 +1384,16 @@ const VACINA_SUGESTOES = {
   vzr: { dose1: { campoDestino: "dose2", meses: 2 } },
 };
 
-function PrevencaoTab({ consulta, updateConsulta }) {
+function PrevencaoTab({ patient, consulta, updateConsulta }) {
   const vac = consulta.vacinas || {};
   const setVacField = (nome, campo, v) => {
     updateConsulta(p => {
       const vacinaAtual = { ...((p.vacinas || {})[nome] || {}), [campo]: v };
       const sugestao = VACINA_SUGESTOES[nome] && VACINA_SUGESTOES[nome][campo];
-      if (sugestao && v && !vacinaAtual[sugestao.campoDestino]) {
-        vacinaAtual[sugestao.campoDestino] = addMonths(v, sugestao.meses);
+      const dataValida = v && /^\d{4}-\d{2}-\d{2}$/.test(v) && parseInt(v.slice(0, 4), 10) >= 2015;
+      if (sugestao && dataValida && !vacinaAtual[sugestao.campoDestino]) {
+        const sugerida = addMonths(v, sugestao.meses);
+        if (sugerida) vacinaAtual[sugestao.campoDestino] = sugerida;
       }
       return { ...p, vacinas: { ...p.vacinas, [nome]: vacinaAtual } };
     });
@@ -1397,10 +1405,19 @@ function PrevencaoTab({ consulta, updateConsulta }) {
 
   const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p] && PREVENCAO_ESPECIFICA[p]);
 
+  const sexoPaciente = patient?.ident?.sexo;
+  const tabagismoAtual = consulta.antecedentes?.tabagismo;
+  const fumante = tabagismoAtual === "Ex-tabagista" || tabagismoAtual === "Tabagista atual";
+  const rastreioGeralVisivel = RASTREIO_GERAL.filter(r => {
+    if (r.sexo && sexoPaciente && r.sexo !== sexoPaciente) return false;
+    if (r.requerTabagismo && tabagismoAtual === "Nunca fumou") return false;
+    return true;
+  });
+
   return (
     <div>
       <SectionCard title="Prevenção — rastreio geral" icon="ti-shield-check" defaultOpen={false}>
-        {RASTREIO_GERAL.map(r => {
+        {rastreioGeralVisivel.map(r => {
           const data = rg[r.nome] || {};
           return (
             <div key={r.nome} style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "8px 0" }}>
@@ -1655,6 +1672,8 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
     updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaItensEditados: { ...p.docs.receitaItensEditados, [key]: { ...(p.docs.receitaItensEditados[key] || {}), [campo]: valor } } } }));
   };
   const setExtras = (valor) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaExtras: valor } }));
+  const titulos = (consulta.docs && consulta.docs.receitaTitulosEditados) || {};
+  const setTitulo = (categoria, valor) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaTitulosEditados: { ...(p.docs.receitaTitulosEditados || {}), [categoria]: valor } } }));
 
   const countSelecionados = Object.values(sel).filter(Boolean).length;
   let counter = 0;
@@ -1671,22 +1690,25 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
         {RECEITA_BLOCOS.map(bloco => {
           const todosMarcados = bloco.itens.every(item => sel[bloco.categoria + "::" + item.nome]);
           const algumMarcado = bloco.itens.some(item => sel[bloco.categoria + "::" + item.nome]);
+          const tituloAtual = titulos[bloco.categoria] !== undefined ? titulos[bloco.categoria] : bloco.categoria;
           return (
           <div key={bloco.categoria} style={{ marginBottom: "18px" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "13px", marginBottom: "8px", cursor: "pointer" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
               <input
                 type="checkbox"
                 checked={todosMarcados}
                 ref={el => { if (el) el.indeterminate = algumMarcado && !todosMarcados; }}
                 onChange={() => toggleBloco(bloco)}
               />
-              <span>
-                {bloco.categoria}:
-                {(bloco.usoTopico || bloco.usoInalatorio) && (
-                  <span style={{ fontWeight: 400 }}> {bloco.usoTopico ? "USO TÓPICO" : "USO INALATÓRIO"}</span>
-                )}
-              </span>
-            </label>
+              <input
+                value={tituloAtual}
+                onChange={e => setTitulo(bloco.categoria, e.target.value)}
+                style={{ fontWeight: 700, fontSize: "13px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontFamily: "Arial, sans-serif", padding: "2px 4px", flex: 1 }}
+              />
+              {(bloco.usoTopico || bloco.usoInalatorio) && (
+                <span style={{ fontWeight: 400, fontSize: "13px" }}>{bloco.usoTopico ? "USO TÓPICO" : "USO INALATÓRIO"}</span>
+              )}
+            </div>
             {bloco.itens.map(item => {
               const key = bloco.categoria + "::" + item.nome;
               const edit = edits[key] || {};
@@ -1977,18 +1999,17 @@ function ExameEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
 
 function VacinacaoDocTab({ patient, consulta, updateConsulta, onPrint }) {
   const vd = (consulta.docs && consulta.docs.vacinacao) || { selecionados: {} };
-  const toggle = (nome) => updateConsulta(p => ({ ...p, docs: { ...p.docs, vacinacao: { ...p.docs.vacinacao, selecionados: { ...p.docs.vacinacao.selecionados, [nome]: !p.docs.vacinacao.selecionados[nome] } } } }));
-  const countSel = Object.values(vd.selecionados || {}).filter(Boolean).length;
-
-  const VACINAS_DOC = ["Influenza", "COVID-19", "Pneumocócica", "dT/dTpa", "Hepatite B", "Vírus sincicial respiratório (VSR)", "Herpes-zóster (VZR recombinante)"];
+  const isSelecionado = (nome) => vd.selecionados[nome] !== false; // não definido ainda = considera marcado
+  const toggle = (nome) => updateConsulta(p => ({ ...p, docs: { ...p.docs, vacinacao: { ...p.docs.vacinacao, selecionados: { ...p.docs.vacinacao.selecionados, [nome]: !isSelecionado(nome) } } } }));
+  const countSel = VACINAS_DOC.filter(v => isSelecionado(v)).length;
 
   return (
     <div>
-      <Alert type="info">Marque as vacinas a incluir na solicitação de atualização vacinal. O documento gerado segue o calendário de vacinação do idoso, com o esquema completo de cada vacina já descrito — só o nome do paciente precisa ser preenchido.</Alert>
+      <Alert type="info">Todas as vacinas já vêm marcadas por padrão. Desmarque as que não deseja incluir na solicitação de atualização vacinal. O documento gerado segue o calendário de vacinação do idoso, com o esquema completo de cada vacina já descrito — só o nome do paciente precisa ser preenchido.</Alert>
       <SectionCard title="Vacinas a solicitar" icon="ti-vaccine">
         {VACINAS_DOC.map(v => (
           <label key={v} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 0", borderBottom: "0.5px solid var(--color-border-tertiary)", cursor: "pointer" }}>
-            <input type="checkbox" checked={!!vd.selecionados[v]} onChange={() => toggle(v)} />
+            <input type="checkbox" checked={isSelecionado(v)} onChange={() => toggle(v)} />
             <span style={{ fontSize: "14px" }}>{v}</span>
           </label>
         ))}
@@ -2016,9 +2037,11 @@ function ReceitaPrint({ patient, consulta, onClose }) {
   const sel = (consulta.docs && consulta.docs.receitaSelecionados) || {};
   const edits = (consulta.docs && consulta.docs.receitaItensEditados) || {};
   const extras = (consulta.docs && consulta.docs.receitaExtras) || "";
+  const titulos = (consulta.docs && consulta.docs.receitaTitulosEditados) || {};
 
   const blocosComItens = RECEITA_BLOCOS.map(bloco => ({
     ...bloco,
+    tituloExibido: titulos[bloco.categoria] !== undefined ? titulos[bloco.categoria] : bloco.categoria,
     itensSelecionados: bloco.itens
       .filter(item => sel[bloco.categoria + "::" + item.nome])
       .map(item => {
@@ -2046,7 +2069,7 @@ function ReceitaPrint({ patient, consulta, onClose }) {
       {blocosComItens.map(bloco => (
         <div key={bloco.categoria} style={{ marginBottom: "12px" }}>
           <div style={{ fontWeight: 700, marginBottom: "6px" }}>
-            {bloco.categoria}:{(bloco.usoTopico || bloco.usoInalatorio) && (bloco.usoTopico ? " USO TÓPICO" : " USO INALATÓRIO")}
+            {bloco.tituloExibido}:{(bloco.usoTopico || bloco.usoInalatorio) && (bloco.usoTopico ? " USO TÓPICO" : " USO INALATÓRIO")}
           </div>
           {bloco.itensSelecionados.map((item, idx) => {
             counter++;
@@ -2188,7 +2211,9 @@ function ExameEspecialPrint({ patient, consulta, onClose }) {
 
 function VacinacaoPrint({ patient, consulta, onClose }) {
   const vd = (consulta.docs && consulta.docs.vacinacao) || { selecionados: {} };
-  const sel = vd.selecionados || {};
+  const selRaw = vd.selecionados || {};
+  const sel = {};
+  VACINAS_DOC.forEach(v => { sel[v] = selRaw[v] !== false; });
   return (
     <PrintShell title="Solicitação de atualização vacinal" onClose={onClose}>
       <DocHeader title="RECEITUÁRIO" />
@@ -2280,7 +2305,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
     <PrintShell title="Consulta completa" onClose={onClose}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
         <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
-        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>PRONTUÁRIO — CONSULTA COMPLETA</div>
+        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
         <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
       </div>
       <div style={{ marginBottom: "4px" }}><span style={label}>Paciente:</span> {i.nome || "—"}</div>
@@ -2304,10 +2329,13 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div>Tabagismo: {a.tabagismo || "—"} {a.cargaTabagica && `(${a.cargaTabagica})`}</div>
       <div>Etilismo: {a.etilismo || "—"} {a.etilismoDetalhe && `(${a.etilismoDetalhe})`}</div>
       <div>Atividade física: {a.atividadeFisica || "—"}</div>
-      <div>Cirurgias prévias: {a.cirurgias || "—"}</div>
-      <div>Internamentos no último ano: {a.internamentos || "—"}</div>
+      <div>Cirurgias prévias:</div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.cirurgias || "—"}</div>
+      <div>Internamentos no último ano:</div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.internamentos || "—"}</div>
       <div>Alergias: {a.alergias || "—"}</div>
-      <div>Histórico familiar: {a.historicoFamiliar || "—"}</div>
+      <div>Histórico familiar:</div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.historicoFamiliar || "—"}</div>
 
       <div style={sectionTitle}>MEDICAÇÕES EM USO</div>
       <div style={{ whiteSpace: "pre-wrap" }}>{consulta.medicacoesTexto || "—"}</div>
@@ -2348,10 +2376,14 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       {consulta.imagemTexto && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Imagem/outros:</div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.imagemTexto}</div></>)}
 
       <div style={sectionTitle}>PLANO TERAPÊUTICO</div>
-      <div>Ajuste medicamentoso: {pl.ajuste || "—"}</div>
-      <div>Exames solicitados: {pl.exames || "—"}</div>
-      <div>Encaminhamentos: {pl.encaminhamentos || "—"}</div>
-      <div>Orientações: {pl.orientacoes || "—"}</div>
+      <div><strong>Orientações:</strong></div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.orientacoes || "—"}</div>
+      <div><strong>Ajuste medicamentoso:</strong></div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.ajuste || "—"}</div>
+      <div><strong>Exames solicitados:</strong></div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.exames || "—"}</div>
+      <div><strong>Encaminhamentos:</strong></div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.encaminhamentos || "—"}</div>
       <div>Retorno: {pl.retorno ? fmtDate(pl.retorno) : "—"}</div>
 
       <div style={sectionTitle}>PENDÊNCIAS</div>
