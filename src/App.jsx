@@ -46,10 +46,10 @@ const RASTREIO_GERAL = [
 
 const BEERS_LIST = [
   "amitriptilina","clorpromazina","prometazina","hidroxizina","diazepam","clonazepam","alprazolam","lorazepam","midazolam",
-  "zolpidem","amiodarona","digoxina","nifedipina","doxazosina","glibenclamida","clorpropamida","insulina escala móvel isolada",
-  "indometacina","cetorolaco","ibuprofeno crônico","diclofenaco","meperidina","tramadol","oxibutinina","metoclopramida",
-  "olanzapina","quetiapina","risperidona","haloperidol","fluoxetina","escitalopram em alta dose","espironolactona >25mg",
-  "ácido acetilsalicílico para prevenção primária >70 anos","mineral oil"
+  "zolpidem","amiodarona","digoxina","nifedipina","doxazosina","glibenclamida","clorpropamida",
+  "indometacina","cetorolaco","ibuprofeno","diclofenaco","meperidina","tramadol","oxibutinina","metoclopramida",
+  "olanzapina","quetiapina","risperidona","haloperidol","fluoxetina","escitalopram","espironolactona",
+  "ácido acetilsalicílico","aas","mineral oil","óleo mineral"
 ];
 
 function checkBeers(nomeMedicacao) {
@@ -68,7 +68,10 @@ function calcIMC(peso, altura) {
 
 function calcIdade(dn) {
   if (!dn) return null;
-  const birth = new Date(dn);
+  // Força interpretação em horário local (evita o "Date('AAAA-MM-DD')" ser lido como
+  // UTC meia-noite, o que em fusos negativos como o do Brasil pode voltar a data um dia
+  // e gerar erro de 1 ano perto do aniversário).
+  const birth = new Date(dn + "T00:00:00");
   if (isNaN(birth.getTime())) return null;
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
@@ -84,7 +87,12 @@ function uid() {
 function fmtDate(iso) {
   if (!iso) return "";
   try {
-    const d = new Date(iso);
+    // Datas puras "AAAA-MM-DD" (sem horário) são interpretadas pelo JS como UTC meia-noite;
+    // em fusos negativos (como o do Brasil) isso faz a data exibida "voltar" um dia.
+    // Forçar horário local resolve. Se vier um valor já com horário (ex: timestamp completo),
+    // o "T00:00:00" extra é ignorado por já haver um "T" na string.
+    const temHorario = iso.includes("T");
+    const d = new Date(temHorario ? iso : iso + "T00:00:00");
     return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
   } catch (e) { return iso; }
 }
@@ -631,7 +639,8 @@ export default function App() {
 
   function createConsulta() {
     if (!activePatient) return;
-    const sorted = [...activePatient.consultas].sort((a, b) => new Date(b.data) - new Date(a.data));
+    const ativas = activePatient.consultas.filter(c => !c.deletedAt);
+    const sorted = [...ativas].sort((a, b) => new Date(b.data) - new Date(a.data));
     const ultima = sorted[0];
     const nova = emptyConsulta(ultima);
     updateActivePatient(p => ({ ...p, consultas: [...p.consultas, nova] }));
@@ -1202,7 +1211,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
       <SectionCard title="Medicações em uso" icon="ti-pill">
         {beersAlerts.length > 0 && (
           <Alert type="warning">
-            {beersAlerts.length} linha(s) mencionam fármacos constantes nos Critérios de Beers 2023 como potencialmente inapropriados para idosos: {beersAlerts.join(" / ")}. Avalie risco/benefício e considere desprescrição ou alternativa.
+            {beersAlerts.length} linha(s) mencionam fármacos que constam nos Critérios de Beers 2023 e podem ser potencialmente inapropriados para idosos, dependendo de dose, indicação e contexto clínico: {beersAlerts.join(" / ")}. Avalie risco/benefício individualmente.
           </Alert>
         )}
         <textarea
@@ -1611,11 +1620,11 @@ function PlanoTab({ consulta, updateConsulta }) {
   const [text, setText] = useState("");
   const add = () => {
     if (!text.trim()) return;
-    updateConsulta(p => ({ ...p, pendencias: [...p.pendencias, { id: uid(), text: text.trim(), done: false, createdAt: new Date().toISOString() }] }));
+    updateConsulta(p => ({ ...p, pendencias: [...(p.pendencias || []), { id: uid(), text: text.trim(), done: false, createdAt: new Date().toISOString() }] }));
     setText("");
   };
-  const toggle = (id) => updateConsulta(p => ({ ...p, pendencias: p.pendencias.map(x => x.id === id ? { ...x, done: !x.done } : x) }));
-  const remove = (id) => updateConsulta(p => ({ ...p, pendencias: p.pendencias.filter(x => x.id !== id) }));
+  const toggle = (id) => updateConsulta(p => ({ ...p, pendencias: (p.pendencias || []).map(x => x.id === id ? { ...x, done: !x.done } : x) }));
+  const remove = (id) => updateConsulta(p => ({ ...p, pendencias: (p.pendencias || []).filter(x => x.id !== id) }));
 
   const pendentes = pend.filter(x => !x.done);
   const feitas = pend.filter(x => x.done);
@@ -1706,7 +1715,7 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
   };
   const setEditField = (categoria, nome, campo, valor) => {
     const key = categoria + "::" + nome;
-    updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaItensEditados: { ...p.docs.receitaItensEditados, [key]: { ...(p.docs.receitaItensEditados[key] || {}), [campo]: valor } } } }));
+    updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaItensEditados: { ...(p.docs.receitaItensEditados || {}), [key]: { ...((p.docs.receitaItensEditados || {})[key] || {}), [campo]: valor } } } }));
   };
   const setExtras = (valor) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaExtras: valor } }));
   const titulos = (consulta.docs && consulta.docs.receitaTitulosEditados) || {};
@@ -1819,7 +1828,7 @@ function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
 
 function ReceitaEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
   const re = (consulta.docs && consulta.docs.receitaEspecial) || {};
-  const set = (k, v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaEspecial: { ...p.docs.receitaEspecial, [k]: v } } }));
+  const set = (k, v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, receitaEspecial: { ...(p.docs.receitaEspecial || {}), [k]: v } } }));
   return (
     <div>
       <Alert type="warning">Receituário de controle especial (notificação B/A). Use para psicotrópicos e entorpecentes sujeitos a controle especial. Os campos do comprador são preenchidos no momento da impressão/entrega, conforme quem retira a medicação.</Alert>
@@ -1906,7 +1915,7 @@ function ReceitaEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
 function ExameSimplesTab({ patient, consulta, updateConsulta, onPrint }) {
   const es = (consulta.docs && consulta.docs.examesSimples) || { texto: "" };
   const texto = es.texto !== undefined ? es.texto : EXAMES_LABORATORIAIS_PADRAO.join("\n");
-  const setTexto = (v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, examesSimples: { ...p.docs.examesSimples, texto: v } } }));
+  const setTexto = (v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, examesSimples: { ...(p.docs.examesSimples || {}), texto: v } } }));
 
   return (
     <div>
@@ -1939,7 +1948,7 @@ function ExameSimplesTab({ patient, consulta, updateConsulta, onPrint }) {
 
 function ExameEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
   const ee = (consulta.docs && consulta.docs.examesEspecial) || {};
-  const set = (k, v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, examesEspecial: { ...p.docs.examesEspecial, [k]: v } } }));
+  const set = (k, v) => updateConsulta(p => ({ ...p, docs: { ...p.docs, examesEspecial: { ...(p.docs.examesEspecial || {}), [k]: v } } }));
   const idade = calcIdade(patient.ident.dn);
   const carLabel = { urgencia_absoluta: "URGÊNCIA ABSOLUTA", urgencia_relativa: "URGÊNCIA RELATIVA", rotina: "ROTINA", controle: "CONTROLE" };
   const cellStyle = { border: "1px solid #999", padding: "5px 8px", fontSize: "12px" };
@@ -2037,7 +2046,7 @@ function ExameEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
 function VacinacaoDocTab({ patient, consulta, updateConsulta, onPrint }) {
   const vd = (consulta.docs && consulta.docs.vacinacao) || { selecionados: {} };
   const isSelecionado = (nome) => vd.selecionados[nome] !== false; // não definido ainda = considera marcado
-  const toggle = (nome) => updateConsulta(p => ({ ...p, docs: { ...p.docs, vacinacao: { ...p.docs.vacinacao, selecionados: { ...p.docs.vacinacao.selecionados, [nome]: !isSelecionado(nome) } } } }));
+  const toggle = (nome) => updateConsulta(p => ({ ...p, docs: { ...p.docs, vacinacao: { ...(p.docs.vacinacao || {}), selecionados: { ...((p.docs.vacinacao || {}).selecionados || {}), [nome]: !isSelecionado(nome) } } } }));
   const countSel = VACINAS_DOC.filter(v => isSelecionado(v)).length;
 
   return (
