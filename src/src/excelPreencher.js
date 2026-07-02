@@ -1,14 +1,10 @@
 /**
  * excelPreencher.js
- * Preenche o arquivo .xlsm do HSE com dados do paciente
- * fazendo edição cirúrgica do ZIP interno, preservando 100%
- * das macros VBA, formatação e fórmulas do arquivo original.
- *
- * Usa JSZip (carregado via CDN) para manipular o ZIP sem
- * desmontar a estrutura do arquivo.
+ * Busca o modelo .xlsm da pasta public/, preenche os dados do paciente
+ * via edição cirúrgica do ZIP interno (preserva 100% VBA/macros/formatação),
+ * e retorna um Blob para download.
  */
 
-// Carrega JSZip via CDN se ainda não estiver disponível
 function carregarJSZip() {
   if (window.JSZip) return Promise.resolve(window.JSZip);
   return new Promise((resolve, reject) => {
@@ -20,131 +16,82 @@ function carregarJSZip() {
   });
 }
 
-/**
- * Adiciona texto ao sharedStrings.xml se ainda não existir.
- * Retorna [xmlAtualizado, índice].
- */
-function addSharedString(sharedXml, texto) {
-  // Escapa caracteres XML
-  const escaped = texto
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-
-  // Verifica se já existe (comparação com texto escapado e não-escapado)
-  const existingMatches = [...sharedXml.matchAll(/<si><t[^>]*>(.*?)<\/t><\/si>/gs)];
-  for (let i = 0; i < existingMatches.length; i++) {
-    const val = existingMatches[i][1];
-    if (val === texto || val === escaped) return [sharedXml, i];
+function addSharedString(xml, texto) {
+  const escaped = texto.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const matches = [...xml.matchAll(/<si><t[^>]*>(.*?)<\/t><\/si>/gs)];
+  for (let i = 0; i < matches.length; i++) {
+    if (matches[i][1] === texto || matches[i][1] === escaped) return [xml, i];
   }
-
-  // Adiciona nova entrada
   const nova = `<si><t xml:space="preserve">${escaped}</t></si>`;
-  let updated = sharedXml.replace('</sst>', nova + '</sst>');
-
-  // Atualiza count e uniqueCount
-  const novoTotal = (updated.match(/<si>/g) || []).length;
-  updated = updated.replace(/count="\d+"/, `count="${novoTotal}"`);
-  updated = updated.replace(/uniqueCount="\d+"/, `uniqueCount="${novoTotal}"`);
-
-  return [updated, novoTotal - 1];
+  xml = xml.replace('</sst>', nova + '</sst>');
+  const total = (xml.match(/<si>/g) || []).length;
+  xml = xml.replace(/count="\d+"/, `count="${total}"`);
+  xml = xml.replace(/uniqueCount="\d+"/, `uniqueCount="${total}"`);
+  return [xml, total - 1];
 }
 
-/**
- * Insere ou substitui uma célula de texto (shared string) em uma row do sheet XML.
- */
-function setCellString(sheetXml, rowNum, col, strIdx, style = '2') {
+function upsertCell(sheetXml, rowNum, col, cellXml) {
   const cref = `${col}${rowNum}`;
-  const novaCell = `<c r="${cref}" s="${style}" t="s"><v>${strIdx}</v></c>`;
-  return _upsertCell(sheetXml, rowNum, col, cref, novaCell);
-}
-
-/**
- * Insere ou substitui uma célula numérica em uma row do sheet XML.
- */
-function setCellNumber(sheetXml, rowNum, col, value, style = '2') {
-  const cref = `${col}${rowNum}`;
-  const novaCell = `<c r="${cref}" s="${style}"><v>${value}</v></c>`;
-  return _upsertCell(sheetXml, rowNum, col, cref, novaCell);
-}
-
-function _upsertCell(sheetXml, rowNum, col, cref, novaCell) {
   const rowRe = new RegExp(`(<row[^>]+r="${rowNum}"[^>]*>)(.*?)(</row>)`, 's');
-  const rowMatch = sheetXml.match(rowRe);
-
-  if (!rowMatch) {
-    // Row não existe — cria e insere antes da próxima row
-    const novaRow = `<row r="${rowNum}" spans="2:20">${novaCell}</row>`;
-    const nextRowRe = new RegExp(`<row[^>]+r="${rowNum + 1}"`);
-    if (nextRowRe.test(sheetXml)) {
-      return sheetXml.replace(nextRowRe, novaRow + '<row r="' + (rowNum + 1) + '"');
-    }
+  const m = sheetXml.match(rowRe);
+  if (!m) {
+    const novaRow = `<row r="${rowNum}" spans="2:20">${cellXml}</row>`;
+    const nextRe = new RegExp(`(<row[^>]+r="${rowNum+1}")`);
+    if (nextRe.test(sheetXml)) return sheetXml.replace(nextRe, novaRow + '$1');
     return sheetXml.replace('</sheetData>', novaRow + '</sheetData>');
   }
-
-  let rowContent = rowMatch[2];
+  let content = m[2];
   const cellRe = new RegExp(`<c r="${cref}"[^>]*>.*?</c>`, 's');
-  if (cellRe.test(rowContent)) {
-    rowContent = rowContent.replace(cellRe, novaCell);
-  } else {
-    rowContent = novaCell + rowContent;
-  }
-
-  return sheetXml.replace(rowRe, rowMatch[1] + rowContent + rowMatch[3]);
+  content = cellRe.test(content) ? content.replace(cellRe, cellXml) : cellXml + content;
+  return sheetXml.replace(rowRe, m[1] + content + m[3]);
 }
 
-/**
- * Função principal: recebe o base64 do modelo e os dados do paciente,
- * retorna um Blob .xlsm com os dados preenchidos e VBA intacto.
- */
-export async function preencherExcel(modeloB64, { nome, prontuario, maeNome, idade, sexo, data }) {
+function setCellStr(sheetXml, row, col, idx) {
+  return upsertCell(sheetXml, row, col, `<c r="${col}${row}" s="2" t="s"><v>${idx}</v></c>`);
+}
+
+function setCellNum(sheetXml, row, col, val) {
+  return upsertCell(sheetXml, row, col, `<c r="${col}${row}" s="2"><v>${val}</v></c>`);
+}
+
+export async function preencherExcel({ nome, prontuario, maeNome, idade, sexo, data }) {
   const JSZip = await carregarJSZip();
 
-  // Decodifica base64 → ArrayBuffer
-  const bin = atob(modeloB64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  // Busca o modelo da pasta public/
+  const resp = await fetch('/modelo.xlsm');
+  if (!resp.ok) throw new Error('Modelo Excel não encontrado (/modelo.xlsm)');
+  const arrayBuffer = await resp.arrayBuffer();
 
-  // Carrega o ZIP
-  const zip = await JSZip.loadAsync(bytes.buffer);
+  const zip = await JSZip.loadAsync(arrayBuffer);
 
-  // Lê os XMLs que precisamos modificar
   let sharedXml = await zip.file('xl/sharedStrings.xml').async('string');
   let sheet1Xml = await zip.file('xl/worksheets/sheet1.xml').async('string');
 
-  // Adiciona os valores às shared strings
-  let idxNome, idxPron, idxMae, idxSexo, idxData;
-  [sharedXml, idxNome] = addSharedString(sharedXml, (nome || '').toUpperCase());
-  [sharedXml, idxPron] = addSharedString(sharedXml, String(prontuario || ''));
-  [sharedXml, idxMae] = addSharedString(sharedXml, (maeNome || '').toUpperCase());
-  [sharedXml, idxSexo] = addSharedString(sharedXml, sexo || '');
-  [sharedXml, idxData] = addSharedString(sharedXml, data || '');
+  let iNome, iPron, iMae, iSexo, iData;
+  [sharedXml, iNome]  = addSharedString(sharedXml, (nome || '').toUpperCase());
+  [sharedXml, iPron]  = addSharedString(sharedXml, String(prontuario || ''));
+  [sharedXml, iMae]   = addSharedString(sharedXml, (maeNome || '').toUpperCase());
+  [sharedXml, iSexo]  = addSharedString(sharedXml, sexo || '');
+  [sharedXml, iData]  = addSharedString(sharedXml, data || '');
 
-  // Preenche as células do Cadastro
-  sheet1Xml = setCellString(sheet1Xml, 7,  'C', idxNome);   // C7  = Nome paciente
-  sheet1Xml = setCellString(sheet1Xml, 8,  'C', idxPron);   // C8  = Prontuário
-  sheet1Xml = setCellString(sheet1Xml, 9,  'C', idxMae);    // C9  = Nome da mãe
-  if (idade != null && String(idade).trim() !== '') {
-    sheet1Xml = setCellNumber(sheet1Xml, 12, 'C', Number(idade)); // C12 = Idade
-  }
-  sheet1Xml = setCellString(sheet1Xml, 13, 'C', idxSexo);   // C13 = Sexo
-  // C14 = GERIATRIA já vem preenchido no modelo
-  sheet1Xml = setCellString(sheet1Xml, 16, 'C', idxData);   // C16 = Data
+  sheet1Xml = setCellStr(sheet1Xml, 7,  'C', iNome);
+  sheet1Xml = setCellStr(sheet1Xml, 8,  'C', iPron);
+  sheet1Xml = setCellStr(sheet1Xml, 9,  'C', iMae);
+  if (idade !== '' && idade != null) sheet1Xml = setCellNum(sheet1Xml, 12, 'C', Number(idade));
+  sheet1Xml = setCellStr(sheet1Xml, 13, 'C', iSexo);
+  sheet1Xml = setCellStr(sheet1Xml, 16, 'C', iData);
 
-  // Salva os XMLs modificados de volta no ZIP
   zip.file('xl/sharedStrings.xml', sharedXml);
   zip.file('xl/worksheets/sheet1.xml', sheet1Xml);
 
-  // Gera o arquivo final como Blob, mantendo TUDO o mais intacto (inclusive vbaProject.bin)
-  const outBuffer = await zip.generateAsync({
+  const outBuf = await zip.generateAsync({
     type: 'arraybuffer',
     mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12',
     compression: 'DEFLATE',
     compressionOptions: { level: 6 },
   });
 
-  return new Blob([outBuffer], {
+  return new Blob([outBuf], {
     type: 'application/vnd.ms-excel.sheet.macroEnabled.12',
   });
 }
