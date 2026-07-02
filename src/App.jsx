@@ -809,7 +809,7 @@ export default function App() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Receituarios_${nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim()}_${hoje.replace(/\//g, '-')}.xlsm`;
+        a.download = `Receituarios_${nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim()}_${hoje.replace(/\//g, '-')}.xlsx`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
