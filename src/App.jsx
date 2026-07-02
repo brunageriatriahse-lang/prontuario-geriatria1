@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { listPatients, savePatient, deletePatient as apiDeletePatient } from './api.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
+import { EXCEL_MODELO_B64 } from './excelModelo.js';
 
 const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática","DRC","DAC","IC","FA","AVC","DPOC","Asma","HPB","Incontinência urinária","DRGE","Constipação crônica","Osteoporose","Osteoartrose","Hipotireoidismo","Transtorno depressivo","TAG","Insônia","Síndrome demencial","Doença de Parkinson","Neoplasia","DHC","Insuficiência venosa crônica","DAOP","Catarata","Glaucoma","Déficit auditivo A/E"];
 
@@ -788,40 +789,52 @@ export default function App() {
     const hoje = new Date().toLocaleDateString('pt-BR');
     const nomePaciente = patient.ident.nome || 'paciente';
 
-    // Chama a API serverless Python que preenche o Excel preservando formatação original
-    fetch('/api/receituarios', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nome: nomePaciente,
-        prontuario: patient.ident.prontuario || '',
-        maeNome: patient.ident.maeNome || '',
-        idade: idade != null ? String(idade) : '',
-        sexo: patient.ident.sexo || '',
-        data: hoje,
-      }),
-    })
-      .then(res => {
-        if (!res.ok) throw new Error('Erro ao gerar o arquivo');
-        return res.blob();
-      })
-      .then(blob => {
+    function _executar() {
+      const ExcelJS = window.ExcelJS;
+      if (!ExcelJS) { alert('Biblioteca Excel ainda carregando, tente novamente em 5 segundos.'); return; }
+
+      const bin = atob(EXCEL_MODELO_B64);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+
+      const wb = new ExcelJS.Workbook();
+      wb.xlsx.load(buf.buffer).then(() => {
+        const ws = wb.getWorksheet('Cadastro');
+        if (!ws) { alert('Aba Cadastro não encontrada no modelo.'); return; }
+        ws.getCell('C7').value = nomePaciente.toUpperCase();
+        ws.getCell('C8').value = patient.ident.prontuario || '';
+        ws.getCell('C9').value = (patient.ident.maeNome || '').toUpperCase();
+        ws.getCell('C12').value = idade != null ? idade : '';
+        ws.getCell('C13').value = patient.ident.sexo || '';
+        ws.getCell('C14').value = 'GERIATRIA';
+        ws.getCell('C16').value = hoje;
+        return wb.xlsx.writeBuffer();
+      }).then(outBuf => {
+        if (!outBuf) return;
+        const blob = new Blob([outBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Receituarios_${nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim()}_${hoje.replace(/\//g, '-')}.xlsx`;
+        a.download = 'Receituarios_' + nomePaciente.replace(/[^a-zA-Z\u00C0-\u00FF0-9 ]/g, '').trim() + '_' + hoje.replace(/\//g, '-') + '.xlsx';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-      })
-      .catch(e => {
-        console.error('Erro ao baixar receituários:', e);
-        alert('Erro ao gerar o arquivo Excel: ' + e.message);
-      });
+      }).catch(e => { console.error('Erro ExcelJS:', e); alert('Erro ao gerar o arquivo: ' + e.message); });
+    }
+
+    if (window.ExcelJS) {
+      _executar();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+      script.onload = _executar;
+      script.onerror = () => alert('Não foi possível carregar a biblioteca Excel. Verifique sua conexão.');
+      document.head.appendChild(script);
+    }
   }
 
-  function _preencherEBaixar() {} // mantido por compatibilidade (não usado)
+  function _preencherEBaixar() {}
 
   function createConsulta() {
     if (!activePatient) return;
