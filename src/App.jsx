@@ -6,20 +6,20 @@ const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática",
 
 const PREVENCAO_ESPECIFICA = {
   "HAS": ["MAPA 24h","ECG (anual)","ECOTT (se HVE ou IC; a cada 2 anos)","BNP (se suspeita de IC)","Polissonografia (se suspeita de SAOS)"],
-  "DM2": ["Fundoscopia (anual)","ECG (anual)","Avaliação do pé diabético (toda consulta)"],
-  "Obesidade": ["USG de abdome total (anual)","Elastografia hepática"],
-  "Esteatose hepática": ["USG de abdome total (anual)","Elastografia hepática"],
-  "DAC": ["ECG (anual)","ECOTT (a cada 2 anos)","Teste ergométrico","Cintilografia miocárdica (repouso/estresse)"],
+  "DM2": ["Fundoscopia (anual)","ECG (anual)","Exame dos pés (toda consulta)"],
+  "Obesidade": ["USG de abdome total (anual)","Elastografia hepática (se FIB-4 ≥ 1,3)"],
+  "Esteatose hepática": ["USG de abdome total (anual)","Elastografia hepática (se FIB-4 ≥ 1,3)"],
+  "DHC": ["USG de abdome total (6/6 meses)","AFP (6/6 meses)","Elastografia hepática","EDA"],
+  "DAC": ["ECG (anual)","ECOTT (a cada 2 anos)","Teste ergométrico","Cintilografia miocárdica (repouso e estresse farmacológico)"],
   "IC": ["ECG (anual)","ECOTT (a cada 2 anos)","RX de tórax PA e perfil"],
   "FA": ["ECG","Holter 24h","ECOTT"],
-  "AVC": ["ECG","ECOTT","USG Doppler de carótidas e vertebrais","TC de crânio s/ contraste","RNM de crânio s/ contraste"],
+  "AVC": ["ECG","Holter 24h","ECOTT","USG Doppler de artérias carótidas e vertebrais","TC de crânio s/ contraste","RNM de crânio s/ contraste"],
   "DRC": ["USG de rins e vias urinárias com resíduo pós-miccional","PSA total e livre"],
   "HPB": ["USG de rins e vias urinárias com resíduo pós-miccional","PSA total e livre"],
   "DPOC": ["Espirometria com prova broncodilatadora (anual)","RX de tórax PA e perfil","TC de tórax s/ contraste"],
-  "Asma": ["Espirometria com prova broncodilatadora (anual)","RX de tórax PA e perfil"],
-  "DHC": ["USG de abdome total (6/6 meses)","AFP (6/6 meses)","Elastografia hepática","EDA"],
-  "Insuficiência venosa crônica": ["USG Doppler venoso de MMII"],
-  "DAOP": ["USG Doppler arterial de MMII"],
+  "Asma": ["Espirometria com prova broncodilatadora (anual)","RX de tórax PA e perfil","TC de tórax s/ contraste"],
+  "Insuficiência venosa crônica": ["USG Doppler venoso de MMII","USG Doppler arterial de MMII"],
+  "DAOP": ["USG Doppler arterial de MMII","USG Doppler venoso de MMII"],
 };
 
 const VACINAS = [
@@ -35,12 +35,13 @@ const VACINAS = [
 const VACINAS_DOC = ["Influenza", "COVID-19", "Pneumocócica", "dT/dTpa", "Hepatite B", "Vírus sincicial respiratório (VSR)", "Herpes-zóster (VZR recombinante)"];
 
 const RASTREIO_GERAL = [
-  { nome: "Colonoscopia", criterio: "45–75 anos; a cada 10 anos" },
-  { nome: "Densitometria óssea", criterio: "Homem ≥70 / Mulher ≥65 anos; 2–5 anos" },
-  { nome: "Mamografia bilateral", criterio: "50–75 anos; bianual", sexo: "F" },
-  { nome: "Citologia oncótica", criterio: "25–64 anos; a cada 3 anos", sexo: "F" },
+  { nome: "Colonoscopia", criterio: "45–75 anos (75–85 individualizar); a cada 10 anos" },
+  { nome: "Pesquisa de sangue oculto nas fezes", criterio: "45–75 anos (75–85 individualizar); anual" },
+  { nome: "Densitometria óssea", criterio: "Homem ≥70 / Mulher ≥65 anos; a cada 2–5 anos" },
+  { nome: "Mamografia bilateral", criterio: "50–75 anos ou expectativa de vida >10 anos; bianual", sexo: "F" },
+  { nome: "Citologia oncótica", criterio: "25–64 anos; a cada 3 anos (suspender com 2 exames prévios normais)", sexo: "F" },
   { nome: "PSA total e livre", criterio: "55–69 anos; a cada 2 anos", sexo: "M" },
-  { nome: "TC tórax baixa dose", criterio: "Tabagista ≥20 maços-ano; anual", requerTabagismo: true },
+  { nome: "TC tórax baixa dose", criterio: "Tabagista ≥20 maços-ano, cessação <15 anos, 50–80 anos; anual", requerTabagismo: true },
   { nome: "USG aorta abdominal", criterio: "Tabagista 65–75 anos; única vez", requerTabagismo: true, sexo: "M" },
 ];
 
@@ -234,20 +235,34 @@ function emptyConsulta(base) {
       aivd: {"Telefone":true,"Transporte":true,"Compras":true,"Preparar refeições":true,"Tarefas domésticas":true,"Trabalhos manuais":true,"Lavar roupas":true,"Medicações":true,"Finanças":true},
       abvd: {"Banho":true,"Vestir-se":true,"Higiene pessoal":true,"Transferência":true,"Continência":true,"Alimentação":true},
       marcha: "", dispositivo: "",
+      quedas: "nao", quedasNum: "", quedasDescricao: "", fraturas: "nao", tce: "nao",
       frail: {}, semQueixasCognitivas: false, queixasCognitivasDescricao: "", minicog: "", meem: "", moca: "",
-      semQueixasHumor: false, queixasHumorDescricao: "", gds15: "", quedas: "nega", quedasNum: "", quedasDescricao: "", fraturas: "nao", tce: "nao",
-      sono: "", peso: "", altura: "", perdaPeso: "nao", perdaPesoPerc: "", perdaPesoMeses: "",
-      apetite: "preservado", disfagia: "ausente", disfagiaDieta: "", dentarios: "nao",
-      tgi: "continente", tgu: "continente", visao: "preservada", audicao: "preservada",
-      atividadeFisicaLazer: "", lazer: "",
+      semQueixasHumor: false, queixasHumorDescricao: "", gds15: "",
+      semQueixasSono: false, roncos: "", sonolenciaDiurna: "", higieneSono: "",
+      visao: "preservada", visaoLentes: "nao", audicao: "preservada", audicaoAparelho: "nao",
+      incontinenciaUrinaria: "nao", incontinenciaFecal: "nao", constipacao: "nao",
+      peso: "", pesoHabitual: "", altura: "", perdaPeso: "nao", perdaPesoKg: "",
+      apetite: "preservado", disfagia: "ausente", disfagiaDieta: "",
+      problemasDentarios: "nao", proteseDentaria: "nao",
+      testeForca: "", circPanturrilha: "",
+      atividadeFisica: "",
     },
     vacinas: {},
     rastreioGeral: {},
     rastreioEspecifico: {},
-    exameFisico: { pa: "", fc: "", fr: "", sato2: "", temp: "", geral: "Estado geral bom, consciente, orientado, eupneico, corado, hidratado, anictérico, acianótico, afebril ao toque.", acv: "RCR em 2 tempos, bulhas normofonéticas, sem sopros.", ar: "Murmúrio vesicular presente, eupneico em ar ambiente, sem ruídos adventícios.", abd: "Semigloboso, depressível, normotimpânico, indolor à palpação, sem visceromegalias ou massas palpáveis, ruídos hidroaéreos presentes.", ext: "Sem edemas, tempo de enchimento capilar 2 segundos, panturrilhas livres.", sn: "Glasgow 15, pupilas isofotorreagentes, sem déficits focais.", pele: "" },
+    exameFisico: {
+      paSentado: "", paEmPe: "", fc: "", fr: "", sato2: "", temp: "",
+      geral: "EG bom, consciente, orientado, eupneico, corado, hidratado, anictérico, acianótico, afebril ao toque.",
+      acv: "RCR em 2T, BNF, S/S.",
+      ar: "MV+ em AHT, S/RA.",
+      abd: "Semigloboso, depressível, normotimpânico, indolor à palpação, sem VMG ou massas palpáveis, RHA+.",
+      ext: "Sem edemas, TEC 2s, panturrilhas livres.",
+      sn: "Glasgow 15, PIFR, sem déficits focais.",
+      pele: "",
+    },
     labsTexto: "",
     imagemTexto: "",
-    plano: { ajuste: "", exames: "", encaminhamentos: "", orientacoes: "", retorno: "" },
+    plano: { ajuste: "", solicito: "", orientacoes: "", encaminhamentos: "", retorno: "" },
     pendencias: [],
     pendenciasConsultaAtual: "",
     docs: {
@@ -906,7 +921,7 @@ export default function App() {
           </div>
 
           {mode === "prontuario" && (
-            <RecordView patient={activePatient} updatePatient={updateActivePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeTab={activeTab} setActiveTab={setActiveTab} onPrint={setPrintDoc} />
+            <RecordView patient={activePatient} updatePatient={updateActivePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeTab={activeTab} setActiveTab={setActiveTab} onPrint={setPrintDoc} onSave={() => activePatient && persistPatient(activePatient)} />
           )}
           {mode === "documentos" && (
             <DocumentosView patient={activePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeDocTab={activeDocTab} setActiveDocTab={setActiveDocTab} onPrint={setPrintDoc} />
@@ -1097,7 +1112,7 @@ function PatientList({ patients, search, setSearch, onOpen, onCreate, onDelete }
   );
 }
 
-function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint }) {
+function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint, onSave }) {
   return (
     <div>
       <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
@@ -1121,11 +1136,14 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "prevencao" && <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} />}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px", paddingTop: "16px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "20px", paddingTop: "16px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+        <button onClick={onSave} style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--color-background-success)", color: "var(--color-text-success)", border: "0.5px solid var(--color-border-success)" }}>
+          <i className="ti ti-device-floppy" aria-hidden="true"></i>Salvar agora
+        </button>
         <button onClick={() => onPrint({ type: "consultaCompleta" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <i className="ti ti-printer" aria-hidden="true"></i>Imprimir consulta completa
         </button>
@@ -1292,10 +1310,10 @@ function ProblemasTab({ consulta, updateConsulta }) {
 }
 
 function AntecedentesTab({ consulta, updateConsulta }) {
-  const a = consulta.antecedentes;
+  const a = consulta.antecedentes || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, antecedentes: { ...p.antecedentes, [k]: v } }));
   return (
-    <SectionCard title="Antecedentes" icon="ti-history">
+    <SectionCard title="Antecedentes pessoais e familiares" icon="ti-history">
       <Field label="Tabagismo">
         <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
           {["Nunca fumou", "Ex-tabagista", "Tabagista atual"].map(opt => (
@@ -1305,7 +1323,14 @@ function AntecedentesTab({ consulta, updateConsulta }) {
           ))}
         </div>
       </Field>
-      <Field label="Carga tabágica (anos-maço) / tempo de cessação"><input value={a.cargaTabagica} onChange={e => set("cargaTabagica", e.target.value)} /></Field>
+      {a.tabagismo && a.tabagismo !== "Nunca fumou" && (
+        <Row cols="repeat(4, 1fr)">
+          <Field label="Início (ano)"><input value={a.tabagismoInicio || ""} onChange={e => set("tabagismoInicio", e.target.value)} /></Field>
+          {a.tabagismo === "Ex-tabagista" && <Field label="Cessou (ano)"><input value={a.tabagismoCessou || ""} onChange={e => set("tabagismoCessou", e.target.value)} /></Field>}
+          <Field label="Maços/dia"><input type="number" step="0.1" value={a.macosDia || ""} onChange={e => set("macosDia", e.target.value)} /></Field>
+          <Field label="Maços/ano"><input type="number" value={a.macosAno || ""} onChange={e => set("macosAno", e.target.value)} /></Field>
+        </Row>
+      )}
       <Field label="Etilismo">
         <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
           {["Nega", "Social", "Abuso/dependência", "Ex-etilista"].map(opt => (
@@ -1315,20 +1340,19 @@ function AntecedentesTab({ consulta, updateConsulta }) {
           ))}
         </div>
       </Field>
-      <Field label="Tipo de bebida e quantidade"><input value={a.etilismoDetalhe} onChange={e => set("etilismoDetalhe", e.target.value)} placeholder="ex: cerveja, 2 latas nos fins de semana" /></Field>
-      <Field label="Atividade física">
-        <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
-          {["Sedentário", "Irregular", "Regular (≥150 min/semana)"].map(opt => (
-            <label key={opt} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px" }}>
-              <input type="radio" name="af" checked={a.atividadeFisica === opt} onChange={() => set("atividadeFisica", opt)} />{opt}
-            </label>
-          ))}
-        </div>
-      </Field>
-      <Field label="Cirurgias prévias"><textarea rows={2} value={a.cirurgias} onChange={e => set("cirurgias", e.target.value)} /></Field>
-      <Field label="Internamentos no último ano"><textarea rows={2} value={a.internamentos} onChange={e => set("internamentos", e.target.value)} /></Field>
-      <Field label="Alergias"><input value={a.alergias} onChange={e => set("alergias", e.target.value)} /></Field>
-      <Field label="Histórico familiar"><textarea rows={2} value={a.historicoFamiliar} onChange={e => set("historicoFamiliar", e.target.value)} /></Field>
+      {a.etilismo && a.etilismo !== "Nega" && (
+        <Row cols="repeat(4, 1fr)">
+          <Field label="Tipo de bebida"><input value={a.etilismoTipo || ""} onChange={e => set("etilismoTipo", e.target.value)} placeholder="ex: cerveja, vinho..." /></Field>
+          <Field label="Frequência"><input value={a.etilismoFrequencia || ""} onChange={e => set("etilismoFrequencia", e.target.value)} placeholder="ex: diário, fins de semana..." /></Field>
+          <Field label="Início (ano)"><input value={a.etilismoInicio || ""} onChange={e => set("etilismoInicio", e.target.value)} /></Field>
+          {a.etilismo === "Ex-etilista" && <Field label="Cessou (ano)"><input value={a.etilismoCessou || ""} onChange={e => set("etilismoCessou", e.target.value)} /></Field>}
+        </Row>
+      )}
+      <Field label="Atividade física"><input value={a.atividadeFisica || ""} onChange={e => set("atividadeFisica", e.target.value)} placeholder="ex: sedentário, caminhada 3x/semana..." /></Field>
+      <Field label="Cirurgias prévias"><textarea rows={2} value={a.cirurgias || ""} onChange={e => set("cirurgias", e.target.value)} /></Field>
+      <Field label="Internamentos no último ano"><textarea rows={2} value={a.internamentos || ""} onChange={e => set("internamentos", e.target.value)} /></Field>
+      <Field label="Alergias"><input value={a.alergias || ""} onChange={e => set("alergias", e.target.value)} /></Field>
+      <Field label="Histórico familiar"><textarea rows={2} value={a.historicoFamiliar || ""} onChange={e => set("historicoFamiliar", e.target.value)} /></Field>
     </SectionCard>
   );
 }
@@ -1369,22 +1393,22 @@ function QueixasTab({ consulta, updateConsulta }) {
 }
 
 function AgaTab({ consulta, updateConsulta }) {
-  const aga = consulta.aga;
+  const aga = consulta.aga || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, aga: { ...p.aga, [k]: v } }));
 
   const AIVD_ITEMS = ["Telefone","Transporte","Compras","Preparar refeições","Tarefas domésticas","Trabalhos manuais","Lavar roupas","Medicações","Finanças"];
   const ABVD_ITEMS = ["Banho","Vestir-se","Higiene pessoal","Transferência","Continência","Alimentação"];
   const FRAIL_ITEMS = [
-    { key: "fatigue", label: "Fatigue — fadiga" },
-    { key: "resistance", label: "Resistance — resistência" },
-    { key: "ambulation", label: "Ambulation — deambulação" },
-    { key: "illness", label: "Illness — >5 doenças" },
-    { key: "loss", label: "Loss — perda de peso" },
+    { key: "fatigue", label: "Se sente cansado/fadigado na maior parte do tempo na última semana?" },
+    { key: "resistance", label: "Tem dificuldade de subir um lance de escadas sozinho?" },
+    { key: "ambulation", label: "Tem dificuldade para caminhar um quarteirão sozinho?" },
+    { key: "illness", label: "Tem diagnóstico de 5 ou mais doenças (HAS, DM, CA, IC, DAC, DPOC, ASMA, OA, AVC)?" },
+    { key: "loss", label: "Teve perda de peso não intencional nos últimos 6 meses (5%)?" },
   ];
 
-  const aivdCount = AIVD_ITEMS.filter(it => aga.aivd[it]).length;
-  const abvdCount = ABVD_ITEMS.filter(it => aga.abvd[it]).length;
-  const frailCount = FRAIL_ITEMS.filter(it => aga.frail[it.key]).length;
+  const aivdCount = AIVD_ITEMS.filter(it => aga.aivd && aga.aivd[it]).length;
+  const abvdCount = ABVD_ITEMS.filter(it => aga.abvd && aga.abvd[it]).length;
+  const frailCount = FRAIL_ITEMS.filter(it => aga.frail && aga.frail[it.key]).length;
   const frailClass = frailCount === 0 ? "Robusto" : frailCount <= 2 ? "Pré-frágil" : "Frágil";
   const frailColor = frailCount === 0 ? "success" : frailCount <= 2 ? "warning" : "danger";
 
@@ -1394,9 +1418,9 @@ function AgaTab({ consulta, updateConsulta }) {
   const gdsNum = parseInt(aga.gds15, 10);
   const gdsPositive = !isNaN(gdsNum) && gdsNum >= 6;
 
-  const toggleAivd = (item) => set("aivd", { ...aga.aivd, [item]: !aga.aivd[item] });
-  const toggleAbvd = (item) => set("abvd", { ...aga.abvd, [item]: !aga.abvd[item] });
-  const toggleFrail = (key) => set("frail", { ...aga.frail, [key]: !aga.frail[key] });
+  const toggleAivd = (item) => set("aivd", { ...(aga.aivd || {}), [item]: !(aga.aivd || {})[item] });
+  const toggleAbvd = (item) => set("abvd", { ...(aga.abvd || {}), [item]: !(aga.abvd || {})[item] });
+  const toggleFrail = (key) => set("frail", { ...(aga.frail || {}), [key]: !(aga.frail || {})[key] });
 
   return (
     <div>
@@ -1405,7 +1429,7 @@ function AgaTab({ consulta, updateConsulta }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "4px" }}>
             {AIVD_ITEMS.map(item => (
               <label key={item} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-                <input type="checkbox" checked={!!aga.aivd[item]} onChange={() => toggleAivd(item)} />{item}
+                <input type="checkbox" checked={!!(aga.aivd && aga.aivd[item])} onChange={() => toggleAivd(item)} />{item}
               </label>
             ))}
           </div>
@@ -1414,7 +1438,7 @@ function AgaTab({ consulta, updateConsulta }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "4px" }}>
             {ABVD_ITEMS.map(item => (
               <label key={item} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-                <input type="checkbox" checked={!!aga.abvd[item]} onChange={() => toggleAbvd(item)} />{item}
+                <input type="checkbox" checked={!!(aga.abvd && aga.abvd[item])} onChange={() => toggleAbvd(item)} />{item}
               </label>
             ))}
           </div>
@@ -1422,15 +1446,30 @@ function AgaTab({ consulta, updateConsulta }) {
       </SectionCard>
 
       <SectionCard title="Mobilidade" icon="ti-wheelchair">
-        <Field label="Marcha"><RadioGroup name="marcha" value={aga.marcha} onChange={v => set("marcha", v)} options={[{value:"preservada",label:"Preservada"},{value:"lentificacao",label:"Lentificação"},{value:"auxilio",label:"Com auxílio"}]} /></Field>
+        <Field label="Marcha"><RadioGroup name="marcha" value={aga.marcha} onChange={v => set("marcha", v)} options={[{value:"preservada",label:"Preservada"},{value:"lentificada",label:"Lentificada"},{value:"auxilio",label:"Com auxílio"}]} /></Field>
         <Field label="Dispositivo"><RadioGroup name="disp" value={aga.dispositivo} onChange={v => set("dispositivo", v)} options={[{value:"nenhum",label:"Nenhum"},{value:"bengala",label:"Bengala"},{value:"andador",label:"Andador"},{value:"cadeira",label:"Cadeira de rodas"}]} /></Field>
+        <Field label="Queda no último ano">
+          <RadioGroup name="quedas" value={aga.quedas} onChange={v => set("quedas", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} />
+        </Field>
+        {aga.quedas === "sim" && (
+          <>
+            <Field label="Número de quedas"><input value={aga.quedasNum || ""} onChange={e => set("quedasNum", e.target.value)} style={{ maxWidth: "100px" }} /></Field>
+            <Field label="Descrição (circunstância, local, mecanismo, consequências)"><textarea rows={2} value={aga.quedasDescricao || ""} onChange={e => set("quedasDescricao", e.target.value)} /></Field>
+            <Row>
+              <Field label="Fraturas associadas"><RadioGroup name="fraturas" value={aga.fraturas} onChange={v => set("fraturas", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+              <Field label="TCE associado"><RadioGroup name="tce" value={aga.tce} onChange={v => set("tce", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+            </Row>
+          </>
+        )}
       </SectionCard>
 
       <SectionCard title="Fragilidade (FRAIL)" icon="ti-heart-rate-monitor">
-        <div style={{ display: "grid", gap: "4px", marginBottom: "10px" }}>
+        <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Resposta "Sim" = 1 ponto em cada item</p>
+        <div style={{ display: "grid", gap: "8px", marginBottom: "10px" }}>
           {FRAIL_ITEMS.map(it => (
-            <label key={it.key} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px" }}>
-              <input type="checkbox" checked={!!aga.frail[it.key]} onChange={() => toggleFrail(it.key)} />{it.label}
+            <label key={it.key} style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "14px", cursor: "pointer" }}>
+              <input type="checkbox" checked={!!(aga.frail && aga.frail[it.key])} onChange={() => toggleFrail(it.key)} style={{ marginTop: "3px", flexShrink: 0 }} />
+              <span>{it.label}</span>
             </label>
           ))}
         </div>
@@ -1446,11 +1485,11 @@ function AgaTab({ consulta, updateConsulta }) {
         </Field>
         {!aga.semQueixasCognitivas && (
           <>
-            <Field label="Descrição da queixa cognitiva"><textarea rows={2} value={aga.queixasCognitivasDescricao} onChange={e => set("queixasCognitivasDescricao", e.target.value)} placeholder="ex: esquecimento de compromissos, dificuldade para encontrar palavras..." /></Field>
+            <Field label="Descrição da queixa cognitiva"><textarea rows={2} value={aga.queixasCognitivasDescricao || ""} onChange={e => set("queixasCognitivasDescricao", e.target.value)} placeholder="ex: esquecimento de compromissos, dificuldade para encontrar palavras..." /></Field>
             <Row cols="repeat(3, 1fr)">
-              <Field label="Mini-Cog"><input value={aga.minicog} onChange={e => set("minicog", e.target.value)} /></Field>
-              <Field label="MEEM"><input value={aga.meem} onChange={e => set("meem", e.target.value)} /></Field>
-              <Field label="MoCA"><input value={aga.moca} onChange={e => set("moca", e.target.value)} /></Field>
+              <Field label="Mini-Cog"><input value={aga.minicog || ""} onChange={e => set("minicog", e.target.value)} /></Field>
+              <Field label="MEEM"><input value={aga.meem || ""} onChange={e => set("meem", e.target.value)} /></Field>
+              <Field label="MoCA"><input value={aga.moca || ""} onChange={e => set("moca", e.target.value)} /></Field>
             </Row>
           </>
         )}
@@ -1465,71 +1504,81 @@ function AgaTab({ consulta, updateConsulta }) {
         </Field>
         {!aga.semQueixasHumor && (
           <>
-            <Field label="Descrição da queixa de humor"><textarea rows={2} value={aga.queixasHumorDescricao} onChange={e => set("queixasHumorDescricao", e.target.value)} placeholder="ex: tristeza, anedonia, irritabilidade, alterações de sono associadas..." /></Field>
+            <Field label="Descrição da queixa de humor"><textarea rows={2} value={aga.queixasHumorDescricao || ""} onChange={e => set("queixasHumorDescricao", e.target.value)} placeholder="ex: tristeza, anedonia, irritabilidade..." /></Field>
             <Field label="GDS-15 (pontuação)" hint="Pontuação ≥6 sugere rastreio positivo para sintomas depressivos">
-              <input type="number" min="0" max="15" value={aga.gds15} onChange={e => set("gds15", e.target.value)} style={{ maxWidth: "100px" }} />
+              <input type="number" min="0" max="15" value={aga.gds15 || ""} onChange={e => set("gds15", e.target.value)} style={{ maxWidth: "100px" }} />
             </Field>
             {gdsPositive && <Alert type="warning">GDS-15 = {gdsNum}: rastreio positivo para sintomas depressivos. Considerar avaliação complementar.</Alert>}
           </>
         )}
       </SectionCard>
 
-      <SectionCard title="Quedas" icon="ti-alert-octagon">
-        <Field label="Quedas no último ano">
-          <RadioGroup name="quedas" value={aga.quedas} onChange={v => set("quedas", v)} options={[{value:"nega",label:"Nega"},{value:"sim",label:"Sim"}]} />
+      <SectionCard title="Sono" icon="ti-moon">
+        <Field label="">
+          <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", cursor: "pointer" }}>
+            <input type="checkbox" checked={!!aga.semQueixasSono} onChange={e => set("semQueixasSono", e.target.checked)} />
+            Sem queixas de sono
+          </label>
         </Field>
-        {aga.quedas === "sim" && (
-          <>
-            <Field label="Número de quedas"><input value={aga.quedasNum} onChange={e => set("quedasNum", e.target.value)} style={{ maxWidth: "100px" }} /></Field>
-            <Field label="Descreva como foi a queda"><textarea rows={2} value={aga.quedasDescricao} onChange={e => set("quedasDescricao", e.target.value)} placeholder="ex: circunstância, local, mecanismo, consequências..." /></Field>
-          </>
+        {!aga.semQueixasSono && (
+          <Row>
+            <Field label="Roncos"><input value={aga.roncos || ""} onChange={e => set("roncos", e.target.value)} placeholder="Sim / Não / frequência..." /></Field>
+            <Field label="Sonolência diurna / Cochilos"><input value={aga.sonolenciaDiurna || ""} onChange={e => set("sonolenciaDiurna", e.target.value)} /></Field>
+            <Field label="Higiene do sono"><input value={aga.higieneSono || ""} onChange={e => set("higieneSono", e.target.value)} placeholder="adequada / inadequada..." /></Field>
+          </Row>
         )}
-        <Field label="Fraturas associadas"><RadioGroup name="fraturas" value={aga.fraturas} onChange={v => set("fraturas", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
-        <Field label="TCE associado"><RadioGroup name="tce" value={aga.tce} onChange={v => set("tce", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
       </SectionCard>
 
-      <SectionCard title="Sono" icon="ti-moon">
-        <Field label="Padrão de sono / queixas"><textarea rows={2} value={aga.sono} onChange={e => set("sono", e.target.value)} /></Field>
+      <SectionCard title="Sensorial" icon="ti-eye">
+        <Row>
+          <Field label="Visão"><RadioGroup name="visao" value={aga.visao} onChange={v => set("visao", v)} options={[{value:"preservada",label:"Preservada"},{value:"alterada",label:"Alterada"}]} /></Field>
+          <Field label="Uso de lentes corretivas?"><RadioGroup name="visaoLentes" value={aga.visaoLentes} onChange={v => set("visaoLentes", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+        </Row>
+        <Row>
+          <Field label="Audição"><RadioGroup name="audicao" value={aga.audicao} onChange={v => set("audicao", v)} options={[{value:"preservada",label:"Preservada"},{value:"alterada",label:"Alterada"}]} /></Field>
+          <Field label="Uso de aparelho auditivo?"><RadioGroup name="audicaoAparelho" value={aga.audicaoAparelho} onChange={v => set("audicaoAparelho", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+        </Row>
+      </SectionCard>
+
+      <SectionCard title="Continências" icon="ti-droplet">
+        <Row>
+          <Field label="Incontinência urinária?"><RadioGroup name="incUrin" value={aga.incontinenciaUrinaria} onChange={v => set("incontinenciaUrinaria", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+          <Field label="Incontinência fecal?"><RadioGroup name="incFecal" value={aga.incontinenciaFecal} onChange={v => set("incontinenciaFecal", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+          <Field label="Constipação?"><RadioGroup name="constipacao" value={aga.constipacao} onChange={v => set("constipacao", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+        </Row>
       </SectionCard>
 
       <SectionCard title="Nutrição" icon="ti-apple">
-        <Row cols="repeat(3, 1fr)">
-          <Field label="Peso (kg)"><input type="number" value={aga.peso} onChange={e => set("peso", e.target.value)} /></Field>
-          <Field label="Altura (m)"><input type="number" step="0.01" value={aga.altura} onChange={e => set("altura", e.target.value)} /></Field>
+        <Row cols="repeat(4, 1fr)">
+          <Field label="Peso atual (kg)"><input type="number" value={aga.peso || ""} onChange={e => set("peso", e.target.value)} /></Field>
+          <Field label="Peso habitual (kg)"><input type="number" value={aga.pesoHabitual || ""} onChange={e => set("pesoHabitual", e.target.value)} /></Field>
+          <Field label="Altura (m)"><input type="number" step="0.01" value={aga.altura || ""} onChange={e => set("altura", e.target.value)} /></Field>
           <Field label="IMC calculado" hint={imcLabel}>
             <input value={imc || ""} disabled style={{ background: "var(--color-background-secondary)" }} />
           </Field>
         </Row>
-        <Field label="Perda de peso não intencional">
+        <Field label="Perda de peso não intencional?">
           <RadioGroup name="perdapeso" value={aga.perdaPeso} onChange={v => set("perdaPeso", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} />
         </Field>
         {aga.perdaPeso === "sim" && (
-          <Row cols="repeat(2, 1fr)">
-            <Field label="Percentual (%)"><input value={aga.perdaPesoPerc} onChange={e => set("perdaPesoPerc", e.target.value)} /></Field>
-            <Field label="Em quantos meses"><input value={aga.perdaPesoMeses} onChange={e => set("perdaPesoMeses", e.target.value)} /></Field>
-          </Row>
+          <Field label="Quanto (kg)?"><input type="number" value={aga.perdaPesoKg || ""} onChange={e => set("perdaPesoKg", e.target.value)} style={{ maxWidth: "120px" }} /></Field>
         )}
-        <Field label="Apetite"><RadioGroup name="apetite" value={aga.apetite} onChange={v => set("apetite", v)} options={[{value:"preservado",label:"Preservado"},{value:"reduzido",label:"Reduzido"},{value:"aumentado",label:"Aumentado"}]} /></Field>
-        <Field label="Disfagia"><RadioGroup name="disfagia" value={aga.disfagia} onChange={v => set("disfagia", v)} options={[{value:"ausente",label:"Ausente"},{value:"presente",label:"Presente"}]} /></Field>
+        <Row>
+          <Field label="Apetite"><RadioGroup name="apetite" value={aga.apetite} onChange={v => set("apetite", v)} options={[{value:"preservado",label:"Preservado"},{value:"reduzido",label:"Reduzido"},{value:"aumentado",label:"Aumentado"}]} /></Field>
+          <Field label="Disfagia"><RadioGroup name="disfagia" value={aga.disfagia} onChange={v => set("disfagia", v)} options={[{value:"ausente",label:"Ausente"},{value:"presente",label:"Presente"}]} /></Field>
+        </Row>
         {aga.disfagia === "presente" && (
-          <Field label="Tipo de dieta"><input value={aga.disfagiaDieta} onChange={e => set("disfagiaDieta", e.target.value)} placeholder="ex: dieta pastosa, líquidos espessados" /></Field>
+          <Field label="Tipo de dieta"><input value={aga.disfagiaDieta || ""} onChange={e => set("disfagiaDieta", e.target.value)} placeholder="ex: pastosa, líquidos espessados" /></Field>
         )}
-        <Field label="Problemas dentários / uso de prótese"><RadioGroup name="dentarios" value={aga.dentarios} onChange={v => set("dentarios", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
-      </SectionCard>
-
-      <SectionCard title="Continências" icon="ti-droplet">
-        <Field label="TGI (fecal)"><RadioGroup name="tgi" value={aga.tgi} onChange={v => set("tgi", v)} options={[{value:"continente",label:"Continente"},{value:"ocasional",label:"Incontinência ocasional"},{value:"frequente",label:"Incontinência frequente"}]} /></Field>
-        <Field label="TGU (urinária)"><RadioGroup name="tgu" value={aga.tgu} onChange={v => set("tgu", v)} options={[{value:"continente",label:"Continente"},{value:"esforco",label:"De esforço"},{value:"urgencia",label:"De urgência"},{value:"mista",label:"Mista"}]} /></Field>
-      </SectionCard>
-
-      <SectionCard title="Sensorial" icon="ti-eye">
-        <Field label="Visão"><RadioGroup name="visao" value={aga.visao} onChange={v => set("visao", v)} options={[{value:"preservada",label:"Preservada"},{value:"corrigido",label:"Déficit corrigido"},{value:"nao_corrigido",label:"Déficit não corrigido"}]} /></Field>
-        <Field label="Audição"><RadioGroup name="audicao" value={aga.audicao} onChange={v => set("audicao", v)} options={[{value:"preservada",label:"Preservada"},{value:"corrigido",label:"Déficit corrigido (AASI)"},{value:"nao_corrigido",label:"Déficit não corrigido"}]} /></Field>
-      </SectionCard>
-
-      <SectionCard title="Atividade física e lazer" icon="ti-run" defaultOpen={false}>
-        <Field label="Atividade física habitual"><input value={aga.atividadeFisicaLazer} onChange={e => set("atividadeFisicaLazer", e.target.value)} /></Field>
-        <Field label="Atividades de lazer / interação social"><input value={aga.lazer} onChange={e => set("lazer", e.target.value)} /></Field>
+        <Row>
+          <Field label="Problemas dentários?"><RadioGroup name="dentarios" value={aga.problemasDentarios} onChange={v => set("problemasDentarios", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+          <Field label="Prótese dentária?"><RadioGroup name="protese" value={aga.proteseDentaria} onChange={v => set("proteseDentaria", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+        </Row>
+        <Row>
+          <Field label="Teste de força (kgf)" hint="Homens: >27 kgf / Mulheres: >19 kgf"><input value={aga.testeForca || ""} onChange={e => set("testeForca", e.target.value)} /></Field>
+          <Field label="Circunferência da panturrilha (cm)" hint="Homens: >34 cm / Mulheres: >33 cm"><input value={aga.circPanturrilha || ""} onChange={e => set("circPanturrilha", e.target.value)} /></Field>
+          <Field label="Atividade física"><input value={aga.atividadeFisica || ""} onChange={e => set("atividadeFisica", e.target.value)} placeholder="ex: caminhada 3x/semana..." /></Field>
+        </Row>
       </SectionCard>
     </div>
   );
@@ -1750,24 +1799,45 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
   );
 }
 
-function ExameTab({ consulta, updateConsulta }) {
-  const e = consulta.exameFisico;
+function ExameTab({ consulta, updateConsulta, patient }) {
+  const e = consulta.exameFisico || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, exameFisico: { ...p.exameFisico, [k]: v } }));
+  const sexo = patient?.ident?.sexo;
+
+  const geralPadrao = "EG bom, consciente, orientado, eupneico, corado, hidratado, anictérico, acianótico, afebril ao toque.";
+  const extPadrao = "Sem edemas, TEC 2s, panturrilhas livres.";
+  const snPadrao = "Glasgow 15, PIFR, sem déficits focais.";
+  // Pele só para mulher no documento, mas mantemos para ambos
+  const pelePadrao = sexo === "F" ? "" : "Xerótica, íntegra.";
+
   return (
     <div>
       <SectionCard title="Sinais vitais" icon="ti-heartbeat">
-        <Row cols="repeat(5, 1fr)">
-          <Field label="PA (mmHg)"><input value={e.pa} onChange={ev => set("pa", ev.target.value)} /></Field>
-          <Field label="FC (bpm)"><input value={e.fc} onChange={ev => set("fc", ev.target.value)} /></Field>
-          <Field label="FR (irpm)"><input value={e.fr} onChange={ev => set("fr", ev.target.value)} /></Field>
-          <Field label="SatO2 (%AA)"><input value={e.sato2} onChange={ev => set("sato2", ev.target.value)} /></Field>
-          <Field label="Temp (°C)"><input value={e.temp} onChange={ev => set("temp", ev.target.value)} /></Field>
+        <Row cols="repeat(3, 1fr)">
+          <Field label="PA sentado (mmHg)"><input value={e.paSentado || ""} onChange={ev => set("paSentado", ev.target.value)} placeholder="ex: 130/80" /></Field>
+          <Field label="PA em pé após 3 min (mmHg)" hint="Para triagem de hipotensão ortostática"><input value={e.paEmPe || ""} onChange={ev => set("paEmPe", ev.target.value)} placeholder="ex: 120/75" /></Field>
+          <Field label="FC (bpm)"><input value={e.fc || ""} onChange={ev => set("fc", ev.target.value)} /></Field>
+        </Row>
+        <Row cols="repeat(3, 1fr)">
+          <Field label="SatO2 (%)"><input value={e.sato2 || ""} onChange={ev => set("sato2", ev.target.value)} /></Field>
+          <Field label="FR (irpm)"><input value={e.fr || ""} onChange={ev => set("fr", ev.target.value)} /></Field>
+          <Field label="Temp (°C)"><input value={e.temp || ""} onChange={ev => set("temp", ev.target.value)} /></Field>
         </Row>
       </SectionCard>
       <SectionCard title="Exame físico segmentar" icon="ti-stethoscope">
         <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Achados padrão pré-preenchidos — edite conforme o exame real.</p>
-        {[["geral","Geral"],["acv","ACV"],["ar","AR"],["abd","ABD"],["ext","EXT"],["sn","SN"],["pele","Pele"]].map(([k,label]) => (
-          <Field key={k} label={label}><textarea rows={2} value={e[k]} onChange={ev => set(k, ev.target.value)} /></Field>
+        {[
+          ["geral","Geral", geralPadrao],
+          ["acv","ACV","RCR em 2T, BNF, S/S."],
+          ["ar","AR","MV+ em AHT, S/RA."],
+          ["abd","ABD","Semigloboso, depressível, normotimpânico, indolor à palpação, sem VMG ou massas palpáveis, RHA+."],
+          ["ext","EXT", extPadrao],
+          ["sn","SN", snPadrao],
+          ["pele","Pele", pelePadrao],
+        ].map(([k, label, padrao]) => (
+          <Field key={k} label={label}>
+            <textarea rows={2} value={e[k] !== undefined ? e[k] : padrao} onChange={ev => set(k, ev.target.value)} />
+          </Field>
         ))}
       </SectionCard>
     </div>
@@ -1798,7 +1868,7 @@ function ExamesTab({ consulta, updateConsulta }) {
 }
 
 function PlanoTab({ consulta, updateConsulta }) {
-  const pl = consulta.plano;
+  const pl = consulta.plano || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, plano: { ...p.plano, [k]: v } }));
 
   const pend = consulta.pendencias || [];
@@ -1817,11 +1887,11 @@ function PlanoTab({ consulta, updateConsulta }) {
   return (
     <div>
       <SectionCard title="Plano terapêutico" icon="ti-target-arrow">
-        <Field label="Orientações gerais"><textarea rows={2} value={pl.orientacoes} onChange={e => set("orientacoes", e.target.value)} /></Field>
-        <Field label="Ajuste medicamentoso"><textarea rows={3} value={pl.ajuste} onChange={e => set("ajuste", e.target.value)} /></Field>
-        <Field label="Exames solicitados"><textarea rows={3} value={pl.exames} onChange={e => set("exames", e.target.value)} /></Field>
-        <Field label="Encaminhamentos"><textarea rows={2} value={pl.encaminhamentos} onChange={e => set("encaminhamentos", e.target.value)} /></Field>
-        <Field label="Retorno agendado em"><input type="date" value={pl.retorno} onChange={e => set("retorno", e.target.value)} /></Field>
+        <Field label="1. Ajuste medicamentoso"><textarea rows={4} value={pl.ajuste || ""} onChange={e => set("ajuste", e.target.value)} placeholder="Descreva os ajustes de medicações..." /></Field>
+        <Field label="2. Solicito"><textarea rows={3} value={pl.solicito || ""} onChange={e => set("solicito", e.target.value)} placeholder="ex: LABORATÓRIO — Hemograma, PCR, Ureia e Creatinina..." /></Field>
+        <Field label="3. Orientações"><textarea rows={3} value={pl.orientacoes || ""} onChange={e => set("orientacoes", e.target.value)} placeholder="ex: Atualização vacinal, importância de MEV, higiene do sono..." /></Field>
+        <Field label="4. Encaminho para"><textarea rows={3} value={pl.encaminhamentos || ""} onChange={e => set("encaminhamentos", e.target.value)} placeholder="ex: Fisioterapia motora, Nutrição, Psicologia, Oftalmologia, ORL..." /></Field>
+        <Field label="5. Retorno agendado em"><input type="date" value={pl.retorno || ""} onChange={e => set("retorno", e.target.value)} /></Field>
       </SectionCard>
 
       <SectionCard title="Pendências para próxima consulta" icon="ti-checklist">
@@ -2926,19 +2996,18 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div>AIVD independentes: {Object.values(aga.aivd || {}).filter(Boolean).length}/9 ({Object.keys(aga.aivd || {}).filter(k => aga.aivd[k]).join(", ") || "—"})</div>
       <div>ABVD independentes: {Object.values(aga.abvd || {}).filter(Boolean).length}/6 ({Object.keys(aga.abvd || {}).filter(k => aga.abvd[k]).join(", ") || "—"})</div>
       <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}</div>
-      <div>FRAIL: {Object.values(aga.frail || {}).filter(Boolean).length}/5 critérios ({Object.keys(aga.frail || {}).filter(k => aga.frail[k]).join(", ") || "nenhum"})</div>
+      <div>Quedas: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Não"} · Fraturas: {aga.fraturas || "—"} · TCE: {aga.tce || "—"}</div>
+      <div>FRAIL: {Object.values(aga.frail || {}).filter(Boolean).length}/5 critérios — {Object.values(aga.frail || {}).filter(Boolean).length === 0 ? "Robusto" : Object.values(aga.frail || {}).filter(Boolean).length <= 2 ? "Pré-frágil" : "Frágil"}</div>
       <div>Cognição: {aga.semQueixasCognitivas ? "Sem queixas cognitivas" : `Mini-Cog: ${aga.minicog || "—"} · MEEM: ${aga.meem || "—"} · MoCA: ${aga.moca || "—"}${aga.queixasCognitivasDescricao ? " — " + aga.queixasCognitivasDescricao : ""}`}</div>
       <div>Humor: {aga.semQueixasHumor ? "Sem queixas de humor" : `GDS-15: ${aga.gds15 || "—"}${aga.queixasHumorDescricao ? " — " + aga.queixasHumorDescricao : ""}`}</div>
-      <div>Quedas no último ano: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Nega"} · Fraturas: {aga.fraturas || "—"} · TCE: {aga.tce || "—"}</div>
-      <div>Sono: {aga.sono || "—"}</div>
-      <div>Peso: {aga.peso || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
-      <div>Perda de peso não intencional: {aga.perdaPeso === "sim" ? `Sim (${aga.perdaPesoPerc || "?"}% em ${aga.perdaPesoMeses || "?"} meses)` : "Não"}</div>
-      <div>Apetite: {aga.apetite || "—"} · Disfagia: {aga.disfagia || "—"} {aga.disfagiaDieta && `(${aga.disfagiaDieta})`}</div>
-      <div>Problemas dentários/prótese: {aga.dentarios || "—"}</div>
-      <div>TGI: {aga.tgi || "—"} · TGU: {aga.tgu || "—"}</div>
-      <div>Visão: {aga.visao || "—"} · Audição: {aga.audicao || "—"}</div>
-      <div>Atividade física habitual: {aga.atividadeFisicaLazer || "—"}</div>
-      <div>Atividades de lazer/interação social: {aga.lazer || "—"}</div>
+      <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}</div>
+      <div>Visão: {aga.visao || "—"}{aga.visaoLentes === "sim" ? " (usa lentes corretivas)" : ""} · Audição: {aga.audicao || "—"}{aga.audicaoAparelho === "sim" ? " (usa aparelho auditivo)" : ""}</div>
+      <div>Incontinência urinária: {aga.incontinenciaUrinaria === "sim" ? "Sim" : "Não"} · Incontinência fecal: {aga.incontinenciaFecal === "sim" ? "Sim" : "Não"} · Constipação: {aga.constipacao === "sim" ? "Sim" : "Não"}</div>
+      <div>Peso: {aga.peso || "—"} kg · Peso habitual: {aga.pesoHabitual || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
+      <div>Perda de peso: {aga.perdaPeso === "sim" ? `Sim (${aga.perdaPesoKg || "?"} kg)` : "Não"}</div>
+      <div>Apetite: {aga.apetite || "—"} · Disfagia: {aga.disfagia || "—"}{aga.disfagiaDieta ? ` (${aga.disfagiaDieta})` : ""}</div>
+      <div>Problemas dentários: {aga.problemasDentarios === "sim" ? "Sim" : "Não"} · Prótese dentária: {aga.proteseDentaria === "sim" ? "Sim" : "Não"}</div>
+      <div>Teste de força: {aga.testeForca || "—"} kgf · Circunferência da panturrilha: {aga.circPanturrilha || "—"} cm · Atividade física: {aga.atividadeFisica || "—"}</div>
 
       <div style={sectionTitle}>PREVENÇÃO E VACINAS</div>
       {(() => {
@@ -2998,7 +3067,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       })()}
 
       <div style={sectionTitle}>EXAME FÍSICO</div>
-      <div>PA: {ef.pa || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}</div>
+      <div>PA sentado: {ef.paSentado || "—"} · PA em pé (3 min): {ef.paEmPe || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}</div>
       <div>Geral: {ef.geral || "—"}</div>
       <div>ACV: {ef.acv || "—"}</div>
       <div>AR: {ef.ar || "—"}</div>
@@ -3011,15 +3080,15 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       {consulta.imagemTexto && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Imagem/outros:</div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.imagemTexto}</div></>)}
 
       <div style={sectionTitle}>PLANO TERAPÊUTICO</div>
-      <div><strong>Orientações:</strong></div>
-      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.orientacoes || "—"}</div>
-      <div><strong>Ajuste medicamentoso:</strong></div>
+      <div><strong>1. Ajuste medicamentoso:</strong></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.ajuste || "—"}</div>
-      <div><strong>Exames solicitados:</strong></div>
-      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.exames || "—"}</div>
-      <div><strong>Encaminhamentos:</strong></div>
+      <div><strong>2. Solicito:</strong></div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.solicito || "—"}</div>
+      <div><strong>3. Orientações:</strong></div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.orientacoes || "—"}</div>
+      <div><strong>4. Encaminho para:</strong></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.encaminhamentos || "—"}</div>
-      <div>Retorno: {pl.retorno ? fmtDate(pl.retorno) : "—"}</div>
+      <div>5. Retorno agendado em: {pl.retorno ? fmtDate(pl.retorno) : "—"}</div>
 
       <div style={sectionTitle}>PENDÊNCIAS</div>
       {pend.length === 0 ? <div>Nenhuma pendência registrada.</div> : (
