@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { listPatients, savePatient, deletePatient as apiDeletePatient } from './api.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
-import { EXCEL_MODELO_B64 } from './excelModelo.js';
 import { preencherExcel } from './excelPreencher.js';
 
 const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática","DRC","DAC","IC","FA","AVC","DPOC","Asma","HPB","Incontinência urinária","DRGE","Constipação crônica","Osteoporose","Osteoartrose","Hipotireoidismo","Transtorno depressivo","TAG","Insônia","Síndrome demencial","Doença de Parkinson","Neoplasia","DHC","Insuficiência venosa crônica","DAOP","Catarata","Glaucoma","Déficit auditivo A/E"];
@@ -790,7 +789,7 @@ export default function App() {
     const hoje = new Date().toLocaleDateString('pt-BR');
     const nomePaciente = patient.ident.nome || 'paciente';
 
-    preencherExcel(EXCEL_MODELO_B64, {
+    preencherExcel({
       nome: nomePaciente,
       prontuario: patient.ident.prontuario || '',
       maeNome: patient.ident.maeNome || '',
