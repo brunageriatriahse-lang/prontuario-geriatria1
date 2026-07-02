@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { listPatients, savePatient, deletePatient as apiDeletePatient } from './api.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
-import { EXCEL_MODELO_B64 } from './excelModelo.js';
 
 const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática","DRC","DAC","IC","FA","AVC","DPOC","Asma","HPB","Incontinência urinária","DRGE","Constipação crônica","Osteoporose","Osteoartrose","Hipotireoidismo","Transtorno depressivo","TAG","Insônia","Síndrome demencial","Doença de Parkinson","Neoplasia","DHC","Insuficiência venosa crônica","DAOP","Catarata","Glaucoma","Déficit auditivo A/E"];
 
@@ -19,8 +18,8 @@ const PREVENCAO_ESPECIFICA = {
   "HPB": ["USG de rins e vias urinárias com resíduo pós-miccional","PSA total e livre"],
   "DPOC": ["Espirometria com prova broncodilatadora (anual)","RX de tórax PA e perfil","TC de tórax s/ contraste"],
   "Asma": ["Espirometria com prova broncodilatadora (anual)","RX de tórax PA e perfil","TC de tórax s/ contraste"],
-  "Insuficiência venosa crônica": ["USG Doppler venoso de MMII","USG Doppler arterial de MMII"],
-  "DAOP": ["USG Doppler arterial de MMII","USG Doppler venoso de MMII"],
+  "Insuficiência venosa crônica": ["USG Doppler venoso de MMII"],
+  "DAOP": ["USG Doppler arterial de MMII"],
 };
 
 const VACINAS = [
@@ -785,60 +784,44 @@ export default function App() {
   }
 
   function baixarReceituarios(patient) {
-    try {
-      // Converte base64 para ArrayBuffer
-      const binaryStr = atob(EXCEL_MODELO_B64);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-      const arrayBuffer = bytes.buffer;
+    const idade = calcIdade(patient.ident.dn);
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    const nomePaciente = patient.ident.nome || 'paciente';
 
-      // Importa SheetJS via CDN (já disponível como XLSX global em artifacts,
-      // mas aqui no app React carregamos dinamicamente)
-      if (typeof window.XLSX === 'undefined') {
-        // Carrega SheetJS dinamicamente se ainda não estiver disponível
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-        script.onload = () => _preencherEBaixar(patient, arrayBuffer);
-        script.onerror = () => alert('Não foi possível carregar a biblioteca Excel. Verifique sua conexão com a internet.');
-        document.head.appendChild(script);
-      } else {
-        _preencherEBaixar(patient, arrayBuffer);
-      }
-    } catch (e) {
-      console.error('Erro ao gerar Excel:', e);
-      alert('Erro ao gerar o arquivo Excel: ' + e.message);
-    }
+    // Chama a API serverless Python que preenche o Excel preservando formatação original
+    fetch('/api/receituarios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nome: nomePaciente,
+        prontuario: patient.ident.prontuario || '',
+        maeNome: patient.ident.maeNome || '',
+        idade: idade != null ? String(idade) : '',
+        sexo: patient.ident.sexo || '',
+        data: hoje,
+      }),
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Erro ao gerar o arquivo');
+        return res.blob();
+      })
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Receituarios_${nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim()}_${hoje.replace(/\//g, '-')}.xlsm`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      })
+      .catch(e => {
+        console.error('Erro ao baixar receituários:', e);
+        alert('Erro ao gerar o arquivo Excel: ' + e.message);
+      });
   }
 
-  function _preencherEBaixar(patient, arrayBuffer) {
-    try {
-      const XLSX = window.XLSX;
-      const wb = XLSX.read(arrayBuffer, { type: 'array', bookVBA: true });
-      const ws = wb.Sheets['Cadastro'];
-      if (!ws) { alert('Aba "Cadastro" não encontrada no modelo Excel.'); return; }
-
-      const idade = calcIdade(patient.ident.dn);
-      const hoje = new Date().toLocaleDateString('pt-BR');
-
-      // Preenche as células do Cadastro com dados do prontuário
-      ws['C7'] = { v: (patient.ident.nome || '').toUpperCase(), t: 's' };
-      ws['C8'] = { v: patient.ident.prontuario || '', t: 's' };
-      ws['C9'] = { v: (patient.ident.maeNome || '').toUpperCase(), t: 's' };
-      ws['C12'] = { v: idade != null ? idade : '', t: idade != null ? 'n' : 's' };
-      ws['C13'] = { v: patient.ident.sexo || '', t: 's' };
-      ws['C14'] = { v: 'GERIATRIA', t: 's' };
-      ws['C16'] = { v: hoje, t: 's' };
-
-      // Nome do arquivo com nome do paciente
-      const nomePaciente = (patient.ident.nome || 'paciente').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim();
-      const nomeArquivo = `Receituarios_${nomePaciente}_${hoje.replace(/\//g, '-')}.xlsm`;
-
-      XLSX.writeFile(wb, nomeArquivo, { bookType: 'xlsm', bookVBA: true });
-    } catch (e) {
-      console.error('Erro ao preencher Excel:', e);
-      alert('Erro ao preencher o arquivo Excel: ' + e.message);
-    }
-  }
+  function _preencherEBaixar() {} // mantido por compatibilidade (não usado)
 
   function createConsulta() {
     if (!activePatient) return;
@@ -1599,6 +1582,9 @@ function AgaTab({ consulta, updateConsulta }) {
             <Field label="Higiene do sono"><input value={aga.higieneSono || ""} onChange={e => set("higieneSono", e.target.value)} placeholder="adequada / inadequada..." /></Field>
           </Row>
         )}
+        <Field label="Observações sobre o sono">
+          <textarea rows={2} value={aga.sonoObservacoes || ""} onChange={e => set("sonoObservacoes", e.target.value)} placeholder="Descreva queixas, padrão de sono, uso de medicações para dormir..." />
+        </Field>
       </SectionCard>
 
       <SectionCard title="Sensorial" icon="ti-eye">
@@ -1614,15 +1600,31 @@ function AgaTab({ consulta, updateConsulta }) {
 
       <SectionCard title="Continências" icon="ti-droplet">
         <Row>
-          <Field label="Incontinência urinária?"><RadioGroup name="incUrin" value={aga.incontinenciaUrinaria} onChange={v => set("incontinenciaUrinaria", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
-          <Field label="Incontinência fecal?"><RadioGroup name="incFecal" value={aga.incontinenciaFecal} onChange={v => set("incontinenciaFecal", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
-          <Field label="Constipação?"><RadioGroup name="constipacao" value={aga.constipacao} onChange={v => set("constipacao", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+          <div>
+            <Field label="Incontinência urinária?"><RadioGroup name="incUrin" value={aga.incontinenciaUrinaria} onChange={v => set("incontinenciaUrinaria", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+            {aga.incontinenciaUrinaria === "sim" && (
+              <Field label="Descreva (tipo, frequência, uso de fralda...)">
+                <textarea rows={2} value={aga.incontinenciaUrinariaDes || ""} onChange={e => set("incontinenciaUrinariaDes", e.target.value)} placeholder="ex: urgência, esforço, mista, usa fralda..." />
+              </Field>
+            )}
+          </div>
+          <div>
+            <Field label="Incontinência fecal?"><RadioGroup name="incFecal" value={aga.incontinenciaFecal} onChange={v => set("incontinenciaFecal", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+            {aga.incontinenciaFecal === "sim" && (
+              <Field label="Descreva (frequência, consistência...)">
+                <textarea rows={2} value={aga.incontinenciaFecalDes || ""} onChange={e => set("incontinenciaFecalDes", e.target.value)} placeholder="ex: episódios frequentes, fezes líquidas..." />
+              </Field>
+            )}
+          </div>
+          <div>
+            <Field label="Constipação?"><RadioGroup name="constipacao" value={aga.constipacao} onChange={v => set("constipacao", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+            {aga.constipacao === "sim" && (
+              <Field label="Descreva (frequência, consistência, há quanto tempo...)">
+                <textarea rows={2} value={aga.constipacaoDescricao || ""} onChange={e => set("constipacaoDescricao", e.target.value)} placeholder="ex: evacua 1x/semana, fezes ressecadas, há 2 anos..." />
+              </Field>
+            )}
+          </div>
         </Row>
-        {aga.constipacao === "sim" && (
-          <Field label="Descreva a constipação (frequência, consistência, há quanto tempo...)">
-            <textarea rows={2} value={aga.constipacaoDescricao || ""} onChange={e => set("constipacaoDescricao", e.target.value)} placeholder="ex: evacua 1x/semana, fezes ressecadas, há 2 anos..." />
-          </Field>
-        )}
       </SectionCard>
 
       <SectionCard title="Nutrição" icon="ti-apple">
@@ -1651,7 +1653,14 @@ function AgaTab({ consulta, updateConsulta }) {
           <Field label="Tipo de dieta"><input value={aga.disfagiaDieta || ""} onChange={e => set("disfagiaDieta", e.target.value)} placeholder="ex: pastosa, líquidos espessados" /></Field>
         )}
         <Row cols="repeat(2, 1fr)">
-          <Field label="Problemas dentários?"><RadioGroup name="dentarios" value={aga.problemasDentarios} onChange={v => set("problemasDentarios", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+          <div>
+            <Field label="Problemas dentários?"><RadioGroup name="dentarios" value={aga.problemasDentarios} onChange={v => set("problemasDentarios", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
+            {aga.problemasDentarios === "sim" && (
+              <Field label="Descreva">
+                <textarea rows={2} value={aga.problemasDentariosDes || ""} onChange={e => set("problemasDentariosDes", e.target.value)} placeholder="ex: cáries, edentado, dor..." />
+              </Field>
+            )}
+          </div>
           <Field label="Prótese dentária?"><RadioGroup name="protese" value={aga.proteseDentaria} onChange={v => set("proteseDentaria", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
         </Row>
         <Row>
@@ -1890,12 +1899,14 @@ function ExameTab({ consulta, updateConsulta, patient }) {
     : "EG bom, consciente, orientado, eupneico, corado, hidratado, anictérico, acianótico, afebril ao toque.";
   const acvPadrao = "RCR em 2T, BNF, S/S.";
   const arPadrao = "MV+ em AHT, S/RA.";
-  const abdPadrao = F
-    ? "Plano, depressível, normotimpânico, indolor à palpação superficial e profunda, sem VMG ou massas palpáveis, RHA+."
-    : "Semigloboso, depressível, normotimpânico, indolor à palpação superficial e profunda, sem VMG ou massas palpáveis, RHA+.";
+  const abdPadrao = "Semigloboso, depressível, normotimpânico, indolor à palpação superficial e profunda, sem VMG ou massas palpáveis, RHA+.";
   const extPadrao = "Sem edemas, TEC 2s, panturrilhas livres.";
-  const snPadrao = "Glasgow 15, PIFR, sem déficits focais.";
-  const pelePadrao = F ? "Normocorada, hidratada, íntegra." : "Xerótica, íntegra.";
+  const snPadrao = F
+    ? "Glasgow 15, PIFR, sem déficits focais, sem sinais meníngeos."
+    : "Glasgow 15, PIFR, sem déficits focais, sem sinais meníngeos.";
+  const pelePadrao = F
+    ? "Normocorada, hidratada, íntegra."
+    : "Xerótica, íntegra.";
 
   const campos = [
     ["geral", "Geral", geralPadrao],
@@ -1905,6 +1916,7 @@ function ExameTab({ consulta, updateConsulta, patient }) {
     ["ext", "EXT", extPadrao],
     ["sn", "SN", snPadrao],
     ["pele", "Pele", pelePadrao],
+    ["outros", "Outros", ""],
   ];
 
   return (
@@ -1931,7 +1943,7 @@ function ExameTab({ consulta, updateConsulta, patient }) {
         </p>
         {campos.map(([k, label, padrao]) => (
           <Field key={k} label={label}>
-            <textarea rows={2} value={e[k] !== undefined ? e[k] : padrao} onChange={ev => set(k, ev.target.value)} />
+            <textarea rows={2} value={e[k] !== undefined ? e[k] : padrao} onChange={ev => set(k, ev.target.value)} placeholder={k === "outros" ? "Outros achados relevantes..." : undefined} />
           </Field>
         ))}
       </SectionCard>
