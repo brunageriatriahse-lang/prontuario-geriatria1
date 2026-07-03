@@ -233,7 +233,33 @@ function emptyConsulta(base) {
     copy.data = new Date().toISOString().slice(0, 10);
     copy.createdAt = new Date().toISOString();
     copy.updatedAt = new Date().toISOString();
+    // Campos que devem começar em branco em cada nova consulta
+    copy.queixas = "";
+    copy.labsTexto = "";
+    copy.imagemTexto = "";
     copy.pendenciasConsultaAtual = "";
+    copy.plano = { ajuste: "", solicito: "", orientacoes: "", encaminhamentos: "", retorno: "" };
+    copy.docs = {
+      receitas: [],
+      receitasEspeciais: [],
+      examesSimplesLista: [],
+      examesEspeciais: [],
+      vacinacao: (base.docs && base.docs.vacinacao) ? base.docs.vacinacao : { selecionados: { "Influenza": true, "COVID-19": true, "Pneumocócica": true, "dT/dTpa": true, "Hepatite B": true, "Vírus sincicial respiratório (VSR)": true, "Herpes-zóster (VZR recombinante)": true } },
+    };
+    // Reseta exame físico para padrão (só mantém estrutura, não os valores preenchidos)
+    copy.exameFisico = {
+      paSentado: "", paEmPe: "", fc: "", fr: "", sato2: "", temp: "", peso: "", hgt: "",
+      geral: base.exameFisico?.geral || "",
+      acv: base.exameFisico?.acv || "",
+      ar: base.exameFisico?.ar || "",
+      abd: base.exameFisico?.abd || "",
+      ext: base.exameFisico?.ext || "",
+      sn: base.exameFisico?.sn || "",
+      pele: base.exameFisico?.pele || "",
+      outros: "",
+    };
+    // Pendências: mantém as não concluídas, marca como pendentes para nova consulta
+    copy.pendencias = (base.pendencias || []).filter(p => !p.done).map(p => ({ ...p, done: false }));
     return copy;
   }
   return {
@@ -244,7 +270,7 @@ function emptyConsulta(base) {
     problemas: {},
     problemasNotas: {},
     problemasCustom: [],
-    antecedentes: { tabagismo: "", cargaTabagica: "", etilismo: "", etilismoDetalhe: "", atividadeFisica: "", cirurgias: "", internamentos: "", alergias: "", historicoFamiliar: "" },
+    antecedentes: { tabagismo: "", tabagismoInicio: "", tabagismoCessou: "", macosDia: "", macosAno: "", etilismo: "", etilismoTipo: "", etilismoFrequencia: "", etilismoInicio: "", etilismoCessou: "", cirurgias: "", internamentos: "", alergias: "", historicoFamiliar: "" },
     medicacoesTexto: "",
     medicacoesPrevias: "",
     queixas: "",
@@ -315,13 +341,7 @@ const TABS = [
   { id: "plano", label: "Plano", icon: "ti-target-arrow" },
 ];
 
-const DOC_TABS = [
-  { id: "receita", label: "Receita", icon: "ti-prescription" },
-  { id: "receitaEspecial", label: "Receita especial", icon: "ti-shield-lock" },
-  { id: "exameSimples", label: "Exame simples", icon: "ti-flask" },
-  { id: "exameEspecial", label: "Exame especial", icon: "ti-x-ray" },
-  { id: "vacinacao", label: "Solicitação de vacinação", icon: "ti-vaccine" },
-];
+
 
 function Field({ label, children, hint }) {
   return (
@@ -470,7 +490,6 @@ export default function App() {
   const [view, setView] = useState("list");
   const [mode, setMode] = useState("prontuario");
   const [activeTab, setActiveTab] = useState("ident");
-  const [activeDocTab, setActiveDocTab] = useState("receita");
   const [saveStatus, setSaveStatus] = useState("idle");
   const [search, setSearch] = useState("");
   const [printDoc, setPrintDoc] = useState(null);
@@ -479,6 +498,7 @@ export default function App() {
   const saveTimers = useRef({});
 
   useEffect(() => {
+    if (!autenticado) return; // não carrega dados antes do login
     (async () => {
       try {
         const list = await listPatients();
@@ -697,7 +717,7 @@ export default function App() {
         setPatients([]);
       }
     })();
-  }, []);
+  }, [autenticado]);
 
   const persistPatient = useCallback((patient) => {
     clearTimeout(saveTimers.current[patient.id]);
@@ -845,7 +865,6 @@ export default function App() {
     setActiveConsultaId(consultaId);
     setMode(m || "prontuario");
     setActiveTab("ident");
-    setActiveDocTab("receita");
     setView("record");
   }
 
@@ -1057,7 +1076,7 @@ function ConsultasView({ patient, onOpenConsulta, onCreateConsulta, onRemoveCons
               <div style={{ display: "flex", gap: "6px" }}>
                 <button onClick={() => onOpenConsulta(c.id, "documentos")} aria-label="Documentos"><i className="ti ti-file-text" aria-hidden="true"></i></button>
                 <button onClick={() => onOpenConsulta(c.id, "prontuario")} aria-label="Abrir consulta"><i className="ti ti-edit" aria-hidden="true"></i></button>
-                <button onClick={() => { if (confirm("Excluir esta consulta permanentemente?")) onRemoveConsulta(c.id); }} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
+                <button onClick={() => { if (confirm("Mover esta consulta para a lixeira? Você poderá restaurá-la em até 30 dias.")) onRemoveConsulta(c.id); }} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
               </div>
             </div>
           );
@@ -1195,7 +1214,7 @@ function PatientList({ patients, search, setSearch, onOpen, onCreate, onDelete }
                 </div>
               </div>
               <div style={{ display: "flex", gap: "6px" }}>
-                <button onClick={(e) => { e.stopPropagation(); if (confirm("Excluir este paciente e todas as suas consultas permanentemente?")) onDelete(p.id); }} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
+                <button onClick={(e) => { e.stopPropagation(); if (confirm("Mover este paciente para a lixeira? Você poderá restaurá-lo em até 30 dias.")) onDelete(p.id); }} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
               </div>
             </div>
           );
@@ -1470,7 +1489,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
         />
       </SectionCard>
       <SectionCard title="Medicações de uso prévio / descontinuadas" icon="ti-history" defaultOpen={true}>
-        <textarea rows={3} value={consulta.medicacoesPrevias} onChange={e => updateConsulta(p => ({ ...p, medicacoesPrevias: e.target.value }))} placeholder="Medicação, motivo da descontinuação..." />
+        <textarea rows={3} value={consulta.medicacoesPrevias || ""} onChange={e => updateConsulta(p => ({ ...p, medicacoesPrevias: e.target.value }))} placeholder="Medicação, motivo da descontinuação..." />
       </SectionCard>
     </div>
   );
@@ -2084,754 +2103,8 @@ function PlanoTab({ consulta, updateConsulta }) {
   );
 }
 
-function DocumentosView({ patient, consulta, updateConsulta, activeDocTab, setActiveDocTab, onPrint }) {
-  return (
-    <div>
-      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-        {DOC_TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveDocTab(t.id)} style={{
-            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
-            border: activeDocTab === t.id ? "0.5px solid var(--color-border-info)" : "0.5px solid transparent",
-            background: activeDocTab === t.id ? "var(--color-background-info)" : "transparent",
-            color: activeDocTab === t.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
-            borderRadius: "8px", display: "flex", alignItems: "center", gap: "5px"
-          }}>
-            <i className={"ti " + t.icon} aria-hidden="true" style={{ fontSize: "14px" }}></i>{t.label}
-          </button>
-        ))}
-      </div>
-      {activeDocTab === "receita" && <ReceitaTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} onPrint={onPrint} />}
-      {activeDocTab === "receitaEspecial" && <ReceitaEspecialTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} onPrint={onPrint} />}
-      {activeDocTab === "exameSimples" && <ExameSimplesTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} onPrint={onPrint} />}
-      {activeDocTab === "exameEspecial" && <ExameEspecialTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} onPrint={onPrint} />}
-      {activeDocTab === "vacinacao" && <VacinacaoDocTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} onPrint={onPrint} />}
-    </div>
-  );
-}
-
-function MedicacoesReferencia({ consulta }) {
-  const texto = (consulta.medicacoesTexto || "").trim();
-  if (!texto) return null;
-  return (
-    <SectionCard title="Medicações em uso (referência)" icon="ti-pill" defaultOpen={true}>
-      <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Copiado da aba Medicações, só para consulta — não aparece no documento impresso.</p>
-      <div style={{ whiteSpace: "pre-wrap", fontSize: "13px", background: "var(--color-background-secondary)", padding: "10px 12px", borderRadius: "8px" }}>{texto}</div>
-    </SectionCard>
-  );
-}
-
-function ReceitaTab({ patient, consulta, updateConsulta, onPrint }) {
-  const receitas = (consulta.docs && Array.isArray(consulta.docs.receitas)) ? consulta.docs.receitas : [];
-  const [activeReceitaId, setActiveReceitaId] = useState(receitas[0]?.id || null);
-
-  useEffect(() => {
-    // Ao trocar de consulta (ou de paciente), garante que a receita ativa
-    // realmente existe na lista atual; caso contrário, seleciona a primeira disponível.
-    if (!receitas.some(r => r.id === activeReceitaId)) {
-      setActiveReceitaId(receitas[0]?.id || null);
-    }
-  }, [consulta.id]);
-
-  const addReceita = () => {
-    const nova = { id: uid(), nome: `Receita ${receitas.length + 1}`, selecionados: {}, itensEditados: {}, extras: "", titulosEditados: {} };
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.receitas)) ? p.docs.receitas : [];
-      return { ...p, docs: { ...p.docs, receitas: [...atuais, nova] } };
-    });
-    setActiveReceitaId(nova.id);
-  };
-  const removeReceita = (id) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.receitas)) ? p.docs.receitas : [];
-      return { ...p, docs: { ...p.docs, receitas: atuais.filter(r => r.id !== id) } };
-    });
-    if (activeReceitaId === id) setActiveReceitaId(null);
-  };
-  const renameReceita = (id, nome) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.receitas)) ? p.docs.receitas : [];
-      return { ...p, docs: { ...p.docs, receitas: atuais.map(r => r.id === id ? { ...r, nome } : r) } };
-    });
-  };
-  const updateReceita = (id, updater) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.receitas)) ? p.docs.receitas : [];
-      return { ...p, docs: { ...p.docs, receitas: atuais.map(r => r.id === id ? updater(r) : r) } };
-    });
-  };
-
-  const activeReceita = receitas.find(r => r.id === activeReceitaId) || null;
-
-  return (
-    <div>
-      <MedicacoesReferencia consulta={consulta} />
-      <Alert type="info">Você pode criar mais de uma receita para esta consulta — por exemplo, uma só com antibiótico e outra com as medicações de uso contínuo. Cada receita é um documento separado.</Alert>
-
-      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
-        {receitas.map(r => (
-          <button key={r.id} onClick={() => setActiveReceitaId(r.id)} style={{
-            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
-            border: activeReceitaId === r.id ? "0.5px solid var(--color-border-info)" : "0.5px solid var(--color-border-tertiary)",
-            background: activeReceitaId === r.id ? "var(--color-background-info)" : "transparent",
-            color: activeReceitaId === r.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
-            borderRadius: "8px"
-          }}>
-            {(r.nome || "").trim() || "Receita"}
-          </button>
-        ))}
-        <button onClick={addReceita} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-          <i className="ti ti-plus" aria-hidden="true"></i>Nova receita
-        </button>
-      </div>
-
-      {receitas.length === 0 && (
-        <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-secondary)" }}>
-          <i className="ti ti-prescription" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
-          Nenhuma receita criada ainda nesta consulta. Clique em "Nova receita" para começar.
-        </div>
-      )}
-
-      {activeReceita && (
-        <ReceitaEditor
-          patient={patient}
-          receita={activeReceita}
-          onRename={(nome) => renameReceita(activeReceita.id, nome)}
-          onRemove={() => { if (confirm(`Excluir "${activeReceita.nome}"?`)) removeReceita(activeReceita.id); }}
-          updateReceita={(updater) => updateReceita(activeReceita.id, updater)}
-          onPrint={() => onPrint({ type: "receita", receitaId: activeReceita.id })}
-        />
-      )}
-    </div>
-  );
-}
-
-function ReceitaEditor({ patient, receita, onRename, onRemove, updateReceita, onPrint }) {
-  const sel = receita.selecionados || {};
-  const edits = receita.itensEditados || {};
-  const extras = receita.extras || "";
-  const titulos = receita.titulosEditados || {};
-
-  const toggleItem = (categoria, nome) => {
-    const key = categoria + "::" + nome;
-    updateReceita(r => ({ ...r, selecionados: { ...(r.selecionados || {}), [key]: !(r.selecionados || {})[key] } }));
-  };
-  const toggleBloco = (bloco) => {
-    const algumDesmarcado = bloco.itens.some(item => !sel[bloco.categoria + "::" + item.nome]);
-    updateReceita(r => {
-      const next = { ...(r.selecionados || {}) };
-      bloco.itens.forEach(item => {
-        next[bloco.categoria + "::" + item.nome] = algumDesmarcado;
-      });
-      return { ...r, selecionados: next };
-    });
-  };
-  const setEditField = (categoria, nome, campo, valor) => {
-    const key = categoria + "::" + nome;
-    updateReceita(r => ({ ...r, itensEditados: { ...(r.itensEditados || {}), [key]: { ...((r.itensEditados || {})[key] || {}), [campo]: valor } } }));
-  };
-  const setExtras = (valor) => updateReceita(r => ({ ...r, extras: valor }));
-  const setTitulo = (categoria, valor) => updateReceita(r => ({ ...r, titulosEditados: { ...(r.titulosEditados || {}), [categoria]: valor } }));
-
-  const countSelecionados = Object.values(sel).filter(Boolean).length;
-  let counter = 0;
-
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-        <input
-          value={receita.nome || ""}
-          onChange={e => onRename(e.target.value)}
-          placeholder="Nome desta receita (ex: Antibiótico)"
-          style={{ flex: 1, fontWeight: 500 }}
-        />
-        <button onClick={onRemove} aria-label="Excluir receita"><i className="ti ti-trash" aria-hidden="true"></i></button>
-      </div>
-
-      <Alert type="info">Marque os itens que deseja incluir nesta receita. Depois de marcado, você pode editar nome, quantidade e posologia livremente.</Alert>
-
-      <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif" }}>
-        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "16px", marginBottom: "16px" }}>RECEITUÁRIO</div>
-        <div style={{ marginBottom: "10px", fontSize: "14px" }}><strong>Paciente:</strong> {patient.ident.nome || "(sem nome)"}</div>
-        <div style={{ textAlign: "center", fontSize: "13px", marginBottom: "16px" }}>USO ORAL</div>
-
-        {RECEITA_BLOCOS.map(bloco => {
-          const todosMarcados = bloco.itens.every(item => sel[bloco.categoria + "::" + item.nome]);
-          const algumMarcado = bloco.itens.some(item => sel[bloco.categoria + "::" + item.nome]);
-          const tituloAtual = titulos[bloco.categoria] !== undefined ? titulos[bloco.categoria] : bloco.categoria;
-          return (
-          <div key={bloco.categoria} style={{ marginBottom: "18px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-              <input
-                type="checkbox"
-                checked={todosMarcados}
-                ref={el => { if (el) el.indeterminate = algumMarcado && !todosMarcados; }}
-                onChange={() => toggleBloco(bloco)}
-              />
-              <input
-                value={tituloAtual}
-                onChange={e => setTitulo(bloco.categoria, e.target.value)}
-                style={{ fontWeight: 700, fontSize: "13px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontFamily: "Arial, sans-serif", padding: "2px 4px", flex: 1 }}
-              />
-              {(bloco.usoTopico || bloco.usoInalatorio) && (
-                <span style={{ fontWeight: 400, fontSize: "13px" }}>{bloco.usoTopico ? "USO TÓPICO" : "USO INALATÓRIO"}</span>
-              )}
-            </div>
-            {bloco.itens.map(item => {
-              const key = bloco.categoria + "::" + item.nome;
-              const edit = edits[key] || {};
-              const isSelected = !!sel[key];
-              const nomeAtual = edit.nome !== undefined ? edit.nome : item.nome;
-              if (isSelected) counter++;
-              return (
-                <div key={key} style={{ marginBottom: "8px", paddingLeft: "16px" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-                    <input type="checkbox" checked={isSelected} onChange={() => toggleItem(bloco.categoria, item.nome)} />
-                    <span style={{ fontSize: "13px" }}>
-                      {isSelected ? `${counter}. ` : ""}{item.nome} — {item.qtd}
-                      {item.via && <span style={{ fontStyle: "italic", color: "#555" }}> ({item.via})</span>}
-                    </span>
-                  </label>
-                  {isSelected && (
-                    <div style={{ paddingLeft: "24px", marginTop: "4px" }}>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: "6px", fontSize: "13px" }}>
-                        <input
-                          value={nomeAtual}
-                          onChange={e => setEditField(bloco.categoria, item.nome, "nome", e.target.value)}
-                          style={{ flex: 2, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px" }}
-                        />
-                        <span>—</span>
-                        <input
-                          value={edit.qtd !== undefined ? edit.qtd : item.qtd}
-                          onChange={e => setEditField(bloco.categoria, item.nome, "qtd", e.target.value)}
-                          style={{ width: "110px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px" }}
-                        />
-                      </div>
-                      <textarea
-                        value={edit.posologia !== undefined ? edit.posologia : item.posologia}
-                        onChange={e => setEditField(bloco.categoria, item.nome, "posologia", e.target.value)}
-                        rows={2}
-                        style={{ width: "100%", border: "none", borderBottom: "1px dashed #eee", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "2px 4px", marginTop: "4px", resize: "vertical" }}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          );
-        })}
-
-        <div style={{ marginBottom: "10px" }}>
-          <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "8px" }}>OUTRAS MEDICAÇÕES (adicionar manualmente):</div>
-          <textarea
-            value={extras}
-            onChange={e => setExtras(e.target.value)}
-            rows={4}
-            placeholder={"ex:\nVITAMINA C 500MG — 30CP/MÊS\nTOMAR 1 COMPRIMIDO PELA MANHÃ."}
-            style={{ width: "100%", border: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "6px 8px", borderRadius: "6px" }}
-          />
-        </div>
-
-        <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
-          Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
-          CNPJ nº 11944899/0001-17 Telefone: 3183-4500
-        </div>
-      </div>
-
-      <div style={{ position: "sticky", bottom: "8px", display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={onPrint} disabled={countSelecionados === 0 && !extras.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <i className="ti ti-printer" aria-hidden="true"></i>Gerar receita ({countSelecionados} {countSelecionados === 1 ? "item" : "itens"})
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ReceitaEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
-  const itens = (consulta.docs && Array.isArray(consulta.docs.receitasEspeciais)) ? consulta.docs.receitasEspeciais : [];
-  const [activeId, setActiveId] = useState(itens[0]?.id || null);
-
-  useEffect(() => {
-    if (!itens.some(r => r.id === activeId)) setActiveId(itens[0]?.id || null);
-  }, [consulta.id]);
-
-  const addItem = () => {
-    const novo = { id: uid(), nome: `Receita especial ${itens.length + 1}`, medicoNome: "", crm: "", crmUf: "PE", crmNum: "", enderecoMedico: "", cidadeMedico: "Recife", ufMedico: "PE", prescricao: "" };
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.receitasEspeciais)) ? p.docs.receitasEspeciais : [];
-      return { ...p, docs: { ...p.docs, receitasEspeciais: [...atuais, novo] } };
-    });
-    setActiveId(novo.id);
-  };
-  const removeItem = (id) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.receitasEspeciais)) ? p.docs.receitasEspeciais : [];
-      return { ...p, docs: { ...p.docs, receitasEspeciais: atuais.filter(r => r.id !== id) } };
-    });
-    if (activeId === id) setActiveId(null);
-  };
-  const renameItem = (id, nome) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.receitasEspeciais)) ? p.docs.receitasEspeciais : [];
-      return { ...p, docs: { ...p.docs, receitasEspeciais: atuais.map(r => r.id === id ? { ...r, nome } : r) } };
-    });
-  };
-  const updateItem = (id, updater) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.receitasEspeciais)) ? p.docs.receitasEspeciais : [];
-      return { ...p, docs: { ...p.docs, receitasEspeciais: atuais.map(r => r.id === id ? updater(r) : r) } };
-    });
-  };
-
-  const activeItem = itens.find(r => r.id === activeId) || null;
-
-  return (
-    <div>
-      <MedicacoesReferencia consulta={consulta} />
-      <Alert type="info">Você pode criar mais de uma receita especial para esta consulta. Cada uma é um documento separado.</Alert>
-
-      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
-        {itens.map(r => (
-          <button key={r.id} onClick={() => setActiveId(r.id)} style={{
-            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
-            border: activeId === r.id ? "0.5px solid var(--color-border-info)" : "0.5px solid var(--color-border-tertiary)",
-            background: activeId === r.id ? "var(--color-background-info)" : "transparent",
-            color: activeId === r.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
-            borderRadius: "8px"
-          }}>
-            {(r.nome || "").trim() || "Receita especial"}
-          </button>
-        ))}
-        <button onClick={addItem} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-          <i className="ti ti-plus" aria-hidden="true"></i>Nova receita especial
-        </button>
-      </div>
-
-      {itens.length === 0 && (
-        <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-secondary)" }}>
-          <i className="ti ti-shield-lock" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
-          Nenhuma receita especial criada ainda nesta consulta.
-        </div>
-      )}
-
-      {activeItem && (
-        <ReceitaEspecialEditor
-          patient={patient}
-          item={activeItem}
-          onRename={(nome) => renameItem(activeItem.id, nome)}
-          onRemove={() => { if (confirm(`Excluir "${activeItem.nome}"?`)) removeItem(activeItem.id); }}
-          updateItem={(updater) => updateItem(activeItem.id, updater)}
-          onPrint={() => onPrint({ type: "receitaEspecial", itemId: activeItem.id })}
-        />
-      )}
-    </div>
-  );
-}
-
-function ReceitaEspecialEditor({ patient, item, onRename, onRemove, updateItem, onPrint }) {
-  const re = item;
-  const set = (k, v) => updateItem(r => ({ ...r, [k]: v }));
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-        <input value={item.nome || ""} onChange={e => onRename(e.target.value)} placeholder="Nome desta receita especial" style={{ flex: 1, fontWeight: 500 }} />
-        <button onClick={onRemove} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
-      </div>
-
-      <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
-        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "16px" }}>RECEITUÁRIO DE CONTROLE ESPECIAL</div>
-
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, marginBottom: "4px" }}>IDENTIFICAÇÃO DO EMITENTE</div>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span>Nome completo:</span>
-              <input value={re.medicoNome} onChange={e => set("medicoNome", e.target.value)} style={{ flex: 1, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
-            </div>
-          </div>
-          <div style={{ textAlign: "right", fontWeight: 700, fontSize: "11px", whiteSpace: "nowrap", marginLeft: "16px" }}>
-            <div>1ª VIA - Farmácia</div>
-            <div>2ª VIA - Paciente</div>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: "8px", marginBottom: "6px", alignItems: "center" }}>
-          <span>CRM</span>
-          <input value={re.crmNum} onChange={e => set("crmNum", e.target.value)} placeholder="nº" style={{ width: "90px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
-          <span>UF</span>
-          <input value={re.ufMedico} onChange={e => set("ufMedico", e.target.value)} style={{ width: "50px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
-        </div>
-        <div style={{ display: "flex", gap: "6px", marginBottom: "6px", alignItems: "center" }}>
-          <span style={{ whiteSpace: "nowrap" }}>Endereço completo e telefone:</span>
-          <input value={re.enderecoMedico} onChange={e => set("enderecoMedico", e.target.value)} style={{ flex: 1, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
-        </div>
-        <div style={{ display: "flex", gap: "8px", marginBottom: "14px", alignItems: "center" }}>
-          <span>Cidade:</span>
-          <input value={re.cidadeMedico} onChange={e => set("cidadeMedico", e.target.value)} style={{ flex: 1, border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
-          <span>UF:</span>
-          <input value={re.ufMedico} onChange={e => set("ufMedico", e.target.value)} style={{ width: "50px", border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif" }} />
-        </div>
-
-        <div style={{ marginBottom: "6px" }}><strong>Paciente:</strong> {patient.ident.nome || "(sem nome)"}</div>
-        <div style={{ marginBottom: "6px" }}><strong>Endereço:</strong></div>
-        <div style={{ marginBottom: "8px" }}><strong>Prescrição:</strong></div>
-        <textarea
-          value={re.prescricao}
-          onChange={e => set("prescricao", e.target.value)}
-          rows={8}
-          placeholder={"USO ORAL\nDULOXETINA 30MG — 30 CP\nTOMAR 1 COMPRIMIDO PELA MANHÃ."}
-          style={{ width: "100%", border: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "8px", borderRadius: "6px", marginBottom: "20px" }}
-        />
-
-        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, marginTop: "10px" }}>
-          <div>IDENTIFICAÇÃO DO COMPRADOR</div>
-          <div>IDENTIFICAÇÃO DO FORNECEDOR</div>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginTop: "6px" }}>
-          <div>
-            <div>Nome:</div>
-            <div>Ident.: Org. Emissor:</div>
-            <div>End.:</div>
-            <div>Cidade: UF:</div>
-            <div>Telefone:</div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div>______/______/______</div>
-            <div style={{ fontSize: "10px", marginTop: "20px" }}>ASSINATURA DO FARMACÊUTICO</div>
-            <div style={{ fontSize: "10px" }}>DATA</div>
-          </div>
-        </div>
-
-        <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
-          Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
-          CNPJ nº 11944899/0001-17 Telefone: 3183-4500
-        </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={onPrint} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <i className="ti ti-printer" aria-hidden="true"></i>Gerar receita especial
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ExameSimplesTab({ patient, consulta, updateConsulta, onPrint }) {
-  const itens = (consulta.docs && Array.isArray(consulta.docs.examesSimplesLista)) ? consulta.docs.examesSimplesLista : [];
-  const [activeId, setActiveId] = useState(itens[0]?.id || null);
-
-  useEffect(() => {
-    if (!itens.some(r => r.id === activeId)) setActiveId(itens[0]?.id || null);
-  }, [consulta.id]);
-
-  const addItem = () => {
-    const novo = { id: uid(), nome: `Exame simples ${itens.length + 1}`, texto: EXAMES_LABORATORIAIS_PADRAO.join("\n") };
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.examesSimplesLista)) ? p.docs.examesSimplesLista : [];
-      return { ...p, docs: { ...p.docs, examesSimplesLista: [...atuais, novo] } };
-    });
-    setActiveId(novo.id);
-  };
-  const removeItem = (id) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.examesSimplesLista)) ? p.docs.examesSimplesLista : [];
-      return { ...p, docs: { ...p.docs, examesSimplesLista: atuais.filter(r => r.id !== id) } };
-    });
-    if (activeId === id) setActiveId(null);
-  };
-  const renameItem = (id, nome) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.examesSimplesLista)) ? p.docs.examesSimplesLista : [];
-      return { ...p, docs: { ...p.docs, examesSimplesLista: atuais.map(r => r.id === id ? { ...r, nome } : r) } };
-    });
-  };
-  const setTexto = (id, v) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.examesSimplesLista)) ? p.docs.examesSimplesLista : [];
-      return { ...p, docs: { ...p.docs, examesSimplesLista: atuais.map(r => r.id === id ? { ...r, texto: v } : r) } };
-    });
-  };
-
-  const activeItem = itens.find(r => r.id === activeId) || null;
-  const texto = activeItem ? (activeItem.texto !== undefined ? activeItem.texto : EXAMES_LABORATORIAIS_PADRAO.join("\n")) : "";
-
-  return (
-    <div>
-      <Alert type="info">Você pode criar mais de uma solicitação de exames simples para esta consulta. Cada uma é um documento separado.</Alert>
-
-      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
-        {itens.map(r => (
-          <button key={r.id} onClick={() => setActiveId(r.id)} style={{
-            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
-            border: activeId === r.id ? "0.5px solid var(--color-border-info)" : "0.5px solid var(--color-border-tertiary)",
-            background: activeId === r.id ? "var(--color-background-info)" : "transparent",
-            color: activeId === r.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
-            borderRadius: "8px"
-          }}>
-            {(r.nome || "").trim() || "Exame simples"}
-          </button>
-        ))}
-        <button onClick={addItem} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-          <i className="ti ti-plus" aria-hidden="true"></i>Novo exame simples
-        </button>
-      </div>
-
-      {itens.length === 0 && (
-        <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-secondary)" }}>
-          <i className="ti ti-flask" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
-          Nenhuma solicitação criada ainda nesta consulta.
-        </div>
-      )}
-
-      {activeItem && (
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-            <input value={activeItem.nome || ""} onChange={e => renameItem(activeItem.id, e.target.value)} placeholder="Nome desta solicitação" style={{ flex: 1, fontWeight: 500 }} />
-            <button onClick={() => { if (confirm(`Excluir "${activeItem.nome}"?`)) removeItem(activeItem.id); }} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
-          </div>
-
-          <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
-            <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "12px" }}>RECEITUÁRIO</div>
-            <div style={{ marginBottom: "10px" }}><strong>Paciente:</strong> {patient.ident.nome || "(sem nome)"}</div>
-            <div style={{ textAlign: "center", fontWeight: 700, marginBottom: "14px" }}>SOLICITAÇÃO DE EXAMES LABORATORIAIS</div>
-            <textarea
-              rows={20}
-              value={texto}
-              onChange={e => setTexto(activeItem.id, e.target.value)}
-              style={{ width: "100%", border: "1px dashed #ccc", background: "transparent", fontSize: "13px", fontFamily: "Arial, sans-serif", padding: "8px", borderRadius: "6px" }}
-            />
-            <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
-              Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
-              CNPJ nº 11944899/0001-17 Telefone: 3183-4500
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-            <button onClick={() => onPrint({ type: "exameSimples", itemId: activeItem.id })} disabled={!texto.trim()} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <i className="ti ti-printer" aria-hidden="true"></i>Gerar solicitação
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ExameEspecialTab({ patient, consulta, updateConsulta, onPrint }) {
-  const itens = (consulta.docs && Array.isArray(consulta.docs.examesEspeciais)) ? consulta.docs.examesEspeciais : [];
-  const [activeId, setActiveId] = useState(itens[0]?.id || null);
-
-  useEffect(() => {
-    if (!itens.some(r => r.id === activeId)) setActiveId(itens[0]?.id || null);
-  }, [consulta.id]);
-
-  const addItem = () => {
-    const novo = { id: uid(), nome: `Exame especial ${itens.length + 1}`, registro: "", enf: "", leito: "", setorSolicitante: "GERIATRIA", examesRealizados: "", dadosClinicos: "", hipoteseDiagnostica: "", exameSolicitado: "", carater: "rotina", observacoes: "" };
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.examesEspeciais)) ? p.docs.examesEspeciais : [];
-      return { ...p, docs: { ...p.docs, examesEspeciais: [...atuais, novo] } };
-    });
-    setActiveId(novo.id);
-  };
-  const removeItem = (id) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.examesEspeciais)) ? p.docs.examesEspeciais : [];
-      return { ...p, docs: { ...p.docs, examesEspeciais: atuais.filter(r => r.id !== id) } };
-    });
-    if (activeId === id) setActiveId(null);
-  };
-  const renameItem = (id, nome) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.examesEspeciais)) ? p.docs.examesEspeciais : [];
-      return { ...p, docs: { ...p.docs, examesEspeciais: atuais.map(r => r.id === id ? { ...r, nome } : r) } };
-    });
-  };
-  const updateItem = (id, updater) => {
-    updateConsulta(p => {
-      const atuais = (p.docs && Array.isArray(p.docs.examesEspeciais)) ? p.docs.examesEspeciais : [];
-      return { ...p, docs: { ...p.docs, examesEspeciais: atuais.map(r => r.id === id ? updater(r) : r) } };
-    });
-  };
-
-  const activeItem = itens.find(r => r.id === activeId) || null;
-
-  return (
-    <div>
-      <Alert type="info">Você pode criar mais de uma solicitação de exame especial para esta consulta. Cada uma é um documento separado.</Alert>
-
-      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", flexWrap: "wrap" }}>
-        {itens.map(r => (
-          <button key={r.id} onClick={() => setActiveId(r.id)} style={{
-            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
-            border: activeId === r.id ? "0.5px solid var(--color-border-info)" : "0.5px solid var(--color-border-tertiary)",
-            background: activeId === r.id ? "var(--color-background-info)" : "transparent",
-            color: activeId === r.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
-            borderRadius: "8px"
-          }}>
-            {(r.nome || "").trim() || "Exame especial"}
-          </button>
-        ))}
-        <button onClick={addItem} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-          <i className="ti ti-plus" aria-hidden="true"></i>Novo exame especial
-        </button>
-      </div>
-
-      {itens.length === 0 && (
-        <div style={{ textAlign: "center", padding: "2rem 1rem", color: "var(--color-text-secondary)" }}>
-          <i className="ti ti-x-ray" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
-          Nenhuma solicitação criada ainda nesta consulta.
-        </div>
-      )}
-
-      {activeItem && (
-        <ExameEspecialEditor
-          patient={patient}
-          item={activeItem}
-          onRename={(nome) => renameItem(activeItem.id, nome)}
-          onRemove={() => { if (confirm(`Excluir "${activeItem.nome}"?`)) removeItem(activeItem.id); }}
-          updateItem={(updater) => updateItem(activeItem.id, updater)}
-          onPrint={() => onPrint({ type: "exameEspecial", itemId: activeItem.id })}
-        />
-      )}
-    </div>
-  );
-}
-
-function ExameEspecialEditor({ patient, item, onRename, onRemove, updateItem, onPrint }) {
-  const ee = item;
-  const set = (k, v) => updateItem(r => ({ ...r, [k]: v }));
-  const idade = calcIdade(patient.ident.dn);
-  const carLabel = { urgencia_absoluta: "URGÊNCIA ABSOLUTA", urgencia_relativa: "URGÊNCIA RELATIVA", rotina: "ROTINA", controle: "CONTROLE" };
-  const cellStyle = { border: "1px solid #999", padding: "5px 8px", fontSize: "12px" };
-  const headStyle = { border: "1px solid #999", padding: "4px 8px", fontWeight: 700, fontSize: "11px", background: "#f0f0f0" };
-
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-        <input value={item.nome || ""} onChange={e => onRename(e.target.value)} placeholder="Nome desta solicitação" style={{ flex: 1, fontWeight: 500 }} />
-        <button onClick={onRemove} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
-      </div>
-
-      <Alert type="info">Os dados de nome, mãe, idade e sexo são preenchidos automaticamente a partir da aba Identificação do prontuário.</Alert>
-
-      <div style={{ background: "#fff", color: "#111", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "24px 20px", fontFamily: "Arial, sans-serif", fontSize: "13px" }}>
-        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "14px", marginBottom: "14px" }}>
-          HOSPITAL DOS SERVIDORES DO ESTADO<br />SOLICITAÇÃO E AUTORIZAÇÃO DE EXAMES ESPECIAIS
-        </div>
-
-        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "10px" }}>
-          <tbody>
-            <tr>
-              <td style={cellStyle}><strong>PACIENTE:</strong> {patient.ident.nome || "(sem nome)"}</td>
-              <td style={cellStyle}>
-                <strong>REGISTRO:</strong>{" "}
-                <input value={ee.registro} onChange={e => set("registro", e.target.value)} placeholder={patient.ident.prontuario} style={{ border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "12px", width: "100px" }} />
-              </td>
-            </tr>
-            <tr>
-              <td style={cellStyle}><strong>MÃE:</strong> {patient.ident.maeNome || "—"}</td>
-              <td style={cellStyle}>
-                <strong>ENF.:</strong>{" "}
-                <input value={ee.enf} onChange={e => set("enf", e.target.value)} style={{ border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "12px", width: "120px" }} />
-              </td>
-            </tr>
-            <tr>
-              <td style={cellStyle}>
-                <strong>LEITO:</strong>{" "}
-                <input value={ee.leito} onChange={e => set("leito", e.target.value)} style={{ border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "12px", width: "60px" }} />
-                {" "}&nbsp;&nbsp;<strong>IDADE:</strong> {idade != null ? idade : "—"}
-                {" "}&nbsp;&nbsp;<strong>SEXO:</strong> {patient.ident.sexo || "—"}
-              </td>
-              <td style={cellStyle}>
-                <strong>SETOR SOLICITANTE:</strong>{" "}
-                <input value={ee.setorSolicitante} onChange={e => set("setorSolicitante", e.target.value)} placeholder="GERIATRIA" style={{ border: "none", borderBottom: "1px dashed #ccc", background: "transparent", fontSize: "12px", width: "120px" }} />
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div style={headStyle}>EXAMES REALIZADOS</div>
-        <textarea value={ee.examesRealizados} onChange={e => set("examesRealizados", e.target.value)} rows={2} style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", marginBottom: "8px", fontFamily: "Arial, sans-serif" }} />
-
-        <div style={headStyle}>DADOS CLÍNICOS</div>
-        <textarea value={ee.dadosClinicos} onChange={e => set("dadosClinicos", e.target.value)} rows={3} style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", marginBottom: "8px", fontFamily: "Arial, sans-serif" }} />
-
-        <div style={headStyle}>HIPÓTESE DIAGNÓSTICA</div>
-        <textarea value={ee.hipoteseDiagnostica} onChange={e => set("hipoteseDiagnostica", e.target.value)} rows={2} style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", marginBottom: "8px", fontFamily: "Arial, sans-serif" }} />
-
-        <div style={headStyle}>EXAME SOLICITADO</div>
-        <textarea value={ee.exameSolicitado} onChange={e => set("exameSolicitado", e.target.value)} rows={2} placeholder="ex: TC de crânio sem contraste" style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", marginBottom: "8px", fontFamily: "Arial, sans-serif" }} />
-
-        <div style={headStyle}>CARÁTER</div>
-        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "10px" }}>
-          <tbody>
-            <tr>
-              {["urgencia_absoluta","urgencia_relativa","rotina","controle"].map(c => (
-                <td key={c} onClick={() => set("carater", c)} style={{ ...cellStyle, cursor: "pointer", fontWeight: ee.carater === c ? 700 : 400, background: ee.carater === c ? "#dde" : "transparent" }}>
-                  {ee.carater === c ? "[X] " : "[ ] "}{carLabel[c]}
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-
-        <div style={{ ...cellStyle, marginBottom: "8px", borderStyle: "solid" }}>Data: {fmtDateShort()}</div>
-        <div style={{ display: "flex", justifyContent: "space-between", margin: "20px 0", fontSize: "11px" }}>
-          <div>Carimbo e Assinatura do Solicitante</div>
-          <div>Carimbo e Assinatura da Chefia</div>
-        </div>
-
-        <div style={headStyle}>OBSERVAÇÕES</div>
-        <textarea value={ee.observacoes} onChange={e => set("observacoes", e.target.value)} rows={2} style={{ width: "100%", border: "1px solid #999", borderTop: "none", fontSize: "12px", padding: "6px", fontFamily: "Arial, sans-serif" }} />
-
-        <div style={{ marginTop: "20px", paddingTop: "8px", borderTop: "1px solid #ddd", textAlign: "center", fontSize: "10px", color: "#666" }}>
-          Av. Conselheiro Rosa e Silva, 36 - Aflitos - Recife - PE<br />
-          CNPJ nº 11944899/0001-17 Telefone: 3183-4500
-        </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={onPrint} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <i className="ti ti-printer" aria-hidden="true"></i>Gerar solicitação de exame especial
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function VacinacaoDocTab({ patient, consulta, updateConsulta, onPrint }) {
-  const vd = (consulta.docs && consulta.docs.vacinacao) || { selecionados: {} };
-  const isSelecionado = (nome) => vd.selecionados[nome] !== false; // não definido ainda = considera marcado
-  const toggle = (nome) => updateConsulta(p => ({ ...p, docs: { ...p.docs, vacinacao: { ...(p.docs.vacinacao || {}), selecionados: { ...((p.docs.vacinacao || {}).selecionados || {}), [nome]: !isSelecionado(nome) } } } }));
-  const countSel = VACINAS_DOC.filter(v => isSelecionado(v)).length;
-
-  return (
-    <div>
-      <Alert type="info">Todas as vacinas já vêm marcadas por padrão. Desmarque as que não deseja incluir na solicitação de atualização vacinal. O documento gerado segue o calendário de vacinação do idoso, com o esquema completo de cada vacina já descrito — só o nome do paciente precisa ser preenchido.</Alert>
-      <SectionCard title="Vacinas a solicitar" icon="ti-vaccine">
-        {VACINAS_DOC.map(v => (
-          <label key={v} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 0", borderBottom: "0.5px solid var(--color-border-tertiary)", cursor: "pointer" }}>
-            <input type="checkbox" checked={isSelecionado(v)} onChange={() => toggle(v)} />
-            <span style={{ fontSize: "14px" }}>{v}</span>
-          </label>
-        ))}
-      </SectionCard>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-        <button onClick={() => onPrint({ type: "vacinacao" })} disabled={countSel === 0} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <i className="ti ti-printer" aria-hidden="true"></i>Gerar solicitação ({countSel})
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function PrintDocRenderer({ doc, patient, consulta, onClose }) {
-  if (doc.type === "receita") return <ReceitaPrint patient={patient} consulta={consulta} receitaId={doc.receitaId} onClose={onClose} />;
-  if (doc.type === "receitaEspecial") return <ReceitaEspecialPrint patient={patient} consulta={consulta} itemId={doc.itemId} onClose={onClose} />;
-  if (doc.type === "exameSimples") return <ExameSimplesPrint patient={patient} consulta={consulta} itemId={doc.itemId} onClose={onClose} />;
-  if (doc.type === "exameEspecial") return <ExameEspecialPrint patient={patient} consulta={consulta} itemId={doc.itemId} onClose={onClose} />;
-  if (doc.type === "vacinacao") return <VacinacaoPrint patient={patient} consulta={consulta} onClose={onClose} />;
   if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} />;
   return null;
 }
@@ -3134,9 +2407,8 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       )}
 
       <div style={sectionTitle}>ANTECEDENTES</div>
-      <div>Tabagismo: {a.tabagismo || "—"} {a.cargaTabagica && `(${a.cargaTabagica})`}</div>
-      <div>Etilismo: {a.etilismo || "—"} {a.etilismoDetalhe && `(${a.etilismoDetalhe})`}</div>
-      <div>Atividade física: {a.atividadeFisica || "—"}</div>
+      <div>Tabagismo: {a.tabagismo || "—"}{a.tabagismo && a.tabagismo !== "Nunca fumou" && (a.macosAno || a.macosDia) ? ` — ${a.macosDia || "?"}mç/dia, ${a.macosAno || "?"}mç-ano${a.tabagismoInicio ? `, início ${a.tabagismoInicio}` : ""}${a.tabagismoCessou ? `, cessou ${a.tabagismoCessou}` : ""}` : ""}</div>
+      <div>Etilismo: {a.etilismo || "—"}{a.etilismo && a.etilismo !== "Nega" ? ` — ${a.etilismoTipo || ""}${a.etilismoFrequencia ? `, ${a.etilismoFrequencia}` : ""}${a.etilismoInicio ? `, início ${a.etilismoInicio}` : ""}${a.etilismoCessou ? `, cessou ${a.etilismoCessou}` : ""}` : ""}</div>
       <div>Cirurgias prévias:</div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.cirurgias || "—"}</div>
       <div>Internamentos no último ano:</div>
@@ -3156,17 +2428,19 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div>AIVD independentes: {Object.values(aga.aivd || {}).filter(Boolean).length}/9 ({Object.keys(aga.aivd || {}).filter(k => aga.aivd[k]).join(", ") || "—"})</div>
       <div>ABVD independentes: {Object.values(aga.abvd || {}).filter(Boolean).length}/6 ({Object.keys(aga.abvd || {}).filter(k => aga.abvd[k]).join(", ") || "—"})</div>
       <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}</div>
-      <div>Quedas: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Não"} · Fraturas: {aga.fraturas || "—"} · TCE: {aga.tce || "—"}</div>
+      <div>Quedas: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Não"}</div>
+      {aga.fraturas === "sim" && <div>Fraturas: Sim{aga.fraturasDescricao ? ` — ${aga.fraturasDescricao}` : ""}</div>}
+      {aga.tce === "sim" && <div>TCE: Sim{aga.tceDescricao ? ` — ${aga.tceDescricao}` : ""}</div>}
       <div>FRAIL: {Object.values(aga.frail || {}).filter(Boolean).length}/5 critérios — {Object.values(aga.frail || {}).filter(Boolean).length === 0 ? "Robusto" : Object.values(aga.frail || {}).filter(Boolean).length <= 2 ? "Pré-frágil" : "Frágil"}</div>
       <div>Cognição: {aga.semQueixasCognitivas ? "Sem queixas cognitivas" : `Mini-Cog: ${aga.minicog || "—"} · MEEM: ${aga.meem || "—"} · MoCA: ${aga.moca || "—"}${aga.queixasCognitivasDescricao ? " — " + aga.queixasCognitivasDescricao : ""}`}</div>
       <div>Humor: {aga.semQueixasHumor ? "Sem queixas de humor" : `GDS-15: ${aga.gds15 || "—"}${aga.queixasHumorDescricao ? " — " + aga.queixasHumorDescricao : ""}`}</div>
-      <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}</div>
+      <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}{aga.sonoObservacoes ? ` — ${aga.sonoObservacoes}` : ""}</div>
       <div>Visão: {aga.visao || "—"}{aga.visaoLentes === "sim" ? " (usa lentes corretivas)" : ""} · Audição: {aga.audicao || "—"}{aga.audicaoAparelho === "sim" ? " (usa aparelho auditivo)" : ""}</div>
-      <div>Incontinência urinária: {aga.incontinenciaUrinaria === "sim" ? "Sim" : "Não"} · Incontinência fecal: {aga.incontinenciaFecal === "sim" ? "Sim" : "Não"} · Constipação: {aga.constipacao === "sim" ? "Sim" : "Não"}</div>
+      <div>Incontinência urinária: {aga.incontinenciaUrinaria === "sim" ? `Sim${aga.incontinenciaUrinariaDes ? " — " + aga.incontinenciaUrinariaDes : ""}` : "Não"} · Incontinência fecal: {aga.incontinenciaFecal === "sim" ? `Sim${aga.incontinenciaFecalDes ? " — " + aga.incontinenciaFecalDes : ""}` : "Não"} · Constipação: {aga.constipacao === "sim" ? `Sim${aga.constipacaoDescricao ? " — " + aga.constipacaoDescricao : ""}` : "Não"}</div>
       <div>Peso: {aga.peso || "—"} kg · Peso habitual: {aga.pesoHabitual || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
-      <div>Perda de peso: {aga.perdaPeso === "sim" ? `Sim (${aga.perdaPesoKg || "?"} kg)` : "Não"}</div>
+      <div>Perda de peso: {aga.perdaPeso === "sim" ? `Sim — ${aga.perdaPesoKg || "?"} kg${aga.perdaPesoTempo ? ` em ${aga.perdaPesoTempo}` : ""}` : "Não"}</div>
       <div>Apetite: {aga.apetite || "—"} · Disfagia: {aga.disfagia || "—"}{aga.disfagiaDieta ? ` (${aga.disfagiaDieta})` : ""}</div>
-      <div>Problemas dentários: {aga.problemasDentarios === "sim" ? "Sim" : "Não"} · Prótese dentária: {aga.proteseDentaria === "sim" ? "Sim" : "Não"}</div>
+      <div>Problemas dentários: {aga.problemasDentarios === "sim" ? `Sim${aga.problemasDentariosDes ? " — " + aga.problemasDentariosDes : ""}` : "Não"} · Prótese dentária: {aga.proteseDentaria === "sim" ? "Sim" : "Não"}</div>
       <div>Teste de força: {aga.testeForca || "—"} kgf · Circunferência da panturrilha: {aga.circPanturrilha || "—"} cm · Atividade física: {aga.atividadeFisica || "—"}</div>
 
       <div style={sectionTitle}>PREVENÇÃO E VACINAS</div>
@@ -3228,12 +2502,15 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
 
       <div style={sectionTitle}>EXAME FÍSICO</div>
       <div>PA sentado: {ef.paSentado || "—"} · PA em pé (3 min): {ef.paEmPe || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}</div>
+      {(ef.peso || ef.hgt) && <div>Peso: {ef.peso || "—"} kg · HGT: {ef.hgt || "—"} mg/dL</div>}
       <div>Geral: {ef.geral || "—"}</div>
       <div>ACV: {ef.acv || "—"}</div>
       <div>AR: {ef.ar || "—"}</div>
       <div>ABD: {ef.abd || "—"}</div>
       <div>EXT: {ef.ext || "—"}</div>
       <div>SN: {ef.sn || "—"}</div>
+      {ef.pele && <div>Pele: {ef.pele}</div>}
+      {ef.outros && <div>Outros: {ef.outros}</div>}
 
       <div style={sectionTitle}>EXAMES</div>
       <div style={{ whiteSpace: "pre-wrap" }}>{consulta.labsTexto || "—"}</div>
