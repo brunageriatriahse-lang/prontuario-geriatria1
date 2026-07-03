@@ -402,7 +402,13 @@ function RadioGroup({ value, onChange, options, name }) {
   );
 }
 
-function PrintShell({ title, children, onClose }) {
+function PrintShell({ title, children, onClose, fileName }) {
+  function handlePrint() {
+    const titleAnterior = document.title;
+    if (fileName) document.title = fileName;
+    window.print();
+    document.title = titleAnterior;
+  }
   return (
     <div id="print-shell-overlay" style={{ position: "fixed", inset: 0, zIndex: 50 }}>
       <style>{`
@@ -442,7 +448,7 @@ function PrintShell({ title, children, onClose }) {
           <div id="print-shell-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #e0e0e0" }}>
             <div style={{ fontWeight: 500, fontSize: "14px", color: "#333" }}>Pré-visualização — {title}</div>
             <div style={{ display: "flex", gap: "8px" }}>
-              <button onClick={() => window.print()} style={{ fontSize: "13px", padding: "5px 12px", border: "1px solid #ccc", borderRadius: "6px", background: "#f5f5f5", cursor: "pointer" }}>
+              <button onClick={handlePrint} style={{ fontSize: "13px", padding: "5px 12px", border: "1px solid #ccc", borderRadius: "6px", background: "#f5f5f5", cursor: "pointer" }}>
                 <i className="ti ti-printer" aria-hidden="true" style={{ marginRight: "4px" }}></i>Imprimir
               </button>
               <button onClick={onClose} style={{ fontSize: "13px", padding: "5px 12px", border: "1px solid #ccc", borderRadius: "6px", background: "#f5f5f5", cursor: "pointer" }}>
@@ -2382,8 +2388,14 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
   const sectionTitle = { fontWeight: 700, fontSize: "13px", marginTop: "16px", marginBottom: "6px", borderBottom: "1px solid #ccc", paddingBottom: "3px" };
   const label = { fontWeight: 700 };
 
+  // Nome do arquivo: "NomePaciente_DD-MM-AAAA"
+  const nomeArquivo = [
+    (i.nome || 'Paciente').replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim().replace(/ +/g, '_'),
+    fmtDate(consulta.data).replace(/\//g, '-'),
+  ].join('_');
+
   return (
-    <PrintShell title="Consulta completa" onClose={onClose}>
+    <PrintShell title="Consulta completa" onClose={onClose} fileName={nomeArquivo}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
         <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
         <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
