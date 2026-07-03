@@ -1,8 +1,11 @@
 /**
  * excelPreencher.js
- * Preenche o modelo .xlsm substituindo células vazias existentes,
- * preservando 100% da estrutura, VBA/macros e formatação original.
+ * Preenche o modelo .xlsm via edição cirúrgica do ZIP,
+ * preservando 100% da estrutura, VBA/macros e formatação.
+ * O modelo fica embutido em base64 para evitar problemas de upload binário.
  */
+
+import { EXCEL_MODELO_B64 } from './excelModelo.js';
 
 function carregarJSZip() {
   if (window.JSZip) return Promise.resolve(window.JSZip);
@@ -16,10 +19,7 @@ function carregarJSZip() {
 }
 
 function addSharedString(xml, texto) {
-  const escaped = texto
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  const escaped = texto.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const matches = [...xml.matchAll(/<si><t[^>]*>(.*?)<\/t><\/si>/gs)];
   for (let i = 0; i < matches.length; i++) {
     if (matches[i][1] === texto || matches[i][1] === escaped) return [xml, i];
@@ -32,62 +32,39 @@ function addSharedString(xml, texto) {
   return [xml, total - 1];
 }
 
-/**
- * Substitui uma célula existente no XML do sheet.
- * As células C7-C16 já existem no XML como vazias (<c r="C7" s="2"/>)
- * então precisamos substituí-las, não inserir novas.
- */
 function setCellStr(sheetXml, cref, strIdx, style) {
   style = style || '2';
-  // Substitui célula vazia self-closing: <c r="C7" s="2"/>
-  // ou célula com conteúdo: <c r="C7" s="2">...</c>
   const novaCell = `<c r="${cref}" s="${style}" t="s"><v>${strIdx}</v></c>`;
-  
-  // Tenta substituir célula self-closing primeiro
-  const selfClose = new RegExp(`<c r="${cref}"([^/]*)/>`);
-  if (selfClose.test(sheetXml)) {
-    return sheetXml.replace(selfClose, novaCell);
-  }
-  
-  // Tenta substituir célula com conteúdo
-  const withContent = new RegExp(`<c r="${cref}"[^>]*>.*?</c>`, 's');
-  if (withContent.test(sheetXml)) {
-    return sheetXml.replace(withContent, novaCell);
-  }
-  
+  const selfClose = new RegExp(`<c r="${cref}"[^/]*/>`);
+  if (selfClose.test(sheetXml)) return sheetXml.replace(selfClose, novaCell);
+  const withContent = new RegExp(`<c r="${cref}"[^>]*>.*?<\\/c>`, 's');
+  if (withContent.test(sheetXml)) return sheetXml.replace(withContent, novaCell);
   return sheetXml;
 }
 
 function setCellNum(sheetXml, cref, value, style) {
   style = style || '2';
   const novaCell = `<c r="${cref}" s="${style}"><v>${value}</v></c>`;
-  
-  const selfClose = new RegExp(`<c r="${cref}"([^/]*)/>`);
-  if (selfClose.test(sheetXml)) {
-    return sheetXml.replace(selfClose, novaCell);
-  }
-  
-  const withContent = new RegExp(`<c r="${cref}"[^>]*>.*?</c>`, 's');
-  if (withContent.test(sheetXml)) {
-    return sheetXml.replace(withContent, novaCell);
-  }
-  
+  const selfClose = new RegExp(`<c r="${cref}"[^/]*/>`);
+  if (selfClose.test(sheetXml)) return sheetXml.replace(selfClose, novaCell);
+  const withContent = new RegExp(`<c r="${cref}"[^>]*>.*?<\\/c>`, 's');
+  if (withContent.test(sheetXml)) return sheetXml.replace(withContent, novaCell);
   return sheetXml;
 }
 
 export async function preencherExcel({ nome, prontuario, maeNome, idade, sexo, data }) {
   const JSZip = await carregarJSZip();
 
-  const resp = await fetch('/modelo.xlsm');
-  if (!resp.ok) throw new Error('Modelo Excel não encontrado (/modelo.xlsm)');
-  const arrayBuffer = await resp.arrayBuffer();
+  // Decodifica base64 embutido → ArrayBuffer (evita problema de upload binário)
+  const bin = atob(EXCEL_MODELO_B64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
 
-  const zip = await JSZip.loadAsync(arrayBuffer);
+  const zip = await JSZip.loadAsync(bytes.buffer);
 
   let sharedXml = await zip.file('xl/sharedStrings.xml').async('string');
   let sheet1Xml = await zip.file('xl/worksheets/sheet1.xml').async('string');
 
-  // Adiciona os valores às shared strings
   let iNome, iPron, iMae, iSexo, iData;
   [sharedXml, iNome] = addSharedString(sharedXml, (nome || '').toUpperCase());
   [sharedXml, iPron] = addSharedString(sharedXml, String(prontuario || ''));
@@ -95,7 +72,6 @@ export async function preencherExcel({ nome, prontuario, maeNome, idade, sexo, d
   [sharedXml, iSexo] = addSharedString(sharedXml, sexo || '');
   [sharedXml, iData] = addSharedString(sharedXml, data || '');
 
-  // Substitui as células existentes (já presentes no XML como células vazias)
   sheet1Xml = setCellStr(sheet1Xml, 'C7',  iNome);
   sheet1Xml = setCellStr(sheet1Xml, 'C8',  iPron);
   sheet1Xml = setCellStr(sheet1Xml, 'C9',  iMae);
@@ -103,7 +79,6 @@ export async function preencherExcel({ nome, prontuario, maeNome, idade, sexo, d
     sheet1Xml = setCellNum(sheet1Xml, 'C12', Number(idade));
   }
   sheet1Xml = setCellStr(sheet1Xml, 'C13', iSexo);
-  // C14 = GERIATRIA já vem preenchido no modelo, não mexer
   sheet1Xml = setCellStr(sheet1Xml, 'C16', iData);
 
   zip.file('xl/sharedStrings.xml', sharedXml);
