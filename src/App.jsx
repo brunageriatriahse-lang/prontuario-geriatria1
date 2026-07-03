@@ -464,53 +464,6 @@ export default function App() {
   const [autenticado, setAutenticado] = useState(() => sessionStorage.getItem('auth') === '1');
   const [senhaDigitada, setSenhaDigitada] = useState('');
   const [erroSenha, setErroSenha] = useState(false);
-
-  function tentarLogin(e) {
-    e.preventDefault();
-    if (senhaDigitada === '2266') {
-      sessionStorage.setItem('auth', '1');
-      setAutenticado(true);
-      setErroSenha(false);
-    } else {
-      setErroSenha(true);
-      setSenhaDigitada('');
-    }
-  }
-
-  if (!autenticado) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-background-secondary)' }}>
-        <div style={{ background: 'var(--color-background-primary)', border: '0.5px solid var(--color-border-tertiary)', borderRadius: '16px', padding: '40px 36px', width: '100%', maxWidth: '360px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
-          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-            <div style={{ fontWeight: 700, fontSize: '17px', marginBottom: '4px' }}>Prontuário de Geriatria</div>
-            <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>CEMPRE — HSE-PE</div>
-          </div>
-          <form onSubmit={tentarLogin}>
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Senha de acesso</label>
-              <input
-                type="password"
-                value={senhaDigitada}
-                onChange={e => { setSenhaDigitada(e.target.value); setErroSenha(false); }}
-                placeholder="Digite a senha"
-                autoFocus
-                style={{ width: '100%', fontSize: '15px' }}
-              />
-              {erroSenha && (
-                <div style={{ fontSize: '13px', color: 'var(--color-text-danger)', marginTop: '6px' }}>
-                  Senha incorreta. Tente novamente.
-                </div>
-              )}
-            </div>
-            <button type="submit" style={{ width: '100%', padding: '10px', fontSize: '15px', fontWeight: 500 }}>
-              Entrar
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   const [patients, setPatients] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [activeConsultaId, setActiveConsultaId] = useState(null);
@@ -784,6 +737,52 @@ export default function App() {
       consultas: p.consultas.map(c => c.id === activeConsultaId ? { ...updater(c), updatedAt: new Date().toISOString() } : c)
     }));
   }, [activeId, activeConsultaId, updateActivePatient]);
+
+  function tentarLogin(e) {
+    e.preventDefault();
+    if (senhaDigitada === '2266') {
+      sessionStorage.setItem('auth', '1');
+      setAutenticado(true);
+      setErroSenha(false);
+    } else {
+      setErroSenha(true);
+      setSenhaDigitada('');
+    }
+  }
+
+  if (!autenticado) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-background-secondary)' }}>
+        <div style={{ background: 'var(--color-background-primary)', border: '0.5px solid var(--color-border-tertiary)', borderRadius: '16px', padding: '40px 36px', width: '100%', maxWidth: '360px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
+          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+            <div style={{ fontWeight: 700, fontSize: '17px', marginBottom: '4px' }}>Prontuário de Geriatria</div>
+            <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>CEMPRE — HSE-PE</div>
+          </div>
+          <form onSubmit={tentarLogin}>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: '6px' }}>Senha de acesso</label>
+              <input
+                type="password"
+                value={senhaDigitada}
+                onChange={e => { setSenhaDigitada(e.target.value); setErroSenha(false); }}
+                placeholder="Digite a senha"
+                autoFocus
+                style={{ width: '100%', fontSize: '15px' }}
+              />
+              {erroSenha && (
+                <div style={{ fontSize: '13px', color: 'var(--color-text-danger)', marginTop: '6px' }}>
+                  Senha incorreta. Tente novamente.
+                </div>
+              )}
+            </div>
+            <button type="submit" style={{ width: '100%', padding: '10px', fontSize: '15px', fontWeight: 500 }}>
+              Entrar
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   if (patients === null) {
     return (
