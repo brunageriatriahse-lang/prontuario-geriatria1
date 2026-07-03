@@ -2,7 +2,6 @@
  * excelPreencher.js
  * Preenche o modelo .xlsm via edição cirúrgica do ZIP,
  * preservando 100% da estrutura, VBA/macros e formatação.
- * O modelo fica embutido em base64 para evitar problemas de upload binário.
  */
 
 import { EXCEL_MODELO_B64 } from './excelModelo.js';
@@ -18,36 +17,81 @@ function carregarJSZip() {
   });
 }
 
-function addSharedString(xml, texto) {
-  const escaped = texto.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const matches = [...xml.matchAll(/<si><t[^>]*>(.*?)<\/t><\/si>/gs)];
-  for (let i = 0; i < matches.length; i++) {
-    if (matches[i][1] === texto || matches[i][1] === escaped) return [xml, i];
-  }
-  const nova = `<si><t xml:space="preserve">${escaped}</t></si>`;
-  xml = xml.replace('</sst>', nova + '</sst>');
-  const total = (xml.match(/<si>/g) || []).length;
-  xml = xml.replace(/count="\d+"/, `count="${total}"`);
-  xml = xml.replace(/uniqueCount="\d+"/, `uniqueCount="${total}"`);
-  return [xml, total - 1];
+/**
+ * Conta o total de entradas <si> no sharedStrings.xml.
+ * Usa split em vez de regex para ser imune a \r\n no conteúdo.
+ */
+function contarSharedStrings(xml) {
+  return xml.split('<si>').length - 1;
 }
 
-function setCellStr(sheetXml, cref, strIdx, style) {
-  style = style || '2';
-  const novaCell = `<c r="${cref}" s="${style}" t="s"><v>${strIdx}</v></c>`;
+/**
+ * Verifica se um texto já existe nas shared strings.
+ * Retorna o índice se encontrar, -1 se não encontrar.
+ * Compara o texto escapado para XML.
+ */
+function buscarSharedString(xml, texto) {
+  const escaped = texto
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Divide por <si> para iterar cada entrada
+  const partes = xml.split('<si>');
+  for (let i = 1; i < partes.length; i++) {
+    const inner = partes[i].split('</si>')[0];
+    // Extrai texto(s) da entrada
+    const textos = [];
+    const re = /<t[^>]*>([\s\S]*?)<\/t>/g;
+    let m;
+    while ((m = re.exec(inner)) !== null) {
+      textos.push(m[1]);
+    }
+    const valorCompleto = textos.join('');
+    if (valorCompleto === texto || valorCompleto === escaped) {
+      return i - 1; // índice 0-based
+    }
+  }
+  return -1;
+}
+
+/**
+ * Adiciona texto às shared strings se não existir.
+ * Retorna [xmlAtualizado, índice].
+ */
+function addSharedString(xml, texto) {
+  const idx = buscarSharedString(xml, texto);
+  if (idx !== -1) return [xml, idx];
+
+  const escaped = texto
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const nova = `<si><t xml:space="preserve">${escaped}</t></si>`;
+  xml = xml.replace('</sst>', nova + '</sst>');
+
+  const novoTotal = contarSharedStrings(xml);
+  xml = xml.replace(/count="\d+"/, `count="${novoTotal}"`);
+  xml = xml.replace(/uniqueCount="\d+"/, `uniqueCount="${novoTotal}"`);
+
+  return [xml, novoTotal - 1];
+}
+
+function setCellStr(sheetXml, cref, strIdx) {
+  const novaCell = `<c r="${cref}" s="2" t="s"><v>${strIdx}</v></c>`;
   const selfClose = new RegExp(`<c r="${cref}"[^/]*/>`);
   if (selfClose.test(sheetXml)) return sheetXml.replace(selfClose, novaCell);
-  const withContent = new RegExp(`<c r="${cref}"[^>]*>.*?<\\/c>`, 's');
+  const withContent = new RegExp(`<c r="${cref}"[^>]*>[\\s\\S]*?<\\/c>`);
   if (withContent.test(sheetXml)) return sheetXml.replace(withContent, novaCell);
   return sheetXml;
 }
 
-function setCellNum(sheetXml, cref, value, style) {
-  style = style || '2';
-  const novaCell = `<c r="${cref}" s="${style}"><v>${value}</v></c>`;
+function setCellNum(sheetXml, cref, value) {
+  const novaCell = `<c r="${cref}" s="2"><v>${value}</v></c>`;
   const selfClose = new RegExp(`<c r="${cref}"[^/]*/>`);
   if (selfClose.test(sheetXml)) return sheetXml.replace(selfClose, novaCell);
-  const withContent = new RegExp(`<c r="${cref}"[^>]*>.*?<\\/c>`, 's');
+  const withContent = new RegExp(`<c r="${cref}"[^>]*>[\\s\\S]*?<\\/c>`);
   if (withContent.test(sheetXml)) return sheetXml.replace(withContent, novaCell);
   return sheetXml;
 }
@@ -55,7 +99,6 @@ function setCellNum(sheetXml, cref, value, style) {
 export async function preencherExcel({ nome, prontuario, maeNome, idade, sexo, data }) {
   const JSZip = await carregarJSZip();
 
-  // Decodifica base64 embutido → ArrayBuffer (evita problema de upload binário)
   const bin = atob(EXCEL_MODELO_B64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
