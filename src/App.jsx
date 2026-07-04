@@ -94,32 +94,159 @@ const BEERS_LIST = [
   "cimetidina","ranitidina","indinavir","insulina detemir","insulina glargina",
 ];
 
-// Interações medicamentosas relevantes para idosos
+// Cada interação tem grupos: a interação dispara quando há ≥1 match em cada grupo distinto.
+// Isso evita falsos positivos de duas drogas do mesmo grupo.
 const INTERACOES = [
-  { drugs: ["aas","varfarina"], msg: "AAS + Varfarina: risco aumentado de sangramento" },
-  { drugs: ["aas","ácido acetilsalicílico","clopidogrel"], msg: "AAS + Clopidogrel: dupla antiagregação — risco de sangramento" },
-  { drugs: ["warfarina","varfarina","fluconazol","metronidazol","amiodarona","eritromicina","claritromicina"], msg: "Potencialização da varfarina — monitorar INR" },
-  { drugs: ["inibidor da eca","ieca","captopril","enalapril","lisinopril","ramipril","espironolactona"], msg: "IECA + Espironolactona: risco de hipercalemia" },
-  { drugs: ["inibidor da eca","ieca","captopril","enalapril","lisinopril","ramipril","losartana","valsartana","irbesartana","ara ii","aine","ibuprofeno","diclofenaco","naproxeno","indometacina"], msg: "IECA/BRA + AINE: risco de lesão renal aguda e hiperpotassemia" },
-  { drugs: ["metformina","contraste iodado"], msg: "Metformina + Contraste: risco de acidose lática — suspender 48h antes" },
-  { drugs: ["digoxina","amiodarona"], msg: "Digoxina + Amiodarona: aumento dos níveis de digoxina — risco de toxicidade" },
-  { drugs: ["digoxina","claritromicina","eritromicina","azitromicina"], msg: "Digoxina + Macrolídeo: aumento dos níveis de digoxina" },
-  { drugs: ["sinvastatina","atorvastatina","rosuvastatina","claritromicina","eritromicina"], msg: "Estatina + Macrolídeo: risco aumentado de miopatia/rabdomiólise" },
-  { drugs: ["diurético","furosemida","hidroclorotiazida","indapamida","aine","ibuprofeno","diclofenaco","naproxeno"], msg: "Diurético + AINE: risco de insuficiência renal e redução do efeito diurético" },
-  { drugs: ["betabloqueador","propranolol","metoprolol","atenolol","carvedilol","verapamil","diltiazem"], msg: "Betabloqueador + Verapamil/Diltiazem: risco de bloqueio AV e bradicardia grave" },
-  { drugs: ["ssri","isrs","fluoxetina","sertralina","paroxetina","escitalopram","citalopram","aas","ácido acetilsalicílico","aine","ibuprofeno","diclofenaco","naproxeno","varfarina","warfarina"], msg: "ISRS + AINE/Anticoagulante: risco aumentado de sangramento digestivo" },
-  { drugs: ["opioide","morfina","codeína","tramadol","oxicodona","fentanil","benzodiazepínico","diazepam","clonazepam","alprazolam","lorazepam","midazolam"], msg: "Opioide + Benzodiazepínico: risco de depressão respiratória grave" },
-  { drugs: ["metoclopramida","haloperidol","risperidona","olanzapina","quetiapina","levodopa","pramipexol","ropinirol"], msg: "Antiemético/Antipsicótico + Antiparkinsônico: antagonismo farmacológico" },
-  { drugs: ["lítio","inibidor da eca","ieca","captopril","enalapril","aine","ibuprofeno","diclofenaco","naproxeno","hidroclorotiazida","furosemida"], msg: "Lítio + IECA/AINE/Diurético: risco de toxicidade por lítio" },
-  { drugs: ["sildenafila","tadalafila","vardenafila","nitrato","nitroglicerina","isossorbida"], msg: "Inibidor de PDE5 + Nitrato: hipotensão grave" },
-  { drugs: ["levotiroxina","omeprazol","pantoprazol","lansoprazol","rabeprazol","carbonato de cálcio","sulfato ferroso"], msg: "Levotiroxina + IBP/Cálcio/Ferro: redução da absorção — administrar separado (30-60 min)" },
-  { drugs: ["ciprofloxacino","levofloxacino","moxifloxacino","amiodarona","haloperidol","metadona","azitromicina","claritromicina","ondansetrona"], msg: "Combinação de fármacos que prolongam QT: risco de Torsades de Pointes" },
+  {
+    grupos: [
+      ["aas","ácido acetilsalicílico","aspirina"],
+      ["varfarina","warfarina","acenocumarol"]
+    ],
+    msg: "AAS + Varfarina: risco aumentado de sangramento"
+  },
+  {
+    grupos: [
+      ["aas","ácido acetilsalicílico","aspirina"],
+      ["clopidogrel","ticagrelor","prasugrel"]
+    ],
+    msg: "AAS + Clopidogrel/Ticagrelor: dupla antiagregação — risco de sangramento"
+  },
+  {
+    grupos: [
+      ["varfarina","warfarina","acenocumarol"],
+      ["fluconazol","metronidazol","amiodarona","eritromicina","claritromicina","sulfametoxazol","ciprofloxacino","levofloxacino"]
+    ],
+    msg: "Varfarina + inibidor enzimático: potencialização do anticoagulante — monitorar INR"
+  },
+  {
+    grupos: [
+      ["captopril","enalapril","lisinopril","ramipril","perindopril","benazepril","quinapril","trandolapril","fosinopril"],
+      ["espironolactona","eplerenona"]
+    ],
+    msg: "IECA + Espironolactona: risco de hipercalemia"
+  },
+  {
+    grupos: [
+      ["captopril","enalapril","lisinopril","ramipril","perindopril","losartana","valsartana","irbesartana","olmesartana","telmisartana","candesartana"],
+      ["ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","cetorolaco","celecoxibe"]
+    ],
+    msg: "IECA/BRA + AINE: risco de lesão renal aguda e hiperpotassemia"
+  },
+  {
+    grupos: [
+      ["metformina"],
+      ["contraste iodado"]
+    ],
+    msg: "Metformina + Contraste iodado: risco de acidose lática — suspender 48h antes"
+  },
+  {
+    grupos: [
+      ["digoxina"],
+      ["amiodarona"]
+    ],
+    msg: "Digoxina + Amiodarona: aumento dos níveis de digoxina — risco de toxicidade"
+  },
+  {
+    grupos: [
+      ["digoxina"],
+      ["claritromicina","eritromicina","azitromicina"]
+    ],
+    msg: "Digoxina + Macrolídeo: aumento dos níveis de digoxina"
+  },
+  {
+    grupos: [
+      ["sinvastatina","atorvastatina","rosuvastatina","pravastatina","lovastatina"],
+      ["claritromicina","eritromicina"]
+    ],
+    msg: "Estatina + Macrolídeo (claritromicina/eritromicina): risco de miopatia/rabdomiólise"
+  },
+  {
+    grupos: [
+      ["furosemida","hidroclorotiazida","indapamida","clortalidona","bumetanida"],
+      ["ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","cetorolaco"]
+    ],
+    msg: "Diurético + AINE: risco de insuficiência renal e redução do efeito diurético"
+  },
+  {
+    grupos: [
+      ["propranolol","metoprolol","atenolol","carvedilol","bisoprolol","nebivolol"],
+      ["verapamil","diltiazem"]
+    ],
+    msg: "Betabloqueador + Verapamil/Diltiazem: risco de bloqueio AV e bradicardia grave"
+  },
+  {
+    grupos: [
+      ["fluoxetina","sertralina","paroxetina","escitalopram","citalopram","fluvoxamina"],
+      ["ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","aas","ácido acetilsalicílico","aspirina","varfarina","warfarina","acenocumarol"]
+    ],
+    msg: "ISRS + AINE/Anticoagulante: risco aumentado de sangramento digestivo"
+  },
+  {
+    grupos: [
+      ["morfina","codeína","tramadol","oxicodona","fentanil","meperidina","buprenorfina","hidromorfona"],
+      ["diazepam","clonazepam","alprazolam","lorazepam","midazolam","bromazepam","nitrazepam","zolpidem","zopiclona"]
+    ],
+    msg: "Opioide + Benzodiazepínico/Z-drug: risco de depressão respiratória grave"
+  },
+  {
+    grupos: [
+      ["metoclopramida","haloperidol","risperidona","olanzapina","quetiapina","clorpromazina"],
+      ["levodopa","pramipexol","ropinirol","rotigotina"]
+    ],
+    msg: "Antiemético/Antipsicótico + Antiparkinsônico: antagonismo farmacológico"
+  },
+  {
+    grupos: [
+      ["lítio"],
+      ["captopril","enalapril","lisinopril","ramipril","losartana","valsartana","ibuprofeno","diclofenaco","naproxeno","furosemida","hidroclorotiazida","indapamida"]
+    ],
+    msg: "Lítio + IECA/BRA/AINE/Diurético: risco de toxicidade por lítio"
+  },
+  {
+    grupos: [
+      ["sildenafila","tadalafila","vardenafila","avanafila"],
+      ["nitroglicerina","isossorbida","mononitrato","dinitrato","nitrato"]
+    ],
+    msg: "Inibidor de PDE5 + Nitrato: risco de hipotensão grave"
+  },
+  {
+    grupos: [
+      ["levotiroxina"],
+      ["omeprazol","pantoprazol","lansoprazol","rabeprazol","esomeprazol","dexlansoprazol"]
+    ],
+    msg: "Levotiroxina + IBP: redução da absorção — administrar com 30-60 min de intervalo"
+  },
+  {
+    grupos: [
+      ["levotiroxina"],
+      ["carbonato de cálcio","cálcio","sulfato ferroso","ferro"]
+    ],
+    msg: "Levotiroxina + Cálcio/Ferro: redução da absorção — administrar com 4h de intervalo"
+  },
+  {
+    grupos: [
+      ["ciprofloxacino","levofloxacino","moxifloxacino"],
+      ["amiodarona","haloperidol","azitromicina","claritromicina","ondansetrona","metadona"]
+    ],
+    msg: "Fluorquinolona + Fármaco que prolonga QT: risco de Torsades de Pointes"
+  },
+  {
+    grupos: [
+      ["aas","ácido acetilsalicílico","aspirina","ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida"],
+      ["varfarina","warfarina","acenocumarol","rivaroxabana","apixabana","dabigatrana","edoxabana"]
+    ],
+    msg: "AINE + Anticoagulante oral: risco elevado de sangramento — evitar combinação"
+  },
 ];
 
 function checkBeers(nomeMedicacao) {
   if (!nomeMedicacao) return null;
   const lower = nomeMedicacao.toLowerCase();
-  const found = BEERS_LIST.find(b => lower.includes(b));
+  // Busca palavra inteira ou início de palavra para evitar falsos positivos
+  const found = BEERS_LIST.find(b => {
+    const regex = new RegExp(`(^|\\s|,|;|\\+|-)${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+    return regex.test(lower);
+  });
   return found || null;
 }
 
@@ -127,10 +254,16 @@ function checkInteracoes(texto) {
   if (!texto) return [];
   const lower = texto.toLowerCase();
   const alerts = [];
-  INTERACOES.forEach(({ drugs, msg }) => {
-    let matches = 0;
-    drugs.forEach(d => { if (lower.includes(d)) matches++; });
-    if (matches >= 2) alerts.push(msg);
+  INTERACOES.forEach(({ grupos, msg }) => {
+    // Verifica se há ao menos 1 fármaco de CADA grupo presente no texto
+    const todosGruposPresentes = grupos.every(grupo =>
+      grupo.some(drug => {
+        // Busca palavra delimitada para evitar falsos positivos
+        const regex = new RegExp(`(^|\\s|,|;|\\+|-|\\()${drug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+        return regex.test(lower);
+      })
+    );
+    if (todosGruposPresentes) alerts.push(msg);
   });
   return alerts;
 }
