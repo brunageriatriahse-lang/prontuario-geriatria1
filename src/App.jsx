@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { listPatients, savePatient, deletePatient as apiDeletePatient, API_URL } from './api.js';
+import { listPatients, savePatient, deletePatient as apiDeletePatient } from './api.js';
+import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
