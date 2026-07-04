@@ -4,29 +4,66 @@ import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
-// Envia arquivo para o Google Drive via Apps Script
+// Upload para o Google Drive via token OAuth do Apps Script
+// O browser pede o token ao Apps Script (requisição pequena)
+// e depois faz upload direto na Drive API (sem passar pelo Apps Script)
 async function uploadParaDrive(blob, nomePaciente, nomeArquivo, mimeType) {
   try {
-    const arrayBuf = await blob.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuf);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    const base64 = btoa(binary);
-
-    const resp = await fetch(API_URL, {
+    // 1. Pede token e ID da pasta ao Apps Script
+    const tokenResp = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'uploadDrive',
-        nomePaciente,
-        nomeArquivo,
-        base64,
-        mimeType,
-      }),
+      body: JSON.stringify({ action: 'getDriveToken', nomePaciente }),
     });
-    const data = await resp.json();
-    return data;
-  } catch (e) {
+    const tokenData = await tokenResp.json();
+    if (!tokenData.ok) return { ok: false, error: tokenData.error };
+
+    const { pastaId, pastaNome, token } = tokenData;
+
+    // 2. Faz upload direto na Drive API
+    const metadata = JSON.stringify({ name: nomeArquivo, parents: [pastaId] });
+    const boundary = 'prontuario_upload_boundary';
+    const arrayBuf = await blob.arrayBuffer();
+
+    const metaBytes = new TextEncoder().encode(
+      '--' + boundary + '\r\n' +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      metadata + '\r\n' +
+      '--' + boundary + '\r\n' +
+      'Content-Type: ' + mimeType + '\r\n\r\n'
+    );
+    const endBytes = new TextEncoder().encode('\r\n--' + boundary + '--');
+
+    const body = new Uint8Array(metaBytes.length + arrayBuf.byteLength + endBytes.length);
+    body.set(metaBytes, 0);
+    body.set(new Uint8Array(arrayBuf), metaBytes.length);
+    body.set(endBytes, metaBytes.length + arrayBuf.byteLength);
+
+    const uploadResp = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'multipart/related; boundary=' + boundary,
+        },
+        body: body,
+      }
+    );
+
+    if (!uploadResp.ok) {
+      const err = await uploadResp.text();
+      return { ok: false, error: 'Drive API: ' + err };
+    }
+
+    const fileData = await uploadResp.json();
+    return {
+      ok: true,
+      link: 'https://drive.google.com/file/d/' + fileData.id + '/view',
+      nome: nomeArquivo,
+      pasta: pastaNome,
+    };
+  } catch(e) {
     return { ok: false, error: e.message };
   }
 }
