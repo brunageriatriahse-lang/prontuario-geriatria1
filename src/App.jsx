@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { listPatients, savePatient, deletePatient as apiDeletePatient } from './api.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
+import { preencherReceitasDocx } from './receitasPreencher.js';
 
 const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática","DRC","DAC","IC","FA","AVC","DPOC","Asma","HPB","Incontinência urinária","DRGE","Constipação crônica","Osteoporose","Osteoartrose","Hipotireoidismo","Transtorno depressivo","TAG","Insônia","Síndrome demencial","Doença de Parkinson","Neoplasia","DHC","Insuficiência venosa crônica","DAOP","Catarata","Glaucoma","Déficit auditivo A/E"];
 
@@ -1051,6 +1052,32 @@ export default function App() {
     setView("record");
   }
 
+  function baixarReceitasWord(patient) {
+    const idade = calcIdade(patient.ident.dn);
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    const nomePaciente = patient.ident.nome || 'paciente';
+
+    preencherReceitasDocx({
+      nome: nomePaciente,
+      prontuario: patient.ident.prontuario || '',
+      maeNome: patient.ident.maeNome || '',
+      idade: idade != null ? idade : '',
+      sexo: patient.ident.sexo || '',
+    }).then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'Receitas_' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim().replace(/ +/g, '_') + '_' + hoje.replace(/\//g, '-') + '.docx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }).catch(e => {
+      console.error('Erro ao gerar receitas Word:', e);
+      alert('Erro ao gerar o arquivo Word: ' + e.message);
+    });
+  }
+
   function baixarReceituarios(patient) {
     const idade = calcIdade(patient.ident.dn);
     const hoje = new Date().toLocaleDateString('pt-BR');
@@ -1198,6 +1225,18 @@ export default function App() {
               display: "flex", alignItems: "center", gap: "6px"
             }}>
               <i className="ti ti-clipboard-text" aria-hidden="true"></i>Prontuário completo
+            </button>
+            <button
+              onClick={() => baixarReceitasWord(activePatient)}
+              style={{
+                padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
+                border: "0.5px solid var(--color-border-tertiary)",
+                background: "transparent",
+                color: "var(--color-text-primary)",
+                display: "flex", alignItems: "center", gap: "6px"
+              }}
+            >
+              <i className="ti ti-file-word" aria-hidden="true"></i>Receitas (Word)
             </button>
             <button
               onClick={() => baixarReceituarios(activePatient)}
