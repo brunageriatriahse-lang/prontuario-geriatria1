@@ -63,11 +63,57 @@ const RASTREIO_GERAL = [
 ];
 
 const BEERS_LIST = [
-  "amitriptilina","clorpromazina","prometazina","hidroxizina","diazepam","clonazepam","alprazolam","lorazepam","midazolam",
-  "zolpidem","amiodarona","digoxina","nifedipina","doxazosina","glibenclamida","clorpropamida",
-  "indometacina","cetorolaco","ibuprofeno","diclofenaco","meperidina","tramadol","oxibutinina","metoclopramida",
-  "olanzapina","quetiapina","risperidona","haloperidol","fluoxetina","escitalopram","espironolactona",
-  "ácido acetilsalicílico","aas","mineral oil","óleo mineral"
+  // Anticolinérgicos
+  "amitriptilina","nortriptilina","imipramina","clorpromazina","tioridazina","prometazina",
+  "hidroxizina","difenidramina","dexclorfeniramina","clorfeniramina","ciproeptadina",
+  "oxibutinina","solifenacina","tolterodina","darifenacina","fesoterodina","flavoxato",
+  "escopolamina","atropina","ipratrópio oral",
+  // Benzodiazepínicos e Z-drugs
+  "diazepam","clonazepam","alprazolam","lorazepam","midazolam","bromazepam",
+  "clobazam","clorazepato","nitrazepam","flurazepam","triazolam",
+  "zolpidem","zopiclona","eszopiclona",
+  // Cardiovascular
+  "amiodarona","digoxina","nifedipina","doxazosina","alfuzosina","terazosina",
+  "espironolactona","ticlopidina","dipiridamol",
+  // Hipoglicemiantes
+  "glibenclamida","clorpropamida","glipizida","tolbutamida",
+  // AINEs e analgésicos
+  "indometacina","cetorolaco","ibuprofeno","diclofenaco","naproxeno","piroxicam",
+  "meloxicam","nimesulida","celecoxibe","meperidina","tramadol","pentazocina",
+  // Antipsicóticos
+  "olanzapina","quetiapina","risperidona","haloperidol","clorpromazina","tioridazina",
+  "aripiprazol","ziprasidona","paliperidona","clozapina",
+  // Antidepressivos
+  "fluoxetina","paroxetina","amitriptilina","nortriptilina","imipramina","doxepina",
+  // Outros
+  "metoclopramida","domperidona","óleo mineral","mineral oil","aas","ácido acetilsalicílico",
+  "sulfato ferroso","hidróxido de alumínio","baclofeno","carisoprodol","ciclobenzaprina",
+  "metaxalona","metocarbamol","orfenadrina","relaxantes musculares",
+  "clonidina","metildopa","reserpina","guanetidina",
+  "estrogênio oral","androgênio","testosterona oral","medroxiprogesterona oral",
+  "cimetidina","ranitidina","indinavir","insulina detemir","insulina glargina",
+];
+
+// Interações medicamentosas relevantes para idosos
+const INTERACOES = [
+  { drugs: ["aas","varfarina"], msg: "AAS + Varfarina: risco aumentado de sangramento" },
+  { drugs: ["aas","ácido acetilsalicílico","clopidogrel"], msg: "AAS + Clopidogrel: dupla antiagregação — risco de sangramento" },
+  { drugs: ["warfarina","varfarina","fluconazol","metronidazol","amiodarona","eritromicina","claritromicina"], msg: "Potencialização da varfarina — monitorar INR" },
+  { drugs: ["inibidor da eca","ieca","captopril","enalapril","lisinopril","ramipril","espironolactona"], msg: "IECA + Espironolactona: risco de hipercalemia" },
+  { drugs: ["inibidor da eca","ieca","captopril","enalapril","lisinopril","ramipril","losartana","valsartana","irbesartana","ara ii","aine","ibuprofeno","diclofenaco","naproxeno","indometacina"], msg: "IECA/BRA + AINE: risco de lesão renal aguda e hiperpotassemia" },
+  { drugs: ["metformina","contraste iodado"], msg: "Metformina + Contraste: risco de acidose lática — suspender 48h antes" },
+  { drugs: ["digoxina","amiodarona"], msg: "Digoxina + Amiodarona: aumento dos níveis de digoxina — risco de toxicidade" },
+  { drugs: ["digoxina","claritromicina","eritromicina","azitromicina"], msg: "Digoxina + Macrolídeo: aumento dos níveis de digoxina" },
+  { drugs: ["sinvastatina","atorvastatina","rosuvastatina","claritromicina","eritromicina"], msg: "Estatina + Macrolídeo: risco aumentado de miopatia/rabdomiólise" },
+  { drugs: ["diurético","furosemida","hidroclorotiazida","indapamida","aine","ibuprofeno","diclofenaco","naproxeno"], msg: "Diurético + AINE: risco de insuficiência renal e redução do efeito diurético" },
+  { drugs: ["betabloqueador","propranolol","metoprolol","atenolol","carvedilol","verapamil","diltiazem"], msg: "Betabloqueador + Verapamil/Diltiazem: risco de bloqueio AV e bradicardia grave" },
+  { drugs: ["ssri","isrs","fluoxetina","sertralina","paroxetina","escitalopram","citalopram","aas","ácido acetilsalicílico","aine","ibuprofeno","diclofenaco","naproxeno","varfarina","warfarina"], msg: "ISRS + AINE/Anticoagulante: risco aumentado de sangramento digestivo" },
+  { drugs: ["opioide","morfina","codeína","tramadol","oxicodona","fentanil","benzodiazepínico","diazepam","clonazepam","alprazolam","lorazepam","midazolam"], msg: "Opioide + Benzodiazepínico: risco de depressão respiratória grave" },
+  { drugs: ["metoclopramida","haloperidol","risperidona","olanzapina","quetiapina","levodopa","pramipexol","ropinirol"], msg: "Antiemético/Antipsicótico + Antiparkinsônico: antagonismo farmacológico" },
+  { drugs: ["lítio","inibidor da eca","ieca","captopril","enalapril","aine","ibuprofeno","diclofenaco","naproxeno","hidroclorotiazida","furosemida"], msg: "Lítio + IECA/AINE/Diurético: risco de toxicidade por lítio" },
+  { drugs: ["sildenafila","tadalafila","vardenafila","nitrato","nitroglicerina","isossorbida"], msg: "Inibidor de PDE5 + Nitrato: hipotensão grave" },
+  { drugs: ["levotiroxina","omeprazol","pantoprazol","lansoprazol","rabeprazol","carbonato de cálcio","sulfato ferroso"], msg: "Levotiroxina + IBP/Cálcio/Ferro: redução da absorção — administrar separado (30-60 min)" },
+  { drugs: ["ciprofloxacino","levofloxacino","moxifloxacino","amiodarona","haloperidol","metadona","azitromicina","claritromicina","ondansetrona"], msg: "Combinação de fármacos que prolongam QT: risco de Torsades de Pointes" },
 ];
 
 function checkBeers(nomeMedicacao) {
@@ -75,6 +121,18 @@ function checkBeers(nomeMedicacao) {
   const lower = nomeMedicacao.toLowerCase();
   const found = BEERS_LIST.find(b => lower.includes(b));
   return found || null;
+}
+
+function checkInteracoes(texto) {
+  if (!texto) return [];
+  const lower = texto.toLowerCase();
+  const alerts = [];
+  INTERACOES.forEach(({ drugs, msg }) => {
+    let matches = 0;
+    drugs.forEach(d => { if (lower.includes(d)) matches++; });
+    if (matches >= 2) alerts.push(msg);
+  });
+  return alerts;
 }
 
 function calcIMC(peso, altura) {
@@ -233,33 +291,18 @@ function emptyConsulta(base) {
     copy.data = new Date().toISOString().slice(0, 10);
     copy.createdAt = new Date().toISOString();
     copy.updatedAt = new Date().toISOString();
-    // Campos que devem começar em branco em cada nova consulta
-    copy.queixas = "";
-    copy.labsTexto = "";
-    copy.imagemTexto = "";
     copy.pendenciasConsultaAtual = "";
-    copy.plano = { ajuste: "", solicito: "", orientacoes: "", encaminhamentos: "", retorno: "" };
-    copy.docs = {
-      receitas: [],
-      receitasEspeciais: [],
-      examesSimplesLista: [],
-      examesEspeciais: [],
-      vacinacao: (base.docs && base.docs.vacinacao) ? base.docs.vacinacao : { selecionados: { "Influenza": true, "COVID-19": true, "Pneumocócica": true, "dT/dTpa": true, "Hepatite B": true, "Vírus sincicial respiratório (VSR)": true, "Herpes-zóster (VZR recombinante)": true } },
-    };
-    // Reseta exame físico para padrão (só mantém estrutura, não os valores preenchidos)
-    copy.exameFisico = {
-      paSentado: "", paEmPe: "", fc: "", fr: "", sato2: "", temp: "", peso: "", hgt: "",
-      geral: base.exameFisico?.geral || "",
-      acv: base.exameFisico?.acv || "",
-      ar: base.exameFisico?.ar || "",
-      abd: base.exameFisico?.abd || "",
-      ext: base.exameFisico?.ext || "",
-      sn: base.exameFisico?.sn || "",
-      pele: base.exameFisico?.pele || "",
-      outros: "",
-    };
-    // Pendências: mantém as não concluídas, marca como pendentes para nova consulta
-    copy.pendencias = (base.pendencias || []).filter(p => !p.done).map(p => ({ ...p, done: false }));
+    // Zera apenas os sinais vitais — mantém o restante do exame físico
+    if (copy.exameFisico) {
+      copy.exameFisico.paSentado = "";
+      copy.exameFisico.paEmPe = "";
+      copy.exameFisico.fc = "";
+      copy.exameFisico.fr = "";
+      copy.exameFisico.sato2 = "";
+      copy.exameFisico.temp = "";
+      copy.exameFisico.peso = "";
+      copy.exameFisico.hgt = "";
+    }
     return copy;
   }
   return {
@@ -278,17 +321,18 @@ function emptyConsulta(base) {
       aivd: {"Telefone":true,"Transporte":true,"Compras":true,"Preparar refeições":true,"Tarefas domésticas":true,"Trabalhos manuais":true,"Lavar roupas":true,"Medicações":true,"Finanças":true},
       abvd: {"Banho":true,"Vestir-se":true,"Higiene pessoal":true,"Transferência":true,"Continência":true,"Alimentação":true},
       marcha: "", dispositivo: "",
-      quedas: "nao", quedasNum: "", quedasDescricao: "", fraturas: "nao", tce: "nao",
+      quedas: "nao", quedasNum: "", quedasDescricao: "", fraturas: "nao", fraturasDescricao: "", tce: "nao", tceDescricao: "",
       frail: {}, semQueixasCognitivas: false, queixasCognitivasDescricao: "", minicog: "", meem: "", moca: "",
       semQueixasHumor: false, queixasHumorDescricao: "", gds15: "",
       semQueixasSono: false, roncos: "", sonolenciaDiurna: "", higieneSono: "",
       visao: "preservada", visaoLentes: "nao", audicao: "preservada", audicaoAparelho: "nao",
-      incontinenciaUrinaria: "nao", incontinenciaFecal: "nao", constipacao: "nao",
-      peso: "", pesoHabitual: "", altura: "", perdaPeso: "nao", perdaPesoKg: "",
+      incontinenciaUrinaria: "nao", incontinenciaUrinariaDes: "", incontinenciaFecal: "nao", incontinenciaFecalDes: "", constipacao: "nao", constipacaoDescricao: "",
+      peso: "", pesoHabitual: "", altura: "", perdaPeso: "nao", perdaPesoKg: "", perdaPesoTempo: "",
       apetite: "preservado", disfagia: "ausente", disfagiaDieta: "",
-      problemasDentarios: "nao", proteseDentaria: "nao",
+      problemasDentarios: "nao", problemasDentariosDes: "", proteseDentaria: "nao",
       testeForca: "", circPanturrilha: "",
       atividadeFisica: "",
+      sonoObservacoes: "",
     },
     vacinas: {},
     rastreioGeral: {},
@@ -1080,7 +1124,7 @@ function ConsultasView({ patient, onOpenConsulta, onCreateConsulta, onRemoveCons
                 </div>
               </div>
               <div style={{ display: "flex", gap: "6px" }}>
-                <button onClick={() => onOpenConsulta(c.id, "documentos")} aria-label="Documentos"><i className="ti ti-file-text" aria-hidden="true"></i></button>
+                <button onClick={() => onOpenConsulta(c.id, "prontuario")} aria-label="Abrir consulta"><i className="ti ti-clipboard-text" aria-hidden="true"></i></button>
                 <button onClick={() => onOpenConsulta(c.id, "prontuario")} aria-label="Abrir consulta"><i className="ti ti-edit" aria-hidden="true"></i></button>
                 <button onClick={() => { if (confirm("Mover esta consulta para a lixeira? Você poderá restaurá-la em até 30 dias.")) onRemoveConsulta(c.id); }} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
               </div>
@@ -1252,11 +1296,11 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "antecedentes" && <AntecedentesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} sexoPaciente={patient.ident.sexo || ""} />}
       {activeTab === "prevencao" && <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "20px", paddingTop: "16px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
         <button onClick={onSave} style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--color-background-success)", color: "var(--color-text-success)", border: "0.5px solid var(--color-border-success)" }}>
@@ -1277,36 +1321,36 @@ function IdentTab({ patient, updatePatient }) {
   return (
     <SectionCard title="Identificação do paciente" icon="ti-id">
       <Row>
-        <Field label="Prontuário"><input value={i.prontuario} onChange={e => set("prontuario", e.target.value)} /></Field>
-        <Field label="Nome completo"><input value={i.nome} onChange={e => set("nome", e.target.value)} /></Field>
-        <Field label="CPF"><input value={i.cpf} onChange={e => set("cpf", e.target.value)} placeholder="000.000.000-00" /></Field>
+        <Field label="Prontuário"><input value={i.prontuario || ""} onChange={e => set("prontuario", e.target.value)} /></Field>
+        <Field label="Nome completo"><input value={i.nome || ""} onChange={e => set("nome", e.target.value)} /></Field>
+        <Field label="CPF"><input value={i.cpf || ""} onChange={e => set("cpf", e.target.value)} placeholder="000.000.000-00" /></Field>
         <Field label="Sexo">
-          <select value={i.sexo} onChange={e => set("sexo", e.target.value)}>
+          <select value={i.sexo || ""} onChange={e => set("sexo", e.target.value)}>
             <option value="">Selecione</option>
             <option value="M">Masculino</option>
             <option value="F">Feminino</option>
           </select>
         </Field>
         <Field label="Data de nascimento" hint={idade != null ? `Idade calculada: ${idade} anos` : null}>
-          <input type="date" value={i.dn} onChange={e => set("dn", e.target.value)} />
+          <input type="date" value={i.dn || ""} onChange={e => set("dn", e.target.value)} />
         </Field>
-        <Field label="Nome da mãe"><input value={i.maeNome} onChange={e => set("maeNome", e.target.value)} /></Field>
-        <Field label="Naturalidade"><input value={i.natural} onChange={e => set("natural", e.target.value)} /></Field>
-        <Field label="Procedência"><input value={i.procedente} onChange={e => set("procedente", e.target.value)} /></Field>
-        <Field label="Profissão"><input value={i.profissao} onChange={e => set("profissao", e.target.value)} /></Field>
-        <Field label="Escolaridade"><input value={i.escolaridade} onChange={e => set("escolaridade", e.target.value)} /></Field>
+        <Field label="Nome da mãe"><input value={i.maeNome || ""} onChange={e => set("maeNome", e.target.value)} /></Field>
+        <Field label="Naturalidade"><input value={i.natural || ""} onChange={e => set("natural", e.target.value)} /></Field>
+        <Field label="Procedência"><input value={i.procedente || ""} onChange={e => set("procedente", e.target.value)} /></Field>
+        <Field label="Profissão"><input value={i.profissao || ""} onChange={e => set("profissao", e.target.value)} /></Field>
+        <Field label="Escolaridade"><input value={i.escolaridade || ""} onChange={e => set("escolaridade", e.target.value)} /></Field>
         <Field label="Estado civil">
-          <select value={i.estadoCivil} onChange={e => set("estadoCivil", e.target.value)}>
+          <select value={i.estadoCivil || ""} onChange={e => set("estadoCivil", e.target.value)}>
             <option value="">Selecione</option>
             <option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option>
           </select>
         </Field>
-        <Field label="Religião"><input value={i.religiao} onChange={e => set("religiao", e.target.value)} /></Field>
-        <Field label="Acompanhante"><input value={i.acompanhante} onChange={e => set("acompanhante", e.target.value)} /></Field>
-        <Field label="Cuidador principal"><input value={i.cuidador} onChange={e => set("cuidador", e.target.value)} /></Field>
-        <Field label="Mora com"><input value={i.moraCom} onChange={e => set("moraCom", e.target.value)} /></Field>
-        <Field label="Pode contar com"><input value={i.podeContarCom} onChange={e => set("podeContarCom", e.target.value)} placeholder="ex: filha, vizinha, cuidador contratado..." /></Field>
-        <Field label="Telefone"><input value={i.telefone} onChange={e => set("telefone", e.target.value)} /></Field>
+        <Field label="Religião"><input value={i.religiao || ""} onChange={e => set("religiao", e.target.value)} /></Field>
+        <Field label="Acompanhante"><input value={i.acompanhante || ""} onChange={e => set("acompanhante", e.target.value)} /></Field>
+        <Field label="Cuidador principal"><input value={i.cuidador || ""} onChange={e => set("cuidador", e.target.value)} /></Field>
+        <Field label="Mora com"><input value={i.moraCom || ""} onChange={e => set("moraCom", e.target.value)} /></Field>
+        <Field label="Pode contar com"><input value={i.podeContarCom || ""} onChange={e => set("podeContarCom", e.target.value)} placeholder="ex: filha, vizinha, cuidador contratado..." /></Field>
+        <Field label="Telefone"><input value={i.telefone || ""} onChange={e => set("telefone", e.target.value)} /></Field>
       </Row>
     </SectionCard>
   );
@@ -1478,14 +1522,22 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const texto = consulta.medicacoesTexto || "";
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
   const beersAlerts = linhas.filter(l => checkBeers(l));
+  const interacoes = checkInteracoes(texto);
 
   return (
     <div>
       <SectionCard title="Medicações em uso" icon="ti-pill">
         {beersAlerts.length > 0 && (
           <Alert type="warning">
-            {beersAlerts.length} linha(s) mencionam fármacos que constam nos Critérios de Beers 2023 e podem ser potencialmente inapropriados para idosos, dependendo de dose, indicação e contexto clínico: {beersAlerts.join(" / ")}. Avalie risco/benefício individualmente.
+            <strong>⚠ Critérios de Beers 2023:</strong> {beersAlerts.length} medicação(ões) potencialmente inapropriada(s) para idosos: <em>{beersAlerts.join(", ")}</em>. Avalie risco/benefício individualmente.
           </Alert>
+        )}
+        {interacoes.length > 0 && (
+          <div style={{ marginBottom: "10px" }}>
+            {interacoes.map((msg, i) => (
+              <Alert key={i} type="warning"><strong>⚠ Interação:</strong> {msg}</Alert>
+            ))}
+          </div>
         )}
         <textarea
           rows={10}
@@ -1509,7 +1561,7 @@ function QueixasTab({ consulta, updateConsulta }) {
   );
 }
 
-function AgaTab({ consulta, updateConsulta }) {
+function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
   const aga = consulta.aga || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, aga: { ...p.aga, [k]: v } }));
 
@@ -1530,8 +1582,17 @@ function AgaTab({ consulta, updateConsulta }) {
   const frailColor = frailCount === 0 ? "success" : frailCount <= 2 ? "warning" : "danger";
 
   const imc = calcIMC(aga.peso, aga.altura);
-  const imcLabel = imc ? (imc < 22 ? "Baixo peso (idoso)" : imc < 27 ? "Eutrófico" : imc < 30 ? "Sobrepeso" : "Obesidade") : null;
+  const imcLabel = imc
+    ? (imc <= 22 ? "⚠ Baixo peso (≤ 22,0)" : imc < 27 ? "Eutrofia (> 22,0 e < 27,0)" : "⚠ Sobrepeso (≥ 27,0)")
+    : null;
 
+  // Diagnóstico de sarcopenia (item 3)
+  const forcaNum = parseFloat(aga.testeForca);
+  const circNum = parseFloat(aga.circPanturrilha);
+  const alertaForca = aga.testeForca && !isNaN(forcaNum)
+    ? (sexoPaciente === "M" ? forcaNum < 27 : forcaNum < 16) : false;
+  const alertaCirc = aga.circPanturrilha && !isNaN(circNum) ? circNum < 31 : false;
+  const alertaSarcopenia = alertaForca || alertaCirc;
   const gdsNum = parseInt(aga.gds15, 10);
   const gdsPositive = !isNaN(gdsNum) && gdsNum >= 6;
 
@@ -1568,32 +1629,30 @@ function AgaTab({ consulta, updateConsulta }) {
         <Field label="Queda no último ano">
           <RadioGroup name="quedas" value={aga.quedas} onChange={v => set("quedas", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} />
         </Field>
-        {aga.quedas === "sim" && (
+        {aga.quedas === "sim" && (<>
           <Field label="Número de quedas"><input value={aga.quedasNum || ""} onChange={e => set("quedasNum", e.target.value)} style={{ maxWidth: "100px" }} /></Field>
-        )}
-        <Row>
-          <div>
-            <Field label="Fraturas associadas">
-              <RadioGroup name="fraturas" value={aga.fraturas} onChange={v => set("fraturas", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} />
-            </Field>
-            {aga.fraturas === "sim" && (
-              <Field label="Descreva a fratura"><textarea rows={2} value={aga.fraturasDescricao || ""} onChange={e => set("fraturasDescricao", e.target.value)} placeholder="ex: fratura de fêmur proximal, tratamento cirúrgico..." /></Field>
-            )}
-          </div>
-          <div>
-            <Field label="TCE associado">
-              <RadioGroup name="tce" value={aga.tce} onChange={v => set("tce", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} />
-            </Field>
-            {aga.tce === "sim" && (
-              <Field label="Descreva o TCE"><textarea rows={2} value={aga.tceDescricao || ""} onChange={e => set("tceDescricao", e.target.value)} placeholder="ex: perda de consciência, hematoma subdural..." /></Field>
-            )}
-          </div>
-        </Row>
-        {aga.quedas === "sim" && (
           <Field label="Descrição da queda (circunstância, local, mecanismo, consequências)">
             <textarea rows={2} value={aga.quedasDescricao || ""} onChange={e => set("quedasDescricao", e.target.value)} />
           </Field>
-        )}
+          <Row>
+            <div>
+              <Field label="Fratura associada">
+                <RadioGroup name="fraturas" value={aga.fraturas} onChange={v => set("fraturas", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} />
+              </Field>
+              {aga.fraturas === "sim" && (
+                <Field label="Descreva a fratura"><textarea rows={2} value={aga.fraturasDescricao || ""} onChange={e => set("fraturasDescricao", e.target.value)} placeholder="ex: fratura de fêmur proximal, tratamento cirúrgico..." /></Field>
+              )}
+            </div>
+            <div>
+              <Field label="TCE associado">
+                <RadioGroup name="tce" value={aga.tce} onChange={v => set("tce", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} />
+              </Field>
+              {aga.tce === "sim" && (
+                <Field label="Descreva o TCE"><textarea rows={2} value={aga.tceDescricao || ""} onChange={e => set("tceDescricao", e.target.value)} placeholder="ex: perda de consciência, hematoma subdural..." /></Field>
+              )}
+            </div>
+          </Row>
+        </>)}
       </SectionCard>
 
       <SectionCard title="Fragilidade (FRAIL)" icon="ti-heart-rate-monitor">
@@ -1742,10 +1801,19 @@ function AgaTab({ consulta, updateConsulta }) {
           <Field label="Prótese dentária?"><RadioGroup name="protese" value={aga.proteseDentaria} onChange={v => set("proteseDentaria", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
         </Row>
         <Row>
-          <Field label="Teste de força (kgf)" hint="Homens: >27 kgf / Mulheres: >19 kgf"><input value={aga.testeForca || ""} onChange={e => set("testeForca", e.target.value)} /></Field>
-          <Field label="Circunferência da panturrilha (cm)" hint="Homens: >34 cm / Mulheres: >33 cm"><input value={aga.circPanturrilha || ""} onChange={e => set("circPanturrilha", e.target.value)} /></Field>
+          <Field label="Teste de força de preensão palmar (kgf)" hint={alertaForca ? "⚠ Abaixo do esperado — critério para sarcopenia" : (sexoPaciente === "M" ? "Normal: ≥ 27 kgf (homens)" : "Normal: ≥ 16 kgf (mulheres)")}>
+            <input value={aga.testeForca || ""} onChange={e => set("testeForca", e.target.value)} style={alertaForca ? { borderColor: "var(--color-border-warning)" } : {}} />
+          </Field>
+          <Field label="Circunferência da panturrilha (cm)" hint={alertaCirc ? "⚠ < 31 cm — critério para sarcopenia" : "Normal: ≥ 31 cm"}>
+            <input value={aga.circPanturrilha || ""} onChange={e => set("circPanturrilha", e.target.value)} style={alertaCirc ? { borderColor: "var(--color-border-warning)" } : {}} />
+          </Field>
           <Field label="Atividade física"><input value={aga.atividadeFisica || ""} onChange={e => set("atividadeFisica", e.target.value)} placeholder="ex: caminhada 3x/semana..." /></Field>
         </Row>
+        {alertaSarcopenia && (
+          <div style={{ background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", color: "var(--color-text-warning)", marginTop: "4px" }}>
+            ⚠ <strong>Possível sarcopenia:</strong> {alertaForca ? `Força de preensão palmar abaixo do ponto de corte (${sexoPaciente === "M" ? "< 27 kgf em homens" : "< 16 kgf em mulheres"})` : ""}{alertaForca && alertaCirc ? " · " : ""}{alertaCirc ? "Circunferência de panturrilha < 31 cm" : ""}. Considere avaliação complementar (velocidade de marcha, SPPB, BIA).
+          </div>
+        )}
       </SectionCard>
     </div>
   );
@@ -2052,9 +2120,72 @@ function ExamesTab({ consulta, updateConsulta }) {
   );
 }
 
-function PlanoTab({ consulta, updateConsulta }) {
+function PlanoTab({ consulta, updateConsulta, patient }) {
   const pl = consulta.plano || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, plano: { ...p.plano, [k]: v } }));
+
+  const sexo = patient?.ident?.sexo || "";
+  const F = sexo === "F";
+  const M = sexo === "M";
+  const tabagista = (() => {
+    const t = (consulta.antecedentes || {}).tabagismo || "";
+    return t && t !== "Nunca fumou";
+  })();
+
+  // Opções de Solicito (itens 5)
+  const SOLICITO_OPTS = [
+    { label: "Laboratório", sempre: true },
+    { label: "Colonoscopia", sempre: true },
+    { label: "EDA", sempre: true },
+    { label: "PSO (Pesquisa de sangue oculto)", sempre: true },
+    { label: "DMO (Densitometria mineral óssea)", sempre: true },
+    { label: "MMG (Mamografia)", cond: F },
+    { label: "USG mamas", cond: F },
+    { label: "CCO (Citopatológico cervical)", cond: F },
+    { label: "PSA (Antígeno prostático específico)", cond: M },
+    { label: "TC de tórax de baixa dose", cond: tabagista },
+    { label: "USG de aorta abdominal", cond: tabagista },
+  ].filter(o => o.sempre || o.cond);
+
+  // Opções de Orientações (item 6)
+  const ORIENT_OPTS = [
+    "ATUALIZAÇÃO VACINAL",
+    "ATIVIDADE FÍSICA REGULAR",
+    "INGESTA PROTEICA ADEQUADA",
+    "ALIMENTAÇÃO SAUDÁVEL",
+    "HIGIENE DO SONO",
+  ];
+
+  // Opções de Encaminhamento (item 7)
+  const ENCAM_OPTS = [
+    "FISIOTERAPIA MOTORA",
+    "FISIOTERAPIA RESPIRATÓRIA",
+    "PSICOLOGIA",
+    "NUTRIÇÃO",
+    "FONOAUDIOLOGIA",
+    "TO (Terapia Ocupacional)",
+    "ODONTOLOGIA",
+    "OFTALMOLOGIA",
+    "ORL (Otorrinolaringologia)",
+  ];
+
+  // Toggle helper: adiciona/remove item de um campo de texto
+  function toggleOpcao(campo, item) {
+    const atual = pl[campo] || "";
+    const linhas = atual.split("\n").map(l => l.trim()).filter(Boolean);
+    const idx = linhas.findIndex(l => l.toLowerCase() === item.toLowerCase());
+    if (idx >= 0) {
+      linhas.splice(idx, 1);
+    } else {
+      linhas.push(item);
+    }
+    set(campo, linhas.join("\n"));
+  }
+
+  function isChecked(campo, item) {
+    const atual = pl[campo] || "";
+    return atual.toLowerCase().includes(item.toLowerCase());
+  }
 
   const pend = consulta.pendencias || [];
   const [text, setText] = useState("");
@@ -2069,13 +2200,54 @@ function PlanoTab({ consulta, updateConsulta }) {
   const pendentes = pend.filter(x => !x.done);
   const feitas = pend.filter(x => x.done);
 
+  const checkStyle = { display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "8px" };
+  const chipStyle = (checked) => ({
+    display: "inline-flex", alignItems: "center", gap: "4px",
+    padding: "4px 10px", borderRadius: "20px", fontSize: "12px", cursor: "pointer",
+    border: `0.5px solid ${checked ? "var(--color-border-info)" : "var(--color-border-tertiary)"}`,
+    background: checked ? "var(--color-background-info)" : "var(--color-background-secondary)",
+    color: checked ? "var(--color-text-info)" : "var(--color-text-primary)",
+    userSelect: "none",
+  });
+
   return (
     <div>
       <SectionCard title="Plano terapêutico" icon="ti-target-arrow">
         <Field label="1. Ajuste medicamentoso"><textarea rows={4} value={pl.ajuste || ""} onChange={e => set("ajuste", e.target.value)} placeholder="Descreva os ajustes de medicações..." /></Field>
-        <Field label="2. Solicito"><textarea rows={3} value={pl.solicito || ""} onChange={e => set("solicito", e.target.value)} placeholder="ex: LABORATÓRIO — Hemograma, PCR, Ureia e Creatinina..." /></Field>
-        <Field label="3. Orientações"><textarea rows={3} value={pl.orientacoes || ""} onChange={e => set("orientacoes", e.target.value)} placeholder="ex: Atualização vacinal, importância de MEV, higiene do sono..." /></Field>
-        <Field label="4. Encaminho para"><textarea rows={3} value={pl.encaminhamentos || ""} onChange={e => set("encaminhamentos", e.target.value)} placeholder="ex: Fisioterapia motora, Nutrição, Psicologia, Oftalmologia, ORL..." /></Field>
+
+        <Field label="2. Solicito">
+          <div style={checkStyle}>
+            {SOLICITO_OPTS.map(o => (
+              <span key={o.label} style={chipStyle(isChecked("solicito", o.label))} onClick={() => toggleOpcao("solicito", o.label)}>
+                {isChecked("solicito", o.label) && <i className="ti ti-check" style={{ fontSize: "11px" }} />}{o.label}
+              </span>
+            ))}
+          </div>
+          <textarea rows={3} value={pl.solicito || ""} onChange={e => set("solicito", e.target.value)} placeholder="Detalhe os exames solicitados..." />
+        </Field>
+
+        <Field label="3. Orientações">
+          <div style={checkStyle}>
+            {ORIENT_OPTS.map(o => (
+              <span key={o} style={chipStyle(isChecked("orientacoes", o))} onClick={() => toggleOpcao("orientacoes", o)}>
+                {isChecked("orientacoes", o) && <i className="ti ti-check" style={{ fontSize: "11px" }} />}{o}
+              </span>
+            ))}
+          </div>
+          <textarea rows={3} value={pl.orientacoes || ""} onChange={e => set("orientacoes", e.target.value)} placeholder="Orientações adicionais..." />
+        </Field>
+
+        <Field label="4. Encaminho para">
+          <div style={checkStyle}>
+            {ENCAM_OPTS.map(o => (
+              <span key={o} style={chipStyle(isChecked("encaminhamentos", o))} onClick={() => toggleOpcao("encaminhamentos", o)}>
+                {isChecked("encaminhamentos", o) && <i className="ti ti-check" style={{ fontSize: "11px" }} />}{o}
+              </span>
+            ))}
+          </div>
+          <textarea rows={2} value={pl.encaminhamentos || ""} onChange={e => set("encaminhamentos", e.target.value)} placeholder="Encaminhamentos adicionais..." />
+        </Field>
+
         <Field label="5. Retorno agendado em"><input type="date" value={pl.retorno || ""} onChange={e => set("retorno", e.target.value)} /></Field>
       </SectionCard>
 
