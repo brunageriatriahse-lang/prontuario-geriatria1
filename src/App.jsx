@@ -1,7 +1,35 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { listPatients, savePatient, deletePatient as apiDeletePatient } from './api.js';
+import { listPatients, savePatient, deletePatient as apiDeletePatient, API_URL } from './api.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
+
+// Envia arquivo para o Google Drive via Apps Script
+async function uploadParaDrive(blob, nomePaciente, nomeArquivo, mimeType) {
+  try {
+    const arrayBuf = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64 = btoa(binary);
+
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'uploadDrive',
+        nomePaciente,
+        nomeArquivo,
+        base64,
+        mimeType,
+      }),
+    });
+    const data = await resp.json();
+    return data;
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 
 async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo }) {
   if (!window.JSZip) {
@@ -636,12 +664,22 @@ function RadioGroup({ value, onChange, options, name }) {
   );
 }
 
-function PrintShell({ title, children, onClose, fileName }) {
+function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
   function handlePrint() {
     const titleAnterior = document.title;
     if (fileName) document.title = fileName;
     window.print();
     document.title = titleAnterior;
+  }
+
+  async function handlePrintEDrive() {
+    handlePrint();
+    if (!patient || !consulta) return;
+    const salvar = confirm('Deseja salvar o PDF no Google Drive?\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + (patient.ident?.nome || '').toUpperCase());
+    if (!salvar) return;
+    // Usa html2canvas + jsPDF para gerar PDF do conteúdo impresso
+    // Como fallback simples: avisa o usuário para salvar manualmente
+    alert('Para salvar no Drive: na janela de impressão, escolha "Salvar como PDF" e depois envie o arquivo manualmente.\n\nEm breve esta função será automatizada.');
   }
   return (
     <div id="print-shell-overlay" style={{ position: "fixed", inset: 0, zIndex: 50 }}>
@@ -682,6 +720,9 @@ function PrintShell({ title, children, onClose, fileName }) {
           <div id="print-shell-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #e0e0e0" }}>
             <div style={{ fontWeight: 500, fontSize: "14px", color: "#333" }}>Pré-visualização — {title}</div>
             <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={handlePrintEDrive} style={{ fontSize: "13px", padding: "5px 12px", border: "1px solid #4285f4", borderRadius: "6px", background: "#e8f0fe", color: "#1a73e8", cursor: "pointer", marginRight: "6px" }}>
+                🖨️+Drive
+              </button>
               <button onClick={handlePrint} style={{ fontSize: "13px", padding: "5px 12px", border: "1px solid #ccc", borderRadius: "6px", background: "#f5f5f5", cursor: "pointer" }}>
                 <i className="ti ti-printer" aria-hidden="true" style={{ marginRight: "4px" }}></i>Imprimir
               </button>
@@ -1112,6 +1153,8 @@ export default function App() {
     const idade = calcIdade(patient.ident.dn);
     const hoje = new Date().toLocaleDateString('pt-BR');
     const nomePaciente = patient.ident.nome || 'paciente';
+    const nomeArquivo = 'Receitas_' + nomePaciente.replace(/[^a-zA-Z\u00C0-\u00FF0-9 ]/g, '').trim().replace(/ +/g, '_') + '_' + hoje.replace(/\//g, '-') + '.docx';
+    const salvarDrive = confirm('Deseja salvar também no Google Drive?\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase());
 
     preencherReceitasDocx({
       nome: nomePaciente,
@@ -1119,15 +1162,26 @@ export default function App() {
       maeNome: patient.ident.maeNome || '',
       idade: idade != null ? idade : '',
       sexo: patient.ident.sexo || '',
-    }).then(blob => {
+    }).then(async blob => {
+      // Download local
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'Receitas_' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim().replace(/ +/g, '_') + '_' + hoje.replace(/\//g, '-') + '.docx';
+      a.download = nomeArquivo;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      // Upload Drive se confirmado
+      if (salvarDrive) {
+        const result = await uploadParaDrive(blob, nomePaciente, nomeArquivo, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        if (result.ok) {
+          alert('Salvo no Drive!\nPasta: ' + result.pasta + '\n\nClique em OK para abrir o arquivo.');
+          window.open(result.link, '_blank');
+        } else {
+          alert('Erro ao salvar no Drive: ' + result.error);
+        }
+      }
     }).catch(e => {
       console.error('Erro ao gerar receitas Word:', e);
       alert('Erro ao gerar o arquivo Word: ' + e.message);
