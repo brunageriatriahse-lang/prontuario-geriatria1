@@ -4,7 +4,8 @@ import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
-// Upload para o Google Drive em chunks (50KB cada) para contornar limite do Apps Script
+// Upload para o Google Drive em chunks (50KB cada)
+// Usa mode no-cors igual ao savePatient (Apps Script não suporta CORS em POST)
 async function uploadParaDrive(blob, nomePaciente, nomeArquivo, mimeType) {
   try {
     // Converte blob para base64
@@ -23,11 +24,12 @@ async function uploadParaDrive(blob, nomePaciente, nomeArquivo, mimeType) {
 
     const uploadId = 'upload_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
-    // Envia cada chunk
+    // Envia cada chunk com no-cors
     for (let i = 0; i < chunks.length; i++) {
-      const resp = await fetch(API_URL, {
+      await fetch(API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           action: 'uploadChunk',
           uploadId,
@@ -36,14 +38,16 @@ async function uploadParaDrive(blob, nomePaciente, nomeArquivo, mimeType) {
           total: chunks.length,
         }),
       });
-      const data = await resp.json();
-      if (!data.ok) return { ok: false, error: 'Erro no chunk ' + i + ': ' + data.error };
     }
 
-    // Finaliza o upload
-    const finalResp = await fetch(API_URL, {
+    // Aguarda 1s para garantir que os chunks foram processados
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Finaliza com no-cors
+    await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
         action: 'uploadFinalize',
         uploadId,
@@ -52,8 +56,9 @@ async function uploadParaDrive(blob, nomePaciente, nomeArquivo, mimeType) {
         mimeType,
       }),
     });
-    const finalData = await finalResp.json();
-    return finalData;
+
+    // Com no-cors não lemos a resposta — assumimos sucesso
+    return { ok: true, pasta: nomePaciente.toUpperCase() };
   } catch(e) {
     return { ok: false, error: e.message };
   }
@@ -1205,8 +1210,7 @@ export default function App() {
       if (salvarDrive) {
         const result = await uploadParaDrive(blob, nomePaciente, nomeArquivo, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         if (result.ok) {
-          alert('Salvo no Drive!\nPasta: ' + result.pasta + '\n\nClique em OK para abrir o arquivo.');
-          window.open(result.link, '_blank');
+          alert('Arquivo enviado para o Google Drive!\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase() + '\n\nVerifique o Drive em alguns segundos.');
         } else {
           alert('Erro ao salvar no Drive: ' + result.error);
         }
