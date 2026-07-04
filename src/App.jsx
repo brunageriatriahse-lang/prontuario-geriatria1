@@ -2,7 +2,63 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { listPatients, savePatient, deletePatient as apiDeletePatient } from './api.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
-import { preencherReceitasDocx } from './receitasPreencher.js';
+
+async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo }) {
+  if (!window.JSZip) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = res;
+      s.onerror = () => rej(new Error('Falha ao carregar JSZip'));
+      document.head.appendChild(s);
+    });
+  }
+  const resp = await fetch('/receitas.docx');
+  if (!resp.ok) throw new Error('Modelo Word nao encontrado');
+  const buf = await resp.arrayBuffer();
+  const zip = await window.JSZip.loadAsync(buf);
+  let xml = await zip.file('word/document.xml').async('string');
+
+  const campos = {
+    BM_PACIENTE:   (nome || '').toUpperCase(),
+    BM_PRONTUARIO: String(prontuario || ''),
+    BM_MAE:        (maeNome || '').toUpperCase(),
+    BM_IDADE:      String(idade != null ? idade : ''),
+    BM_SEXO:       sexo || '',
+    BM_SETOR:      'GERIATRIA',
+  };
+
+  Object.entries(campos).forEach(([alias, valor]) => {
+    const esc = valor.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // Substitui texto dentro de cada SDT com o alias correspondente
+    // usando split para evitar regex complexa
+    const partes = xml.split('<w:sdt>');
+    xml = partes.map((parte, i) => {
+      if (i === 0) return parte;
+      if (!parte.includes('w:alias w:val="' + alias + '"')) return '<w:sdt>' + parte;
+      // Encontra sdtContent e substitui o primeiro w:t
+      const sdtContentIdx = parte.indexOf('<w:sdtContent>');
+      const sdtEndIdx = parte.indexOf('</w:sdtContent>');
+      if (sdtContentIdx === -1 || sdtEndIdx === -1) return '<w:sdt>' + parte;
+      const antes = parte.slice(0, sdtContentIdx + 14);
+      const content = parte.slice(sdtContentIdx + 14, sdtEndIdx);
+      const depois = parte.slice(sdtEndIdx);
+      // Substitui o primeiro <w:t...>...</w:t>
+      let first = true;
+      const novoContent = content.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, (m, attrs) => {
+        if (first) { first = false; return '<w:t' + attrs + '>' + esc + '</w:t>'; }
+        return '<w:t' + attrs + '></w:t>';
+      });
+      return '<w:sdt>' + antes + novoContent + depois;
+    }).join('');
+  });
+
+  zip.file('word/document.xml', xml);
+  const out = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+  return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+
+
 
 const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática","DRC","DAC","IC","FA","AVC","DPOC","Asma","HPB","Incontinência urinária","DRGE","Constipação crônica","Osteoporose","Osteoartrose","Hipotireoidismo","Transtorno depressivo","TAG","Insônia","Síndrome demencial","Doença de Parkinson","Neoplasia","DHC","Insuficiência venosa crônica","DAOP","Catarata","Glaucoma","Déficit auditivo A/E"];
 
