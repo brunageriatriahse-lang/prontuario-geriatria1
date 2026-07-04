@@ -4,64 +4,22 @@ import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
-// Upload para o Google Drive em chunks (50KB cada)
-// Usa mode no-cors igual ao savePatient (Apps Script não suporta CORS em POST)
-async function uploadParaDrive(blob, nomePaciente, nomeArquivo, mimeType) {
-  try {
-    // Converte blob para base64
-    const arrayBuf = await blob.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuf);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    const base64 = btoa(binary);
-
-    // Divide em chunks de 50KB
-    const CHUNK_SIZE = 50000;
-    const chunks = [];
-    for (let i = 0; i < base64.length; i += CHUNK_SIZE) {
-      chunks.push(base64.slice(i, i + CHUNK_SIZE));
-    }
-
-    const uploadId = 'upload_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-
-    // Envia cada chunk com no-cors
-    for (let i = 0; i < chunks.length; i++) {
-      await fetch(API_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'uploadChunk',
-          uploadId,
-          chunkIdx: i,
-          chunkData: chunks[i],
-          total: chunks.length,
-        }),
-      });
-    }
-
-    // Aguarda 1s para garantir que os chunks foram processados
-    await new Promise(r => setTimeout(r, 1000));
-
-    // Finaliza com no-cors
-    await fetch(API_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        action: 'uploadFinalize',
-        uploadId,
-        nomePaciente,
-        nomeArquivo,
-        mimeType,
-      }),
-    });
-
-    // Com no-cors não lemos a resposta — assumimos sucesso
-    return { ok: true, pasta: nomePaciente.toUpperCase() };
-  } catch(e) {
-    return { ok: false, error: e.message };
-  }
+// Solicita ao Apps Script que gere o arquivo Word e salve no Drive
+// O browser só envia dados do paciente (< 1KB) — sem problema de CORS
+async function salvarReceitasNoDrive(nomePaciente, prontuario, maeNome, idade, sexo, nomeArquivo) {
+  // Usa GET para evitar problemas de CORS (dados pequenos cabem na URL)
+  const params = new URLSearchParams({
+    action: 'gerarReceitas',
+    nomePaciente: nomePaciente || '',
+    prontuario: String(prontuario || ''),
+    maeNome: maeNome || '',
+    idade: String(idade != null ? idade : ''),
+    sexo: sexo || '',
+    nomeArquivo: nomeArquivo || '',
+  });
+  const resp = await fetch(API_URL + '?' + params.toString());
+  const data = await resp.json();
+  return data;
 }
 
 
@@ -1208,11 +1166,24 @@ export default function App() {
       URL.revokeObjectURL(url);
       // Upload Drive se confirmado
       if (salvarDrive) {
-        const result = await uploadParaDrive(blob, nomePaciente, nomeArquivo, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-        if (result.ok) {
-          alert('Arquivo enviado para o Google Drive!\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase() + '\n\nVerifique o Drive em alguns segundos.');
-        } else {
-          alert('Erro ao salvar no Drive: ' + result.error);
+        try {
+          const result = await salvarReceitasNoDrive(
+            nomePaciente,
+            patient.ident.prontuario || '',
+            patient.ident.maeNome || '',
+            idade,
+            patient.ident.sexo || '',
+            nomeArquivo
+          );
+          if (result.ok) {
+            if (confirm('Salvo no Drive!\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase() + '\n\nClicar em OK para abrir o arquivo no Drive?')) {
+              window.open(result.link, '_blank');
+            }
+          } else {
+            alert('Erro ao salvar no Drive: ' + result.error);
+          }
+        } catch(e) {
+          alert('Erro ao salvar no Drive: ' + e.message);
         }
       }
     }).catch(e => {
