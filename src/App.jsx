@@ -4,65 +4,56 @@ import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
-// Upload para o Google Drive via token OAuth do Apps Script
-// O browser pede o token ao Apps Script (requisição pequena)
-// e depois faz upload direto na Drive API (sem passar pelo Apps Script)
+// Upload para o Google Drive em chunks (50KB cada) para contornar limite do Apps Script
 async function uploadParaDrive(blob, nomePaciente, nomeArquivo, mimeType) {
   try {
-    // 1. Pede token e ID da pasta ao Apps Script
-    const tokenResp = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'getDriveToken', nomePaciente }),
-    });
-    const tokenData = await tokenResp.json();
-    if (!tokenData.ok) return { ok: false, error: tokenData.error };
-
-    const { pastaId, pastaNome, token } = tokenData;
-
-    // 2. Faz upload direto na Drive API
-    const metadata = JSON.stringify({ name: nomeArquivo, parents: [pastaId] });
-    const boundary = 'prontuario_upload_boundary';
+    // Converte blob para base64
     const arrayBuf = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const base64 = btoa(binary);
 
-    const metaBytes = new TextEncoder().encode(
-      '--' + boundary + '\r\n' +
-      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-      metadata + '\r\n' +
-      '--' + boundary + '\r\n' +
-      'Content-Type: ' + mimeType + '\r\n\r\n'
-    );
-    const endBytes = new TextEncoder().encode('\r\n--' + boundary + '--');
-
-    const body = new Uint8Array(metaBytes.length + arrayBuf.byteLength + endBytes.length);
-    body.set(metaBytes, 0);
-    body.set(new Uint8Array(arrayBuf), metaBytes.length);
-    body.set(endBytes, metaBytes.length + arrayBuf.byteLength);
-
-    const uploadResp = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + token,
-          'Content-Type': 'multipart/related; boundary=' + boundary,
-        },
-        body: body,
-      }
-    );
-
-    if (!uploadResp.ok) {
-      const err = await uploadResp.text();
-      return { ok: false, error: 'Drive API: ' + err };
+    // Divide em chunks de 50KB
+    const CHUNK_SIZE = 50000;
+    const chunks = [];
+    for (let i = 0; i < base64.length; i += CHUNK_SIZE) {
+      chunks.push(base64.slice(i, i + CHUNK_SIZE));
     }
 
-    const fileData = await uploadResp.json();
-    return {
-      ok: true,
-      link: 'https://drive.google.com/file/d/' + fileData.id + '/view',
-      nome: nomeArquivo,
-      pasta: pastaNome,
-    };
+    const uploadId = 'upload_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+
+    // Envia cada chunk
+    for (let i = 0; i < chunks.length; i++) {
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'uploadChunk',
+          uploadId,
+          chunkIdx: i,
+          chunkData: chunks[i],
+          total: chunks.length,
+        }),
+      });
+      const data = await resp.json();
+      if (!data.ok) return { ok: false, error: 'Erro no chunk ' + i + ': ' + data.error };
+    }
+
+    // Finaliza o upload
+    const finalResp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'uploadFinalize',
+        uploadId,
+        nomePaciente,
+        nomeArquivo,
+        mimeType,
+      }),
+    });
+    const finalData = await finalResp.json();
+    return finalData;
   } catch(e) {
     return { ok: false, error: e.message };
   }
