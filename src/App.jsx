@@ -4,23 +4,57 @@ import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
-// Solicita ao Apps Script que gere o arquivo Word e salve no Drive
-async function salvarReceitasNoDrive(nomePaciente, prontuario, maeNome, idade, sexo, nomeArquivo) {
-  const resp = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({
-      action: 'gerarReceitas',
-      nomePaciente: nomePaciente || '',
-      prontuario: String(prontuario || ''),
-      maeNome: maeNome || '',
-      idade: String(idade != null ? idade : ''),
-      sexo: sexo || '',
-      nomeArquivo: nomeArquivo || '',
-    }),
+// Salva arquivo no Google Drive via chunks POST (no-cors) + GET para finalizar
+async function salvarNoDrive(blob, nomePaciente, nomeArquivo) {
+  // Converte blob para base64
+  const arrayBuf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const base64 = btoa(binary);
+
+  const uploadId = 'up_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  const CHUNK = 50000;
+  const chunks = [];
+  for (let i = 0; i < base64.length; i += CHUNK) chunks.push(base64.slice(i, i + CHUNK));
+
+  // Envia cada chunk via POST no-cors (fire and forget)
+  for (let i = 0; i < chunks.length; i++) {
+    await fetch(API_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'chunk',
+        uploadId,
+        idx: i,
+        chunk: chunks[i],
+        total: chunks.length,
+      }),
+    });
+    // Aguarda 1s entre chunks para o GAS processar
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  // Aguarda mais 2s antes de finalizar
+  await new Promise(r => setTimeout(r, 2000));
+
+  // Finaliza via GET (podemos ler a resposta)
+  const params = new URLSearchParams({
+    action: 'finalizar',
+    uploadId,
+    nomePaciente: nomePaciente || '',
+    nomeArquivo: nomeArquivo || '',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   });
+  const resp = await fetch(API_URL + '?' + params.toString());
   const data = await resp.json();
   return data;
+}
+
+// Mantido para compatibilidade
+async function salvarReceitasNoDrive(nomePaciente, prontuario, maeNome, idade, sexo, nomeArquivo) {
+  return { ok: false, error: "use salvarNoDrive com blob" };
 }
 
 
@@ -666,26 +700,32 @@ function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
   }
 
   async function handlePrintEDrive() {
-    handlePrint();
-    if (!patient || !consulta) return;
+    if (!patient || !consulta) { handlePrint(); return; }
     const nomePaciente = patient.ident?.nome || 'Paciente';
     const hoje = new Date().toLocaleDateString('pt-BR');
     const salvar = confirm('Deseja salvar também no Google Drive?\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase());
+
+    handlePrint();
     if (!salvar) return;
+
     try {
-      // Gera PDF via window.print já aconteceu — agora salva um marcador no Drive
-      // com nome da consulta para referência
-      const nomeArq = 'CONSULTA - ' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim() + ' ' + hoje.replace(/\//g, '-') + '.docx';
-      const result = await salvarReceitasNoDrive(
-        nomePaciente,
-        patient.ident?.prontuario || '',
-        patient.ident?.maeNome || '',
-        calcIdade(patient.ident?.dn),
-        patient.ident?.sexo || '',
-        nomeArq
-      );
+      // Captura o conteúdo HTML da consulta impressa
+      const conteudo = document.getElementById('print-content');
+      const htmlContent = conteudo ? conteudo.innerHTML : '<p>Consulta sem conteúdo</p>';
+      const nomeArq = 'CONSULTA - ' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim() + ' ' + hoje.replace(/\//g, '-') + '.html';
+
+      // Cria blob HTML com estilo básico
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${nomeArq}</title>
+<style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px;} h2{font-size:14px;} div{margin-bottom:4px;}</style>
+</head><body>${htmlContent}</body></html>`;
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+
+      alert('Enviando consulta para o Drive... Aguarde.');
+      const result = await salvarNoDrive(blob, nomePaciente, nomeArq);
       if (result.ok) {
-        alert('Arquivo salvo no Drive!\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase());
+        if (confirm('Consulta salva no Drive!\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase() + '\n\nClicar em OK para abrir?')) {
+          window.open(result.link, '_blank');
+        }
       } else {
         alert('Erro ao salvar no Drive: ' + result.error);
       }
@@ -1187,14 +1227,8 @@ export default function App() {
       // Upload Drive se confirmado
       if (salvarDrive) {
         try {
-          const result = await salvarReceitasNoDrive(
-            nomePaciente,
-            patient.ident.prontuario || '',
-            patient.ident.maeNome || '',
-            idade,
-            patient.ident.sexo || '',
-            nomeArquivo
-          );
+          alert('Enviando para o Drive... Aguarde alguns segundos.');
+          const result = await salvarNoDrive(blob, nomePaciente, nomeArquivo);
           if (result.ok) {
             if (confirm('Salvo no Drive!\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase() + '\n\nClicar em OK para abrir o arquivo no Drive?')) {
               window.open(result.link, '_blank');
@@ -2874,6 +2908,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
 
   return (
     <PrintShell title="Consulta completa" onClose={onClose} fileName={nomeArquivo} patient={patient} consulta={consulta}>
+      <div id="print-content">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
         <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
         <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
@@ -3025,6 +3060,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       )}
 
       <DocFooter />
+      </div>
     </PrintShell>
   );
 }
