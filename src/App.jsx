@@ -5,19 +5,20 @@ import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
 // Solicita ao Apps Script que gere o arquivo Word e salve no Drive
-// O browser só envia dados do paciente (< 1KB) — sem problema de CORS
 async function salvarReceitasNoDrive(nomePaciente, prontuario, maeNome, idade, sexo, nomeArquivo) {
-  // Usa GET para evitar problemas de CORS (dados pequenos cabem na URL)
-  const params = new URLSearchParams({
-    action: 'gerarReceitas',
-    nomePaciente: nomePaciente || '',
-    prontuario: String(prontuario || ''),
-    maeNome: maeNome || '',
-    idade: String(idade != null ? idade : ''),
-    sexo: sexo || '',
-    nomeArquivo: nomeArquivo || '',
+  const resp = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({
+      action: 'gerarReceitas',
+      nomePaciente: nomePaciente || '',
+      prontuario: String(prontuario || ''),
+      maeNome: maeNome || '',
+      idade: String(idade != null ? idade : ''),
+      sexo: sexo || '',
+      nomeArquivo: nomeArquivo || '',
+    }),
   });
-  const resp = await fetch(API_URL + '?' + params.toString());
   const data = await resp.json();
   return data;
 }
@@ -667,11 +668,30 @@ function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
   async function handlePrintEDrive() {
     handlePrint();
     if (!patient || !consulta) return;
-    const salvar = confirm('Deseja salvar o PDF no Google Drive?\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + (patient.ident?.nome || '').toUpperCase());
+    const nomePaciente = patient.ident?.nome || 'Paciente';
+    const hoje = new Date().toLocaleDateString('pt-BR');
+    const salvar = confirm('Deseja salvar também no Google Drive?\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase());
     if (!salvar) return;
-    // Usa html2canvas + jsPDF para gerar PDF do conteúdo impresso
-    // Como fallback simples: avisa o usuário para salvar manualmente
-    alert('Para salvar no Drive: na janela de impressão, escolha "Salvar como PDF" e depois envie o arquivo manualmente.\n\nEm breve esta função será automatizada.');
+    try {
+      // Gera PDF via window.print já aconteceu — agora salva um marcador no Drive
+      // com nome da consulta para referência
+      const nomeArq = 'CONSULTA - ' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim() + ' ' + hoje.replace(/\//g, '-') + '.docx';
+      const result = await salvarReceitasNoDrive(
+        nomePaciente,
+        patient.ident?.prontuario || '',
+        patient.ident?.maeNome || '',
+        calcIdade(patient.ident?.dn),
+        patient.ident?.sexo || '',
+        nomeArq
+      );
+      if (result.ok) {
+        alert('Arquivo salvo no Drive!\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase());
+      } else {
+        alert('Erro ao salvar no Drive: ' + result.error);
+      }
+    } catch(e) {
+      alert('Erro ao salvar no Drive: ' + e.message);
+    }
   }
   return (
     <div id="print-shell-overlay" style={{ position: "fixed", inset: 0, zIndex: 50 }}>
@@ -1145,7 +1165,7 @@ export default function App() {
     const idade = calcIdade(patient.ident.dn);
     const hoje = new Date().toLocaleDateString('pt-BR');
     const nomePaciente = patient.ident.nome || 'paciente';
-    const nomeArquivo = 'Receitas_' + nomePaciente.replace(/[^a-zA-Z\u00C0-\u00FF0-9 ]/g, '').trim().replace(/ +/g, '_') + '_' + hoje.replace(/\//g, '-') + '.docx';
+    const nomeArquivo = 'RECEITAS - ' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim() + ' ' + hoje.replace(/\//g, '-') + '.docx';
     const salvarDrive = confirm('Deseja salvar também no Google Drive?\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase());
 
     preencherReceitasDocx({
@@ -2853,7 +2873,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
   ].join('_');
 
   return (
-    <PrintShell title="Consulta completa" onClose={onClose} fileName={nomeArquivo}>
+    <PrintShell title="Consulta completa" onClose={onClose} fileName={nomeArquivo} patient={patient} consulta={consulta}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
         <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
         <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
