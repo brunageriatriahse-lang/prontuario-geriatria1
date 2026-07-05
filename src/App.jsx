@@ -4,41 +4,28 @@ import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
-// Salva arquivo no Google Drive via chunks GET + GET finalizar
+// Salva arquivo no Google Drive via POST form-urlencoded (sem preflight CORS)
 async function salvarNoDrive(blob, nomePaciente, nomeArquivo) {
-  // Converte blob para base64
   const arrayBuf = await blob.arrayBuffer();
   const bytes = new Uint8Array(arrayBuf);
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   const base64 = btoa(binary);
 
-  const uploadId = 'up_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-  const CHUNK = 1500; // Tamanho seguro para URL GET
-  const chunks = [];
-  for (let i = 0; i < base64.length; i += CHUNK) chunks.push(base64.slice(i, i + CHUNK));
-
-  // Envia cada chunk via GET (sem problemas de CORS)
-  for (let i = 0; i < chunks.length; i++) {
-    const params = new URLSearchParams({
-      action: 'chunk',
-      uploadId,
-      idx: String(i),
-      chunk: chunks[i],
-      total: String(chunks.length),
-    });
-    await fetch(API_URL + '?' + params.toString());
-  }
-
-  // Finaliza via GET
-  const params = new URLSearchParams({
-    action: 'finalizar',
-    uploadId,
+  // form-urlencoded não dispara preflight CORS — o GAS aceita e processa
+  const body = new URLSearchParams({
+    action: 'salvarDrive',
     nomePaciente: nomePaciente || '',
     nomeArquivo: nomeArquivo || '',
     mimeType: blob.type || 'application/octet-stream',
+    base64,
   });
-  const resp = await fetch(API_URL + '?' + params.toString());
+
+  const resp = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
   const data = await resp.json();
   return data;
 }
