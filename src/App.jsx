@@ -4,7 +4,7 @@ import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
-// Salva arquivo no Google Drive via chunks POST (no-cors) + GET para finalizar
+// Salva arquivo no Google Drive via chunks GET + GET finalizar
 async function salvarNoDrive(blob, nomePaciente, nomeArquivo) {
   // Converte blob para base64
   const arrayBuf = await blob.arrayBuffer();
@@ -14,38 +14,29 @@ async function salvarNoDrive(blob, nomePaciente, nomeArquivo) {
   const base64 = btoa(binary);
 
   const uploadId = 'up_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-  const CHUNK = 50000;
+  const CHUNK = 1500; // Tamanho seguro para URL GET
   const chunks = [];
   for (let i = 0; i < base64.length; i += CHUNK) chunks.push(base64.slice(i, i + CHUNK));
 
-  // Envia cada chunk via POST no-cors (fire and forget)
+  // Envia cada chunk via GET (sem problemas de CORS)
   for (let i = 0; i < chunks.length; i++) {
-    await fetch(API_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({
-        action: 'chunk',
-        uploadId,
-        idx: i,
-        chunk: chunks[i],
-        total: chunks.length,
-      }),
+    const params = new URLSearchParams({
+      action: 'chunk',
+      uploadId,
+      idx: String(i),
+      chunk: chunks[i],
+      total: String(chunks.length),
     });
-    // Aguarda 1s entre chunks para o GAS processar
-    await new Promise(r => setTimeout(r, 1000));
+    await fetch(API_URL + '?' + params.toString());
   }
 
-  // Aguarda mais 2s antes de finalizar
-  await new Promise(r => setTimeout(r, 2000));
-
-  // Finaliza via GET (podemos ler a resposta)
+  // Finaliza via GET
   const params = new URLSearchParams({
     action: 'finalizar',
     uploadId,
     nomePaciente: nomePaciente || '',
     nomeArquivo: nomeArquivo || '',
-    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    mimeType: blob.type || 'application/octet-stream',
   });
   const resp = await fetch(API_URL + '?' + params.toString());
   const data = await resp.json();
