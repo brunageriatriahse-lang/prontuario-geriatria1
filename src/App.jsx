@@ -799,12 +799,10 @@ function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
       async function carregarScript(src) {
         if (document.querySelector(`script[src="${src}"]`)) return;
         return new Promise((res, rej) => {
-          const s = document.createElement('script');
-          s.src = src; s.onload = res; s.onerror = rej;
+          const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej;
           document.head.appendChild(s);
         });
       }
-
       await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
       await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
 
@@ -813,57 +811,68 @@ function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
 
       alert('Gerando PDF... Aguarde.');
 
+      // Cria um iframe oculto com largura A4 (794px = 210mm a 96dpi)
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:auto;border:none;';
+      document.body.appendChild(iframe);
+
+      // Copia estilos da página principal
+      const estilos = Array.from(document.styleSheets)
+        .map(ss => { try { return Array.from(ss.cssRules).map(r => r.cssText).join('\n'); } catch(e) { return ''; } })
+        .join('\n');
+
+      iframe.contentDocument.open();
+      iframe.contentDocument.write(`<!DOCTYPE html><html><head>
+        <meta charset="UTF-8">
+        <style>
+          ${estilos}
+          body { margin: 12mm; font-size: 11px; width: 186mm; background: white; color: black; }
+          * { -webkit-print-color-adjust: exact; }
+        </style>
+      </head><body>${conteudo.innerHTML}</body></html>`);
+      iframe.contentDocument.close();
+
+      // Aguarda o iframe renderizar
+      await new Promise(r => setTimeout(r, 800));
+
+      const iframeBody = iframe.contentDocument.body;
+
+      const canvas = await window.html2canvas(iframeBody, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        width: 794,
+        windowWidth: 794,
+      });
+
+      document.body.removeChild(iframe);
+
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-      const pageWidth = 210;
-      const pageHeight = 297;
-      const margin = 12;
-      const contentWidth = pageWidth - margin * 2;
-      const contentHeight = pageHeight - margin * 2;
+      const pageW = 210, pageH = 297, margin = 12;
+      const contentW = pageW - margin * 2;
+      const contentH = pageH - margin * 2;
+      const canvasH = (canvas.height / canvas.width) * contentW;
 
-      // Captura cada página separadamente para melhor qualidade
-      const originalWidth = conteudo.offsetWidth;
-      const scale = (contentWidth / originalWidth) * (25.4 / 25.4) * 3.78; // px para mm
-
-      const canvas = await window.html2canvas(conteudo, {
-        scale: 3,
-        useCORS: true,
-        logging: false,
-        width: originalWidth,
-        backgroundColor: '#ffffff',
-      });
-
-      const imgData = canvas.toDataURL('image/jpeg', 0.92);
-      const canvasWidthMM = contentWidth;
-      const canvasHeightMM = (canvas.height / canvas.width) * canvasWidthMM;
-
-      // Adiciona páginas
-      let remainingHeight = canvasHeightMM;
-      let sourceY = 0;
-      let pageNum = 0;
-
-      while (remainingHeight > 0) {
-        if (pageNum > 0) pdf.addPage();
-
-        const sliceHeightMM = Math.min(remainingHeight, contentHeight);
-        const sliceHeightPx = (sliceHeightMM / canvasHeightMM) * canvas.height;
-        const sourceYpx = (sourceY / canvasHeightMM) * canvas.height;
-
-        // Cria canvas da fatia
+      let srcY = 0;
+      let page = 0;
+      while (srcY < canvasH) {
+        if (page > 0) pdf.addPage();
+        const sliceH = Math.min(canvasH - srcY, contentH);
+        const sliceHpx = (sliceH / canvasH) * canvas.height;
+        const srcYpx = (srcY / canvasH) * canvas.height;
         const sliceCanvas = document.createElement('canvas');
         sliceCanvas.width = canvas.width;
-        sliceCanvas.height = Math.ceil(sliceHeightPx);
+        sliceCanvas.height = Math.ceil(sliceHpx);
         const ctx = sliceCanvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#fff';
         ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-        ctx.drawImage(canvas, 0, sourceYpx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
-
-        pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, contentWidth, sliceHeightMM);
-
-        sourceY += sliceHeightMM;
-        remainingHeight -= contentHeight;
-        pageNum++;
+        ctx.drawImage(canvas, 0, srcYpx, canvas.width, sliceHpx, 0, 0, canvas.width, sliceHpx);
+        pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', margin, margin, contentW, sliceH);
+        srcY += contentH;
+        page++;
       }
 
       const nomeArq = 'CONSULTA - ' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim() + ' ' + hoje.replace(/\//g, '-') + '.pdf';
