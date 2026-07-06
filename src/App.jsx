@@ -45,7 +45,7 @@ async function getDriveToken() {
   // Redireciona para autorização Google
   // Salva estado atual para retornar após auth
   sessionStorage.setItem("drive_pending_action", "true");
-  const redirectUri = window.location.origin + window.location.pathname;
+  const redirectUri = window.location.origin;
   const authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
