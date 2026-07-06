@@ -796,14 +796,11 @@ function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
     if (!salvar) return;
 
     try {
-      // Carrega html2canvas e jsPDF via CDN
       async function carregarScript(src) {
         if (document.querySelector(`script[src="${src}"]`)) return;
         return new Promise((res, rej) => {
           const s = document.createElement('script');
-          s.src = src;
-          s.onload = res;
-          s.onerror = rej;
+          s.src = src; s.onload = res; s.onerror = rej;
           document.head.appendChild(s);
         });
       }
@@ -816,44 +813,57 @@ function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
 
       alert('Gerando PDF... Aguarde.');
 
-      // Captura o conteúdo como imagem
-      const canvas = await window.html2canvas(conteudo, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        windowWidth: 794, // A4 largura em pixels a 96dpi
-      });
-
-      // Cria PDF A4
       const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-      const pageWidth = 210; // mm
-      const pageHeight = 297; // mm
-      const margin = 10; // mm
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const margin = 12;
       const contentWidth = pageWidth - margin * 2;
+      const contentHeight = pageHeight - margin * 2;
 
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = contentWidth / (imgWidth * 0.264583); // px to mm
-      const scaledHeight = imgHeight * 0.264583 * ratio;
+      // Captura cada página separadamente para melhor qualidade
+      const originalWidth = conteudo.offsetWidth;
+      const scale = (contentWidth / originalWidth) * (25.4 / 25.4) * 3.78; // px para mm
 
-      // Divide em páginas se necessário
-      let posY = 0;
-      const pageContentHeight = pageHeight - margin * 2;
+      const canvas = await window.html2canvas(conteudo, {
+        scale: 3,
+        useCORS: true,
+        logging: false,
+        width: originalWidth,
+        backgroundColor: '#ffffff',
+      });
 
-      while (posY < scaledHeight) {
-        if (posY > 0) pdf.addPage();
-        pdf.addImage(
-          canvas.toDataURL('image/jpeg', 0.85),
-          'JPEG',
-          margin, margin,
-          contentWidth,
-          Math.min(scaledHeight - posY, pageContentHeight),
-          '', 'FAST',
-          0, -posY
-        );
-        posY += pageContentHeight;
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const canvasWidthMM = contentWidth;
+      const canvasHeightMM = (canvas.height / canvas.width) * canvasWidthMM;
+
+      // Adiciona páginas
+      let remainingHeight = canvasHeightMM;
+      let sourceY = 0;
+      let pageNum = 0;
+
+      while (remainingHeight > 0) {
+        if (pageNum > 0) pdf.addPage();
+
+        const sliceHeightMM = Math.min(remainingHeight, contentHeight);
+        const sliceHeightPx = (sliceHeightMM / canvasHeightMM) * canvas.height;
+        const sourceYpx = (sourceY / canvasHeightMM) * canvas.height;
+
+        // Cria canvas da fatia
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = Math.ceil(sliceHeightPx);
+        const ctx = sliceCanvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        ctx.drawImage(canvas, 0, sourceYpx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+
+        pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, contentWidth, sliceHeightMM);
+
+        sourceY += sliceHeightMM;
+        remainingHeight -= contentHeight;
+        pageNum++;
       }
 
       const nomeArq = 'CONSULTA - ' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim() + ' ' + hoje.replace(/\//g, '-') + '.pdf';
