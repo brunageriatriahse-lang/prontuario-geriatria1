@@ -14,48 +14,47 @@ const PASTA_RAIZ = "PRONTUÁRIO CEMPRE - PACIENTES BRUNA";
 let _driveToken = null;
 let _driveTokenExpiry = 0;
 
-// Obtém token OAuth2 via popup do Google
+// Obtém token OAuth2 — verifica URL ao carregar a página
+// e armazena no sessionStorage
+function _extractTokenFromUrl() {
+  const hash = window.location.hash;
+  if (!hash) return;
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const token = params.get("access_token");
+  const expiresIn = parseInt(params.get("expires_in") || "3600");
+  if (token) {
+    sessionStorage.setItem("drive_token", token);
+    sessionStorage.setItem("drive_token_expiry", String(Date.now() + (expiresIn - 60) * 1000));
+    // Limpa o hash da URL
+    window.history.replaceState(null, "", window.location.pathname);
+  }
+}
+_extractTokenFromUrl();
+
 async function getDriveToken() {
-  // Se token ainda válido, reutiliza
+  // Verifica token em memória
   if (_driveToken && Date.now() < _driveTokenExpiry) return _driveToken;
-
-  return new Promise((resolve, reject) => {
-    const redirectUri = window.location.origin;
-    const authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      redirect_uri: redirectUri,
-      response_type: "token",
-      scope: DRIVE_SCOPE,
-      prompt: "consent",
-    });
-
-    const popup = window.open(authUrl, "google_auth", "width=500,height=600,scrollbars=yes");
-    if (!popup) { reject(new Error("Popup bloqueado — permita popups para este site")); return; }
-
-    const timer = setInterval(() => {
-      try {
-        if (popup.closed) { clearInterval(timer); reject(new Error("Janela fechada sem autorizar")); return; }
-        const url = popup.location.href;
-        if (url.startsWith(redirectUri + "#") || url.startsWith(redirectUri + "/?#")) {
-          clearInterval(timer);
-          popup.close();
-          const hash = url.includes("#") ? url.split("#")[1] : "";
-          const params = new URLSearchParams(hash);
-          const token = params.get("access_token");
-          const expiresIn = parseInt(params.get("expires_in") || "3600");
-          if (token) {
-            _driveToken = token;
-            _driveTokenExpiry = Date.now() + (expiresIn - 60) * 1000;
-            resolve(token);
-          } else {
-            reject(new Error("Token não recebido"));
-          }
-        }
-      } catch(e) {
-        // Ainda navegando para o Google - aguarda
-      }
-    }, 500);
+  // Verifica token no sessionStorage
+  const stored = sessionStorage.getItem("drive_token");
+  const expiry = parseInt(sessionStorage.getItem("drive_token_expiry") || "0");
+  if (stored && Date.now() < expiry) {
+    _driveToken = stored;
+    _driveTokenExpiry = expiry;
+    return stored;
+  }
+  // Redireciona para autorização Google
+  // Salva estado atual para retornar após auth
+  sessionStorage.setItem("drive_pending_action", "true");
+  const redirectUri = window.location.origin + window.location.pathname;
+  const authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: "token",
+    scope: DRIVE_SCOPE,
   });
+  window.location.href = authUrl;
+  // Nunca chega aqui — página redireciona
+  return null;
 }
 
 // Busca ou cria pasta no Drive
