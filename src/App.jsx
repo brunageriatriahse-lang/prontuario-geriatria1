@@ -4,36 +4,156 @@ import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
 
-// Salva arquivo no Google Drive via POST form-urlencoded (sem preflight CORS)
+// ============================================================
+// GOOGLE DRIVE OAUTH2 — Upload direto sem intermediário
+// ============================================================
+const GOOGLE_CLIENT_ID = "467817041013-amr370inb53rdqr6eoarme46m03bo4a7.apps.googleusercontent.com";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const PASTA_RAIZ = "PRONTUÁRIO CEMPRE - PACIENTES BRUNA";
+
+let _driveToken = null;
+let _driveTokenExpiry = 0;
+
+// Obtém token OAuth2 via popup do Google
+async function getDriveToken() {
+  // Se token ainda válido, reutiliza
+  if (_driveToken && Date.now() < _driveTokenExpiry) return _driveToken;
+
+  return new Promise((resolve, reject) => {
+    const redirectUri = window.location.origin;
+    const authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: redirectUri,
+      response_type: "token",
+      scope: DRIVE_SCOPE,
+      prompt: "consent",
+    });
+
+    const popup = window.open(authUrl, "google_auth", "width=500,height=600,scrollbars=yes");
+    if (!popup) { reject(new Error("Popup bloqueado — permita popups para este site")); return; }
+
+    const timer = setInterval(() => {
+      try {
+        if (popup.closed) { clearInterval(timer); reject(new Error("Janela fechada sem autorizar")); return; }
+        const url = popup.location.href;
+        if (url.startsWith(redirectUri + "#") || url.startsWith(redirectUri + "/?#")) {
+          clearInterval(timer);
+          popup.close();
+          const hash = url.includes("#") ? url.split("#")[1] : "";
+          const params = new URLSearchParams(hash);
+          const token = params.get("access_token");
+          const expiresIn = parseInt(params.get("expires_in") || "3600");
+          if (token) {
+            _driveToken = token;
+            _driveTokenExpiry = Date.now() + (expiresIn - 60) * 1000;
+            resolve(token);
+          } else {
+            reject(new Error("Token não recebido"));
+          }
+        }
+      } catch(e) {
+        // Ainda navegando para o Google - aguarda
+      }
+    }, 500);
+  });
+}
+
+// Busca ou cria pasta no Drive
+async function getDriveFolder(token, nomePasta, parentId) {
+  // Busca pasta existente
+  const q = parentId
+    ? `name="${nomePasta}" and mimeType="application/vnd.google-apps.folder" and "${parentId}" in parents and trashed=false`
+    : `name="${nomePasta}" and mimeType="application/vnd.google-apps.folder" and trashed=false`;
+
+  const searchResp = await fetch(
+    "https://www.googleapis.com/drive/v3/files?" + new URLSearchParams({ q, fields: "files(id,name)" }),
+    { headers: { Authorization: "Bearer " + token } }
+  );
+  const searchData = await searchResp.json();
+  if (searchData.files && searchData.files.length > 0) return searchData.files[0].id;
+
+  // Cria pasta
+  const meta = { name: nomePasta, mimeType: "application/vnd.google-apps.folder" };
+  if (parentId) meta.parents = [parentId];
+  const createResp = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify(meta),
+  });
+  const createData = await createResp.json();
+  return createData.id;
+}
+
+// Upload direto para o Drive — rápido e definitivo
 async function salvarNoDrive(blob, nomePaciente, nomeArquivo) {
-  const arrayBuf = await blob.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuf);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  const base64 = btoa(binary);
+  try {
+    const token = await getDriveToken();
 
-  // form-urlencoded não dispara preflight CORS — o GAS aceita e processa
-  const body = new URLSearchParams({
-    action: 'salvarDrive',
-    nomePaciente: nomePaciente || '',
-    nomeArquivo: nomeArquivo || '',
-    mimeType: blob.type || 'application/octet-stream',
-    base64,
-  });
+    // Cria/busca pasta raiz e subpasta do paciente
+    const pastaRaizId = await getDriveFolder(token, PASTA_RAIZ, null);
+    const pastaPacId  = await getDriveFolder(token, (nomePaciente || "SEM_NOME").toUpperCase(), pastaRaizId);
 
-  const resp = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
-  const data = await resp.json();
-  return data;
+    // Remove arquivo anterior com mesmo nome
+    const q = `name="${nomeArquivo}" and "${pastaPacId}" in parents and trashed=false`;
+    const listResp = await fetch(
+      "https://www.googleapis.com/drive/v3/files?" + new URLSearchParams({ q, fields: "files(id)" }),
+      { headers: { Authorization: "Bearer " + token } }
+    );
+    const listData = await listResp.json();
+    if (listData.files) {
+      for (const f of listData.files) {
+        await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}`, {
+          method: "DELETE",
+          headers: { Authorization: "Bearer " + token },
+        });
+      }
+    }
+
+    // Upload multipart
+    const metadata = JSON.stringify({ name: nomeArquivo, parents: [pastaPacId] });
+    const boundary = "drive_upload_boundary";
+    const arrayBuf = await blob.arrayBuffer();
+
+    const metaBytes = new TextEncoder().encode(
+      "--" + boundary + "\r\n" +
+      "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+      metadata + "\r\n" +
+      "--" + boundary + "\r\n" +
+      "Content-Type: " + (blob.type || "application/octet-stream") + "\r\n\r\n"
+    );
+    const endBytes = new TextEncoder().encode("\r\n--" + boundary + "--");
+    const body = new Uint8Array(metaBytes.length + arrayBuf.byteLength + endBytes.length);
+    body.set(metaBytes, 0);
+    body.set(new Uint8Array(arrayBuf), metaBytes.length);
+    body.set(endBytes, metaBytes.length + arrayBuf.byteLength);
+
+    const uploadResp = await fetch(
+      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "multipart/related; boundary=" + boundary,
+        },
+        body: body,
+      }
+    );
+
+    if (!uploadResp.ok) {
+      const err = await uploadResp.text();
+      return { ok: false, error: "Drive API: " + err };
+    }
+
+    const fileData = await uploadResp.json();
+    return { ok: true, link: fileData.webViewLink, nome: fileData.name, pasta: nomePaciente.toUpperCase() };
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
 }
 
-// Mantido para compatibilidade
-async function salvarReceitasNoDrive(nomePaciente, prontuario, maeNome, idade, sexo, nomeArquivo) {
-  return { ok: false, error: "use salvarNoDrive com blob" };
-}
+
+// salvarNoDrive definido acima via OAuth2
+async function salvarReceitasNoDrive() { return { ok:false, error:"deprecated" }; }
 
 
 async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo }) {
