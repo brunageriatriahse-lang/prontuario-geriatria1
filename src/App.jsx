@@ -14,47 +14,37 @@ const PASTA_RAIZ = "PRONTUÁRIO CEMPRE - PACIENTES BRUNA";
 let _driveToken = null;
 let _driveTokenExpiry = 0;
 
-// Obtém token OAuth2 — verifica URL ao carregar a página
-// e armazena no sessionStorage
-function _extractTokenFromUrl() {
-  const hash = window.location.hash;
-  if (!hash) return;
-  const params = new URLSearchParams(hash.replace(/^#/, ""));
-  const token = params.get("access_token");
-  const expiresIn = parseInt(params.get("expires_in") || "3600");
-  if (token) {
-    sessionStorage.setItem("drive_token", token);
-    sessionStorage.setItem("drive_token_expiry", String(Date.now() + (expiresIn - 60) * 1000));
-    // Limpa o hash da URL
-    window.history.replaceState(null, "", window.location.pathname);
-  }
+// Carrega Google Identity Services via script tag
+function _carregarGIS() {
+  if (window.google && window.google.accounts) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Falha ao carregar Google Identity Services'));
+    document.head.appendChild(s);
+  });
 }
-_extractTokenFromUrl();
 
 async function getDriveToken() {
   // Verifica token em memória
   if (_driveToken && Date.now() < _driveTokenExpiry) return _driveToken;
-  // Verifica token no sessionStorage
-  const stored = sessionStorage.getItem("drive_token");
-  const expiry = parseInt(sessionStorage.getItem("drive_token_expiry") || "0");
-  if (stored && Date.now() < expiry) {
-    _driveToken = stored;
-    _driveTokenExpiry = expiry;
-    return stored;
-  }
-  // Redireciona para autorização Google
-  // Salva estado atual para retornar após auth
-  sessionStorage.setItem("drive_pending_action", "true");
-  const redirectUri = window.location.origin;
-  const authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: redirectUri,
-    response_type: "token",
-    scope: DRIVE_SCOPE,
+
+  await _carregarGIS();
+
+  return new Promise((resolve, reject) => {
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      callback: (response) => {
+        if (response.error) { reject(new Error(response.error)); return; }
+        _driveToken = response.access_token;
+        _driveTokenExpiry = Date.now() + (parseInt(response.expires_in || 3600) - 60) * 1000;
+        resolve(_driveToken);
+      },
+    });
+    client.requestAccessToken({ prompt: 'consent' });
   });
-  window.location.href = authUrl;
-  // Nunca chega aqui — página redireciona
-  return null;
 }
 
 // Busca ou cria pasta no Drive
@@ -800,34 +790,85 @@ function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
     if (!patient || !consulta) { handlePrint(); return; }
     const nomePaciente = patient.ident?.nome || 'Paciente';
     const hoje = new Date().toLocaleDateString('pt-BR');
-    const salvar = confirm('Deseja salvar também no Google Drive?\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase());
+    const salvar = confirm('Deseja salvar também no Google Drive como PDF?\n\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase());
 
     handlePrint();
     if (!salvar) return;
 
     try {
-      // Captura o conteúdo HTML da consulta impressa
+      // Carrega html2canvas e jsPDF via CDN
+      async function carregarScript(src) {
+        if (document.querySelector(`script[src="${src}"]`)) return;
+        return new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = src;
+          s.onload = res;
+          s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+
+      await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+      await carregarScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+
       const conteudo = document.getElementById('print-content');
-      const htmlContent = conteudo ? conteudo.innerHTML : '<p>Consulta sem conteúdo</p>';
-      const nomeArq = 'CONSULTA - ' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim() + ' ' + hoje.replace(/\//g, '-') + '.html';
+      if (!conteudo) { alert('Conteúdo não encontrado'); return; }
 
-      // Cria blob HTML com estilo básico
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${nomeArq}</title>
-<style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px;} h2{font-size:14px;} div{margin-bottom:4px;}</style>
-</head><body>${htmlContent}</body></html>`;
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      alert('Gerando PDF... Aguarde.');
 
-      alert('Enviando consulta para o Drive... Aguarde.');
-      const result = await salvarNoDrive(blob, nomePaciente, nomeArq);
+      // Captura o conteúdo como imagem
+      const canvas = await window.html2canvas(conteudo, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        windowWidth: 794, // A4 largura em pixels a 96dpi
+      });
+
+      // Cria PDF A4
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+      const pageWidth = 210; // mm
+      const pageHeight = 297; // mm
+      const margin = 10; // mm
+      const contentWidth = pageWidth - margin * 2;
+
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = contentWidth / (imgWidth * 0.264583); // px to mm
+      const scaledHeight = imgHeight * 0.264583 * ratio;
+
+      // Divide em páginas se necessário
+      let posY = 0;
+      const pageContentHeight = pageHeight - margin * 2;
+
+      while (posY < scaledHeight) {
+        if (posY > 0) pdf.addPage();
+        pdf.addImage(
+          canvas.toDataURL('image/jpeg', 0.85),
+          'JPEG',
+          margin, margin,
+          contentWidth,
+          Math.min(scaledHeight - posY, pageContentHeight),
+          '', 'FAST',
+          0, -posY
+        );
+        posY += pageContentHeight;
+      }
+
+      const nomeArq = 'CONSULTA - ' + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, '').trim() + ' ' + hoje.replace(/\//g, '-') + '.pdf';
+      const pdfBlob = pdf.output('blob');
+
+      const result = await salvarNoDrive(pdfBlob, nomePaciente, nomeArq);
       if (result.ok) {
-        if (confirm('Consulta salva no Drive!\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase() + '\n\nClicar em OK para abrir?')) {
+        if (confirm('PDF salvo no Drive!\nPasta: PRONTUÁRIO CEMPRE - PACIENTES BRUNA / ' + nomePaciente.toUpperCase() + '\n\nClicar em OK para abrir?')) {
           window.open(result.link, '_blank');
         }
       } else {
         alert('Erro ao salvar no Drive: ' + result.error);
       }
     } catch(e) {
-      alert('Erro ao salvar no Drive: ' + e.message);
+      alert('Erro ao gerar PDF: ' + e.message);
     }
   }
   return (
