@@ -1,36 +1,61 @@
 import { API_URL } from './config.js';
 
-// Helper interno: faz POST com o corpo em JSON (sem usar query string),
-// evitando o limite de tamanho de URL que causava o "Erro ao salvar"
-// intermitente conforme o paciente acumulava mais consultas/dados.
-async function postAction(body) {
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    // Usamos text/plain para evitar o preflight CORS de OPTIONS, que o
-    // Google Apps Script (doPost) não responde por padrão.
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(body),
-  });
+async function callApiGet(action, params) {
+  const url = new URL(API_URL);
+  url.searchParams.set("action", action);
+  if (params) Object.keys(params).forEach(key => url.searchParams.set(key, params[key]));
+  let res;
+  try {
+    res = await fetch(url.toString(), { method: "GET" });
+  } catch (err) {
+    throw new Error("Não foi possível conectar à API (" + err.message + "). Verifique sua conexão ou a URL em src/config.js.");
+  }
+  if (!res.ok) throw new Error("Falha na requisição: " + res.status);
   return res.json();
 }
 
 export async function listPatients() {
-  // "list" não tem payload, então GET simples continua funcionando bem aqui.
-  const url = `${API_URL}?action=list`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || 'Erro ao listar');
-  return data.patients;
+  const data = await callApiGet("list");
+  if (!data.ok) throw new Error(data.error || "Erro ao listar pacientes");
+  return data.patients || [];
 }
 
 export async function savePatient(patient) {
-  const data = await postAction({ action: 'save', patient });
-  if (!data.ok) throw new Error(data.error || 'Erro ao salvar');
-  return data.patient;
+  try {
+    await fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "save", patient }),
+    });
+  } catch (err) {
+    throw new Error("Não foi possível conectar à API (" + err.message + ").");
+  }
+  return patient;
 }
 
 export async function deletePatient(id) {
-  const data = await postAction({ action: 'delete', id });
-  if (!data.ok) throw new Error(data.error || 'Erro ao deletar');
-  return data.deleted;
+  // Soft delete — marca deletedAt no registro
+  try {
+    await fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "delete", id }),
+    });
+  } catch (err) {
+    throw new Error("Não foi possível conectar à API (" + err.message + ").");
+  }
+  return true;
+}
+
+export async function purgePatient(id) {
+  // Exclusão física — remove a linha do Sheets via GET (sem CORS)
+  const data = await callApiGet("purge", { id });
+  if (!data.ok) throw new Error(data.error || "Erro ao excluir definitivamente");
+  return true;
+}
+
+export async function pingApi() {
+  return callApiGet("ping");
 }
