@@ -1796,7 +1796,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} sexoPaciente={patient.ident.sexo || ""} />}
       {activeTab === "prevencao" && <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
-      {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "20px", paddingTop: "16px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
@@ -2537,6 +2537,48 @@ function ExameTab({ consulta, updateConsulta, patient }) {
   const sexo = patient?.ident?.sexo;
   const F = sexo === "F";
 
+  // Perfil do paciente para metas
+  const aga = consulta.aga || {};
+  const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+  const ehFragil = frailScore >= 3;
+  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+  const nComorbidades = ativos.length + (consulta.problemasCustom || []).filter(c => c.checked).length;
+  const ehMultimorbido = nComorbidades >= 3;
+  const idade = calcIdade(patient?.ident?.dn);
+  const idade80 = idade != null && idade >= 80;
+
+  // Meta de PA
+  let metaPA, perfilPA;
+  if (ehFragil) {
+    metaPA = "< 150/90 mmHg"; perfilPA = "Idoso frágil";
+  } else if (idade80) {
+    metaPA = "< 140/90 mmHg"; perfilPA = "Idoso ≥ 80 anos";
+  } else {
+    metaPA = "< 130/80 mmHg"; perfilPA = "Idoso robusto";
+  }
+
+  // Verifica PA atual e rastreio de HAS secundária
+  const paValor = e.paSentado || "";
+  let alertaPA = null;
+  let alertaHASSecundaria = false;
+  if (paValor) {
+    const match = paValor.match(/(\d+)\s*[xX\/]\s*(\d+)/);
+    if (match) {
+      const sis = parseInt(match[1]);
+      const dia = parseInt(match[2]);
+      const metaMatch = metaPA.match(/(\d+)\/(\d+)/);
+      if (metaMatch) {
+        const metaSis = parseInt(metaMatch[1]);
+        const metaDia = parseInt(metaMatch[2]);
+        if (sis >= metaSis || dia >= metaDia) {
+          alertaPA = `⚠ PA acima da meta para ${perfilPA}: ${metaPA}`;
+          // Alerta de rastreio de HAS secundária se for hipertenso com PA fora da meta
+          if (consulta.problemas?.["HAS"]) alertaHASSecundaria = true;
+        }
+      }
+    }
+  }
+
   const geralPadrao = F
     ? "EG bom, consciente, orientada, eupneica, corada, hidratada, anictérica, acianótica, afebril ao toque."
     : "EG bom, consciente, orientado, eupneico, corado, hidratado, anictérico, acianótico, afebril ao toque.";
@@ -2565,6 +2607,32 @@ function ExameTab({ consulta, updateConsulta, patient }) {
   return (
     <div>
       <SectionCard title="Sinais vitais" icon="ti-heartbeat">
+        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px", padding: "6px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
+          🎯 <strong>Meta de PA ({perfilPA}):</strong> {metaPA}
+        </div>
+        {alertaPA && <Alert type="warning">{alertaPA}</Alert>}
+        {alertaHASSecundaria && (
+          <div style={{ background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "8px", padding: "12px 14px", fontSize: "13px", marginBottom: "10px" }}>
+            <div style={{ fontWeight: 700, color: "var(--color-text-warning)", marginBottom: "8px" }}>
+              ⚠ Considerar rastreio de Hipertensão Arterial Secundária
+            </div>
+            <div style={{ color: "var(--color-text-primary)", lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 600, marginBottom: "2px" }}>📋 Investigação inicial:</div>
+              <div>• Ur, Cr, Na, K, Ca, PTH, Vit D, EAS, RAC (relação albumina/creatinina), USG rins e VVUU</div>
+              <div>• TSH, T4 livre</div>
+              <div style={{ fontWeight: 600, marginTop: "6px", marginBottom: "2px" }}>📋 Hiperaldosteronismo primário:</div>
+              <div>• Aldosterona plasmática, Atividade de renina plasmática, Relação aldosterona/renina</div>
+              <div style={{ fontWeight: 600, marginTop: "6px", marginBottom: "2px" }}>📋 Feocromocitoma:</div>
+              <div>• Metanefrinas plasmáticas ou urinárias de 24h</div>
+              <div style={{ fontWeight: 600, marginTop: "6px", marginBottom: "2px" }}>📋 HAS renovascular:</div>
+              <div>• Doppler de artérias renais</div>
+              <div style={{ fontWeight: 600, marginTop: "6px", marginBottom: "2px" }}>📋 Síndrome da Apneia Obstrutiva do Sono (SAOS):</div>
+              <div>• Polissonografia</div>
+              <div style={{ fontWeight: 600, marginTop: "6px", marginBottom: "2px" }}>📋 Síndrome de Cushing:</div>
+              <div>• Cortisol sérico 8–9h após supressão com Dexametasona 1mg às 23h</div>
+            </div>
+          </div>
+        )}
         <Row cols="repeat(3, 1fr)">
           <Field label="PA sentado (mmHg)"><input value={e.paSentado || ""} onChange={ev => set("paSentado", ev.target.value)} placeholder="ex: 130/80" /></Field>
           <Field label="PA em pé após 3 min (mmHg)" hint="Triagem de hipotensão ortostática"><input value={e.paEmPe || ""} onChange={ev => set("paEmPe", ev.target.value)} placeholder="ex: 120/75" /></Field>
@@ -2594,10 +2662,52 @@ function ExameTab({ consulta, updateConsulta, patient }) {
   );
 }
 
-function ExamesTab({ consulta, updateConsulta }) {
+function ExamesTab({ consulta, updateConsulta, patient }) {
+  // Perfil para meta de HbA1c
+  const temDM2 = consulta.problemas?.["DM2"];
+  const aga = consulta.aga || {};
+  const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+  const ehFragil = frailScore >= 3;
+  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+  const nComorbidades = ativos.length + (consulta.problemasCustom || []).filter(c => c.checked).length;
+  const ehMultimorbido = nComorbidades >= 3;
+
+  let metaHbA1c = null, perfilHbA1c = null;
+  if (temDM2) {
+    if (ehFragil || ehMultimorbido) {
+      metaHbA1c = "< 8%"; perfilHbA1c = ehFragil ? "Idoso frágil" : "Idoso multimórbido";
+    } else {
+      metaHbA1c = "< 7–7,5%"; perfilHbA1c = "Idoso robusto";
+    }
+  }
+
+  // Detecta HbA1c no texto de labs
+  let alertaHbA1c = null;
+  if (temDM2 && metaHbA1c) {
+    const labs = consulta.labsTexto || "";
+    const matchHb = labs.match(/(?:hba1c|glicada|hemoglobina glicada)[^0-9]*(\d+[,.]?\d*)\s*%?/i);
+    if (matchHb) {
+      const valor = parseFloat(matchHb[1].replace(',', '.'));
+      const limite = ehFragil || ehMultimorbido ? 8.0 : 7.5;
+      if (valor > limite) {
+        alertaHbA1c = `⚠ HbA1c ${valor}% acima da meta para ${perfilHbA1c}: ${metaHbA1c}`;
+      } else {
+        alertaHbA1c = `✓ HbA1c ${valor}% dentro da meta para ${perfilHbA1c}: ${metaHbA1c}`;
+      }
+    }
+  }
+
   return (
     <div>
       <SectionCard title="Laboratoriais" icon="ti-flask">
+        {temDM2 && (
+          <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px", padding: "6px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
+            🎯 <strong>Meta de HbA1c ({perfilHbA1c}):</strong> {metaHbA1c}
+          </div>
+        )}
+        {alertaHbA1c && (
+          <Alert type={alertaHbA1c.startsWith('✓') ? "success" : "warning"}>{alertaHbA1c}</Alert>
+        )}
         <textarea
           rows={10}
           value={consulta.labsTexto || ""}
