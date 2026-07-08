@@ -3259,7 +3259,7 @@ function FraxCalc({ consulta, patient }) {
 }
 
 // ============================================================
-// DASHBOARD ESTATÍSTICO
+// DASHBOARD ESTATÍSTICO MELHORADO
 // ============================================================
 function Dashboard({ patients }) {
   const ativos = patients.filter(p => !p.deletedAt);
@@ -3275,27 +3275,28 @@ function Dashboard({ patients }) {
     const meds = (ult.medicacoesTexto || "").split("\n").filter(l => l.trim()).length;
     const frail = Object.values((ult.aga || {}).frail || {}).filter(Boolean).length;
     const idade = calcIdade(p.ident.dn);
-    return { problemas, custom, meds, frail, idade };
+    const sexo = p.ident.sexo || "";
+    const imc = calcIMC((ult.aga || {}).peso, (ult.aga || {}).altura);
+    const forcaNum = parseFloat((ult.aga || {}).testeForca);
+    const circNum = parseFloat((ult.aga || {}).circPanturrilha);
+    const sarcopenia = (sexo === "M" ? forcaNum < 27 : forcaNum < 16) || circNum < 31;
+    const numComorbidades = Object.values(problemas).filter(Boolean).length + custom.length;
+    const dataUltConsulta = ult.data || null;
+    const retorno = (ult.plano || {}).retorno || null;
+    const retornoVencido = retorno && new Date(retorno) < new Date();
+    return { problemas, custom, meds, frail, idade, sexo, imc, sarcopenia, numComorbidades, dataUltConsulta, retornoVencido, nome: p.ident.nome, id: p.id };
   });
 
-  // Prevalência de comorbidades
-  const prevComorbidades = {};
-  PROBLEMAS.forEach(pr => {
-    const n = dados.filter(d => d.problemas[pr]).length;
-    if (n > 0) prevComorbidades[pr] = n;
-  });
-  const topComorbidades = Object.entries(prevComorbidades).sort((a, b) => b[1] - a[1]).slice(0, 10);
-
-  // Perfil de fragilidade
-  const robusto = dados.filter(d => d.frail === 0).length;
+  // Fragilidade
+  const robusto   = dados.filter(d => d.frail === 0).length;
   const prefragil = dados.filter(d => d.frail >= 1 && d.frail <= 2).length;
-  const fragil = dados.filter(d => d.frail >= 3).length;
-  const semDados = total - robusto - prefragil - fragil;
+  const fragil    = dados.filter(d => d.frail >= 3).length;
+  const semDadosFrail = total - robusto - prefragil - fragil;
 
   // Medicamentos
-  const mediasTotal = dados.reduce((a, d) => a + d.meds, 0);
-  const mediasMeds = total > 0 ? (mediasTotal / total).toFixed(1) : 0;
-  const polifarmacia = dados.filter(d => d.meds >= 5).length;
+  const totalMeds = dados.reduce((a, d) => a + d.meds, 0);
+  const mediaMeds = total > 0 ? (totalMeds / total).toFixed(1) : 0;
+  const polifarmacia  = dados.filter(d => d.meds >= 5).length;
   const polimedicacao = dados.filter(d => d.meds >= 10).length;
 
   // Faixa etária
@@ -3308,67 +3309,156 @@ function Dashboard({ patients }) {
     else fx["≥85"]++;
   });
 
-  const barColor = (v, max) => {
-    const pct = max > 0 ? v / max : 0;
-    if (pct >= 0.6) return "var(--color-border-danger)";
-    if (pct >= 0.3) return "var(--color-border-warning)";
-    return "var(--color-border-info)";
-  };
+  // Sexo
+  const nF = dados.filter(d => d.sexo === "F").length;
+  const nM = dados.filter(d => d.sexo === "M").length;
+
+  // Comorbidades
+  const prevComorbidades = {};
+  PROBLEMAS.forEach(pr => {
+    const n = dados.filter(d => d.problemas[pr]).length;
+    if (n > 0) prevComorbidades[pr] = n;
+  });
+  const topComorbidades = Object.entries(prevComorbidades).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  // IMC
+  const imcBaixo   = dados.filter(d => d.imc && parseFloat(d.imc) <= 22).length;
+  const imcNormal  = dados.filter(d => d.imc && parseFloat(d.imc) > 22 && parseFloat(d.imc) < 27).length;
+  const imcSobrepeso = dados.filter(d => d.imc && parseFloat(d.imc) >= 27).length;
+  const semIMC     = total - imcBaixo - imcNormal - imcSobrepeso;
+
+  // Sarcopenia
+  const comSarcopenia = dados.filter(d => d.sarcopenia).length;
+
+  // Retorno vencido
+  const retornoVencido = dados.filter(d => d.retornoVencido);
+
+  // Complexidade
+  const complexos  = dados.filter(d => d.numComorbidades >= 5 || d.meds >= 10 || d.frail >= 3).length;
+  const moderados  = dados.filter(d => !( d.numComorbidades >= 5 || d.meds >= 10 || d.frail >= 3) && (d.numComorbidades >= 3 || d.meds >= 5 || d.frail >= 1)).length;
+  const simples    = total - complexos - moderados;
+
+  // Média de comorbidades
+  const mediaComorbidades = total > 0 ? (dados.reduce((a, d) => a + d.numComorbidades, 0) / total).toFixed(1) : 0;
+
+  // Helpers visuais
+  const pct = (n) => total > 0 ? Math.round(n / total * 100) : 0;
+  const Bar = ({ valor, max, cor }) => (
+    <div style={{ height: "8px", background: "var(--color-background-secondary)", borderRadius: "4px", overflow: "hidden", marginTop: "3px" }}>
+      <div style={{ height: "100%", width: `${max > 0 ? Math.round(valor/max*100) : 0}%`, background: cor || "var(--color-border-info)", borderRadius: "4px", transition: "width 0.5s" }} />
+    </div>
+  );
+  const StatRow = ({ label, n, cor }) => (
+    <div style={{ marginBottom: "10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "2px" }}>
+        <span>{label}</span>
+        <span style={{ fontWeight: 600, color: cor }}>{n} ({pct(n)}%)</span>
+      </div>
+      <Bar valor={n} max={total} cor={cor} />
+    </div>
+  );
 
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+      {/* Cards de resumo */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "10px", marginBottom: "16px" }}>
         {[
-          { label: "Total de pacientes", valor: total, icon: "ti-users" },
-          { label: "Média de medicamentos", valor: mediasMeds, icon: "ti-pill" },
-          { label: "Com polifarmácia (≥5)", valor: `${polifarmacia} (${Math.round(polifarmacia/total*100)}%)`, icon: "ti-alert-circle" },
-          { label: "Frágeis", valor: `${fragil} (${Math.round(fragil/total*100)}%)`, icon: "ti-wheelchair" },
-        ].map(({ label, valor, icon }) => (
-          <div key={label} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "16px", background: "var(--color-background-primary)", textAlign: "center" }}>
-            <i className={`ti ${icon}`} style={{ fontSize: "24px", color: "var(--color-text-info)" }} />
-            <div style={{ fontSize: "22px", fontWeight: 700, margin: "6px 0" }}>{valor}</div>
-            <div style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>{label}</div>
+          { label: "Pacientes", valor: total, icon: "ti-users", cor: "var(--color-text-info)" },
+          { label: "Média de medicamentos", valor: mediaMeds, icon: "ti-pill", cor: "var(--color-text-secondary)" },
+          { label: "Média de comorbidades", valor: mediaComorbidades, icon: "ti-list-check", cor: "var(--color-text-secondary)" },
+          { label: "Polifarmácia ≥5", valor: `${polifarmacia} (${pct(polifarmacia)}%)`, icon: "ti-alert-circle", cor: "var(--color-text-warning)" },
+          { label: "Frágeis", valor: `${fragil} (${pct(fragil)}%)`, icon: "ti-wheelchair", cor: "var(--color-text-danger)" },
+          { label: "Complexos", valor: `${complexos} (${pct(complexos)}%)`, icon: "ti-alert-triangle", cor: "var(--color-text-danger)" },
+          { label: "Retorno vencido", valor: retornoVencido.length, icon: "ti-calendar-off", cor: retornoVencido.length > 0 ? "var(--color-text-warning)" : "var(--color-text-secondary)" },
+          { label: "Sarcopenia provável", valor: `${comSarcopenia} (${pct(comSarcopenia)}%)`, icon: "ti-run", cor: "var(--color-text-warning)" },
+        ].map(({ label, valor, icon, cor }) => (
+          <div key={label} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "10px", padding: "12px", background: "var(--color-background-primary)", textAlign: "center" }}>
+            <i className={`ti ${icon}`} style={{ fontSize: "20px", color: cor }} />
+            <div style={{ fontSize: "20px", fontWeight: 700, margin: "4px 0", color: cor }}>{valor}</div>
+            <div style={{ fontSize: "11px", color: "var(--color-text-secondary)", lineHeight: 1.3 }}>{label}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", flexWrap: "wrap" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+        {/* Fragilidade */}
         <SectionCard title="Perfil de fragilidade (FRAIL)" icon="ti-heart-rate-monitor">
-          {[["Robusto", robusto, "success"], ["Pré-frágil", prefragil, "warning"], ["Frágil", fragil, "danger"], ["Sem dados", semDados, "info"]].map(([label, n, cor]) => (
-            <div key={label} style={{ marginBottom: "8px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "3px" }}>
-                <span>{label}</span><span style={{ fontWeight: 600 }}>{n} ({Math.round(n/total*100)}%)</span>
-              </div>
-              <div style={{ height: "8px", background: "var(--color-background-secondary)", borderRadius: "4px", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${Math.round(n/total*100)}%`, background: `var(--color-border-${cor})`, borderRadius: "4px", transition: "width 0.5s" }} />
-              </div>
-            </div>
-          ))}
+          <StatRow label="Robusto" n={robusto} cor="var(--color-border-success)" />
+          <StatRow label="Pré-frágil" n={prefragil} cor="var(--color-border-warning)" />
+          <StatRow label="Frágil" n={fragil} cor="var(--color-border-danger)" />
+          {semDadosFrail > 0 && <StatRow label="Sem dados" n={semDadosFrail} cor="var(--color-border-tertiary)" />}
         </SectionCard>
 
+        {/* Complexidade */}
+        <SectionCard title="Complexidade clínica" icon="ti-adjustments">
+          <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "8px" }}>
+            Complexo = ≥5 comorbidades ou ≥10 meds ou frágil
+          </div>
+          <StatRow label="Simples" n={simples} cor="var(--color-border-success)" />
+          <StatRow label="Moderado" n={moderados} cor="var(--color-border-warning)" />
+          <StatRow label="Complexo" n={complexos} cor="var(--color-border-danger)" />
+        </SectionCard>
+
+        {/* Faixa etária */}
         <SectionCard title="Faixa etária" icon="ti-calendar">
-          {Object.entries(fx).filter(([, v]) => v > 0).map(([label, n]) => (
-            <div key={label} style={{ marginBottom: "8px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "3px" }}>
-                <span>{label} anos</span><span style={{ fontWeight: 600 }}>{n} ({Math.round(n/total*100)}%)</span>
-              </div>
-              <div style={{ height: "8px", background: "var(--color-background-secondary)", borderRadius: "4px", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${Math.round(n/total*100)}%`, background: "var(--color-border-info)", borderRadius: "4px" }} />
-              </div>
-            </div>
+          {Object.entries(fx).filter(([k, v]) => k !== "NI" || v > 0).map(([label, n]) => (
+            <StatRow key={label} label={label === "NI" ? "Não informado" : `${label} anos`} n={n} cor="var(--color-border-info)" />
           ))}
+          <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "6px", display: "flex", gap: "12px" }}>
+            <span>♀ {nF} ({pct(nF)}%)</span>
+            <span>♂ {nM} ({pct(nM)}%)</span>
+          </div>
+        </SectionCard>
+
+        {/* IMC */}
+        <SectionCard title="Estado nutricional (IMC idoso)" icon="ti-scale">
+          <StatRow label="Baixo peso (≤22)" n={imcBaixo} cor="var(--color-border-danger)" />
+          <StatRow label="Eutrofia (>22 e <27)" n={imcNormal} cor="var(--color-border-success)" />
+          <StatRow label="Sobrepeso (≥27)" n={imcSobrepeso} cor="var(--color-border-warning)" />
+          {semIMC > 0 && <StatRow label="Sem dados" n={semIMC} cor="var(--color-border-tertiary)" />}
         </SectionCard>
       </div>
 
-      <SectionCard title="Top 10 comorbidades" icon="ti-chart-bar">
+      {/* Top comorbidades */}
+      <SectionCard title="Prevalência de comorbidades" icon="ti-chart-bar">
+        {topComorbidades.length === 0 && <p style={{ fontSize: "13px", color: "var(--color-text-secondary)" }}>Nenhuma comorbidade registrada.</p>}
         {topComorbidades.map(([nome, n]) => (
           <div key={nome} style={{ marginBottom: "8px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "3px" }}>
-              <span>{nome}</span><span style={{ fontWeight: 600 }}>{n}/{total} ({Math.round(n/total*100)}%)</span>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "2px" }}>
+              <span>{nome}</span>
+              <span style={{ fontWeight: 600 }}>{n}/{total} ({pct(n)}%)</span>
             </div>
-            <div style={{ height: "8px", background: "var(--color-background-secondary)", borderRadius: "4px", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${Math.round(n/total*100)}%`, background: barColor(n, total), borderRadius: "4px", transition: "width 0.5s" }} />
+            <Bar valor={n} max={total} cor={pct(n) >= 60 ? "var(--color-border-danger)" : pct(n) >= 30 ? "var(--color-border-warning)" : "var(--color-border-info)"} />
+          </div>
+        ))}
+      </SectionCard>
+
+      {/* Retorno vencido */}
+      {retornoVencido.length > 0 && (
+        <SectionCard title="⚠ Retornos vencidos" icon="ti-calendar-off">
+          <div style={{ display: "grid", gap: "6px" }}>
+            {retornoVencido.map(d => (
+              <div key={d.id} style={{ fontSize: "13px", display: "flex", justifyContent: "space-between", padding: "6px 10px", background: "var(--color-background-warning)", borderRadius: "6px" }}>
+                <span>{d.nome || "Paciente sem nome"}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Medicamentos - distribuição */}
+      <SectionCard title="Distribuição de medicamentos" icon="ti-pill" defaultOpen={false}>
+        {[
+          ["Sem medicamentos", dados.filter(d => d.meds === 0).length, "var(--color-border-tertiary)"],
+          ["1–4 medicamentos", dados.filter(d => d.meds >= 1 && d.meds <= 4).length, "var(--color-border-success)"],
+          ["5–9 (polifarmácia)", dados.filter(d => d.meds >= 5 && d.meds <= 9).length, "var(--color-border-warning)"],
+          ["≥10 (polimedicação)", polimedicacao, "var(--color-border-danger)"],
+        ].map(([label, n, cor]) => (
+          <div key={label} style={{ marginBottom: "8px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "2px" }}>
+              <span>{label}</span><span style={{ fontWeight: 600 }}>{n} ({pct(n)}%)</span>
             </div>
+            <Bar valor={n} max={total} cor={cor} />
           </div>
         ))}
       </SectionCard>
