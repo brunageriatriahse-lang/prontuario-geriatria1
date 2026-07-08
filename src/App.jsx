@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { listPatients, savePatient, deletePatient as apiDeletePatient } from './api.js';
+import { listPatients, savePatient, deletePatient as apiDeletePatient, purgePatient } from './api.js';
 import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
@@ -1343,9 +1343,9 @@ export default function App() {
   async function permanentlyDeletePatient(id) {
     setPatients(prev => prev.filter(p => p.id !== id));
     try {
-      await apiDeletePatient(id);
+      await purgePatient(id);
     } catch (e) {
-      console.error(e);
+      console.error("Erro ao excluir permanentemente:", e);
     }
   }
 
