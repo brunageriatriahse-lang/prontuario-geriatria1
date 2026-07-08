@@ -2528,6 +2528,11 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
                   <button onClick={() => removeRgRegistro(r.nome, reg.id)} aria-label="Remover registro" style={{ marginTop: "20px" }}><i className="ti ti-trash" aria-hidden="true"></i></button>
                 </div>
               ))}
+              {r.nome === "Densitometria óssea" && (
+                <div style={{ marginTop: "10px" }}>
+                  <FraxCalc consulta={consulta} patient={patient} />
+                </div>
+              )}
             </div>
           );
         })}
@@ -2751,14 +2756,23 @@ function ExameTab({ consulta, updateConsulta, patient }) {
         </Row>
         <Field label="Dor (EVA 0–10)" hint="0 = sem dor · 10 = pior dor imaginável">
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <input type="range" min="0" max="10" step="1" value={e.eva || 0} onChange={ev => set("eva", ev.target.value)} style={{ flex: 1 }} />
-            <span style={{
-              minWidth: "32px", textAlign: "center", fontWeight: 700, fontSize: "18px",
-              color: e.eva >= 7 ? "var(--color-text-danger)" : e.eva >= 4 ? "var(--color-text-warning)" : "var(--color-text-success)"
-            }}>{e.eva || 0}</span>
-            <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
-              {e.eva >= 7 ? "Intensa" : e.eva >= 4 ? "Moderada" : e.eva > 0 ? "Leve" : "Sem dor"}
-            </span>
+            <input
+              type="number" min="0" max="10" step="1"
+              value={e.eva ?? ""}
+              onChange={ev => {
+                const v = ev.target.value;
+                if (v === "" || (parseInt(v) >= 0 && parseInt(v) <= 10)) set("eva", v);
+              }}
+              style={{ maxWidth: "80px", fontSize: "18px", fontWeight: 700, textAlign: "center" }}
+            />
+            {e.eva !== "" && e.eva !== undefined && (
+              <span style={{
+                fontSize: "13px", fontWeight: 600,
+                color: e.eva >= 7 ? "var(--color-text-danger)" : e.eva >= 4 ? "var(--color-text-warning)" : "var(--color-text-success)"
+              }}>
+                {e.eva >= 7 ? "Dor intensa" : e.eva >= 4 ? "Dor moderada" : e.eva > 0 ? "Dor leve" : "Sem dor"}
+              </span>
+            )}
           </div>
         </Field>
         {(() => {
