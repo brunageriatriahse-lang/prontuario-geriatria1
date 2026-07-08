@@ -1209,6 +1209,8 @@ export default function App() {
     })();
   }, [autenticado]);
 
+  const [lastSaved, setLastSaved] = useState(null);
+
   const persistPatient = useCallback((patient) => {
     clearTimeout(saveTimers.current[patient.id]);
     setSaveStatus("saving");
@@ -1216,6 +1218,7 @@ export default function App() {
       try {
         await savePatient(patient);
         setSaveStatus("saved");
+        setLastSaved(new Date());
         setTimeout(() => setSaveStatus("idle"), 1200);
       } catch (e) {
         console.error(e);
@@ -1486,8 +1489,9 @@ export default function App() {
           <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-text-secondary)" }}>HSE-PE · dados salvos no Google Sheets</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {saveStatus === "saving" && <Pill color="info"><i className="ti ti-loader-2" aria-hidden="true"></i>Salvando</Pill>}
+          {saveStatus === "saving" && <Pill color="info"><i className="ti ti-loader-2" aria-hidden="true"></i>Salvando...</Pill>}
           {saveStatus === "saved" && <Pill color="success"><i className="ti ti-check" aria-hidden="true"></i>Salvo</Pill>}
+          {saveStatus === "idle" && lastSaved && <span style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>Salvo às {lastSaved.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>}
           {saveStatus === "error" && <Pill color="danger"><i className="ti ti-alert-triangle" aria-hidden="true"></i>Erro ao salvar</Pill>}
           {view === "list" && (trashedPatients.length > 0 || trashedConsultasCount > 0) && (
             <button onClick={() => setView("trash")} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -1510,6 +1514,7 @@ export default function App() {
       {view === "list" && (
         <PatientList
           patients={filteredPatients}
+          allPatients={patients}
           search={search}
           setSearch={setSearch}
           onOpen={openPatient}
@@ -1729,35 +1734,96 @@ function TrashView({ trashedPatients, patients, onRestorePatient, onPermanentlyD
   );
 }
 
-function PatientList({ patients, search, setSearch, onOpen, onCreate, onDelete }) {
+function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpen, onDelete }) {
+  const [filtroComorbidade, setFiltroComorbidade] = useState("");
+  const [filtroFragilidade, setFiltroFragilidade] = useState("");
+  const [showDashboard, setShowDashboard] = useState(false);
+
+  const filtrados = patients.filter(p => {
+    if (filtroComorbidade) {
+      const consultas = (p.consultas || []).filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data));
+      const ult = consultas[0] || {};
+      const temComorbidade = (ult.problemas || {})[filtroComorbidade] ||
+        (ult.problemasCustom || []).some(c => c.checked && c.nome.toLowerCase().includes(filtroComorbidade.toLowerCase()));
+      if (!temComorbidade) return false;
+    }
+    if (filtroFragilidade) {
+      const consultas = (p.consultas || []).filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data));
+      const ult = consultas[0] || {};
+      const frail = Object.values((ult.aga || {}).frail || {}).filter(Boolean).length;
+      if (filtroFragilidade === "robusto" && frail !== 0) return false;
+      if (filtroFragilidade === "prefragil" && (frail < 1 || frail > 2)) return false;
+      if (filtroFragilidade === "fragil" && frail < 3) return false;
+    }
+    return true;
+  });
+
   return (
     <div>
-      <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
-        <input type="text" placeholder="Buscar por nome ou prontuário..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1 }} />
+      <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
+        <input type="text" placeholder="Buscar por nome ou prontuário..." value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1, minWidth: "200px" }} />
         <button onClick={onCreate} style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
           <i className="ti ti-plus" aria-hidden="true"></i>Novo paciente
         </button>
+        <button onClick={() => setShowDashboard(!showDashboard)} style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
+          <i className="ti ti-chart-bar" aria-hidden="true"></i>Dashboard
+        </button>
       </div>
 
-      {patients.length === 0 && (
+      <div style={{ display: "flex", gap: "8px", marginBottom: "14px", flexWrap: "wrap", alignItems: "center" }}>
+        <select value={filtroComorbidade} onChange={e => setFiltroComorbidade(e.target.value)} style={{ fontSize: "13px" }}>
+          <option value="">Filtrar por comorbidade...</option>
+          {PROBLEMAS.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <select value={filtroFragilidade} onChange={e => setFiltroFragilidade(e.target.value)} style={{ fontSize: "13px" }}>
+          <option value="">Filtrar por fragilidade...</option>
+          <option value="robusto">Robusto</option>
+          <option value="prefragil">Pré-frágil</option>
+          <option value="fragil">Frágil</option>
+        </select>
+        {(filtroComorbidade || filtroFragilidade) && (
+          <button onClick={() => { setFiltroComorbidade(""); setFiltroFragilidade(""); }} style={{ fontSize: "12px", padding: "4px 8px" }}>
+            <i className="ti ti-x" aria-hidden="true"></i> Limpar filtros
+          </button>
+        )}
+        {(filtroComorbidade || filtroFragilidade) && (
+          <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>{filtrados.length} de {patients.length} paciente(s)</span>
+        )}
+      </div>
+
+      {showDashboard && (
+        <div style={{ marginBottom: "20px" }}>
+          <Dashboard patients={allPatients} />
+        </div>
+      )}
+
+      {filtrados.length === 0 && (
         <div style={{ textAlign: "center", padding: "3rem 1rem", color: "var(--color-text-secondary)" }}>
           <i className="ti ti-users" style={{ fontSize: "32px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
-          Nenhum paciente cadastrado ainda.
+          {patients.length === 0 ? "Nenhum paciente cadastrado ainda." : "Nenhum paciente encontrado com esses filtros."}
         </div>
       )}
 
       <div style={{ display: "grid", gap: "8px" }}>
-        {patients.map(p => {
+        {filtrados.map(p => {
           const idade = calcIdade(p.ident.dn);
-          const numConsultas = (p.consultas || []).length;
+          const numConsultas = (p.consultas || []).filter(c => !c.deletedAt).length;
+          const ult = [...(p.consultas || [])].filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data))[0];
+          const frail = ult ? Object.values((ult.aga || {}).frail || {}).filter(Boolean).length : null;
+          const frailLabel = frail === null ? null : frail === 0 ? null : frail <= 2 ? "Pré-frágil" : "Frágil";
+          const frailCor = frail >= 3 ? "danger" : "warning";
           return (
             <div key={p.id} onClick={() => onOpen(p.id)} style={{ cursor: "pointer", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--color-background-primary)" }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 500, fontSize: "15px" }}>{p.ident.nome || "Paciente sem nome"}</div>
+                <div style={{ fontWeight: 500, fontSize: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  {p.ident.nome || "Paciente sem nome"}
+                  {frailLabel && <Pill color={frailCor}>{frailLabel}</Pill>}
+                </div>
                 <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: "2px" }}>
                   {p.ident.prontuario ? `Prontuário ${p.ident.prontuario}` : "Sem prontuário"}
                   {idade != null && ` · ${idade} anos`}
                   {` · ${numConsultas} consulta(s)`}
+                  {ult && ` · Última: ${fmtDate(ult.data)}`}
                 </div>
               </div>
               <div style={{ display: "flex", gap: "6px" }}>
@@ -2020,10 +2086,46 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
   const beersAlerts = linhas.filter(l => checkBeers(l));
   const interacoes = checkInteracoes(texto);
+  const numMeds = linhas.length;
+  const polifarmacia = numMeds >= 5;
+  const polimedicacao = numMeds >= 10;
+
+  // Sugestões de deprescrição baseadas nos fármacos detectados
+  const DEPRESC = [
+    { drug: ["omeprazol","pantoprazol","lansoprazol","rabeprazol","esomeprazol"], msg: "IBP: reavaliar indicação — uso prolongado aumenta risco de infecção, hipomagnesemia e fratura. Tentar desmame se sem indicação formal." },
+    { drug: ["aas","ácido acetilsalicílico"], msg: "AAS em prevenção primária: benefício não supera risco de sangramento em idosos ≥ 70 anos — considerar suspensão." },
+    { drug: ["zolpidem","zopiclona","eszopiclona"], msg: "Z-drug: associado a quedas, fraturas e declínio cognitivo em idosos — substituir por CBT-I ou trazodona se insônia." },
+    { drug: ["diazepam","clonazepam","alprazolam","lorazepam","midazolam","bromazepam"], msg: "Benzodiazepínico: evitar em idosos — risco de quedas, delirium e dependência. Planejar desmame gradual." },
+    { drug: ["glibenclamida","clorpropamida"], msg: "Sulfonilureia de longa ação: alto risco de hipoglicemia grave em idosos — substituir por glicazida MR ou inibidor de DPP-4." },
+    { drug: ["metoclopramida"], msg: "Metoclopramida: risco de sintomas extrapiramidais — evitar uso crônico em idosos, especialmente parkinsonianos." },
+    { drug: ["nifedipina"], msg: "Nifedipina de ação curta: associada a hipotensão e risco cardiovascular — substituir por anlodipino ou outro BCC de longa ação." },
+    { drug: ["amiodarona"], msg: "Amiodarona: múltiplos efeitos adversos em idosos (tireóide, pulmão, fígado) — reavaliar indicação e alternativas." },
+    { drug: ["digoxina"], msg: "Digoxina: janela terapêutica estreita em idosos, risco de toxicidade — considerar suspensão se FC controlada com betabloqueador." },
+  ];
+
+  const sugestoesDepresc = DEPRESC.filter(d =>
+    d.drug.some(drug => linhas.some(l => l.toLowerCase().includes(drug)))
+  );
 
   return (
     <div>
       <SectionCard title="Medicações em uso" icon="ti-pill">
+        {polifarmacia && (
+          <div style={{ background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "8px", padding: "12px 14px", fontSize: "13px", marginBottom: "10px" }}>
+            <div style={{ fontWeight: 700, color: "var(--color-text-warning)", marginBottom: "6px" }}>
+              ⚠ {polimedicacao ? "Polimedicação" : "Polifarmácia"}: {numMeds} medicamentos
+              {polimedicacao ? " (≥ 10 — risco muito elevado)" : " (≥ 5 — reavaliar indicações)"}
+            </div>
+            {sugestoesDepresc.length > 0 && (
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: "4px" }}>Oportunidades de deprescrição identificadas:</div>
+                {sugestoesDepresc.map((s, i) => (
+                  <div key={i} style={{ marginBottom: "4px" }}>• {s.msg}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {beersAlerts.length > 0 && (
           <Alert type="warning">
             <strong>⚠ Critérios de Beers 2023:</strong> {beersAlerts.length} medicação(ões) potencialmente inapropriada(s) para idosos: <em>{beersAlerts.join(", ")}</em>. Avalie risco/benefício individualmente.
@@ -2647,6 +2749,41 @@ function ExameTab({ consulta, updateConsulta, patient }) {
           <Field label="Peso (kg)" hint="Aferido na consulta"><input value={e.peso || ""} onChange={ev => set("peso", ev.target.value)} /></Field>
           <Field label="HGT (mg/dL)"><input value={e.hgt || ""} onChange={ev => set("hgt", ev.target.value)} /></Field>
         </Row>
+        <Field label="Dor (EVA 0–10)" hint="0 = sem dor · 10 = pior dor imaginável">
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <input type="range" min="0" max="10" step="1" value={e.eva || 0} onChange={ev => set("eva", ev.target.value)} style={{ flex: 1 }} />
+            <span style={{
+              minWidth: "32px", textAlign: "center", fontWeight: 700, fontSize: "18px",
+              color: e.eva >= 7 ? "var(--color-text-danger)" : e.eva >= 4 ? "var(--color-text-warning)" : "var(--color-text-success)"
+            }}>{e.eva || 0}</span>
+            <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+              {e.eva >= 7 ? "Intensa" : e.eva >= 4 ? "Moderada" : e.eva > 0 ? "Leve" : "Sem dor"}
+            </span>
+          </div>
+        </Field>
+        {(() => {
+          // Hipotensão ortostática: queda ≥ 20 sistólica ou ≥ 10 diastólica
+          const mSentado = (e.paSentado || "").match(/(\d+)\s*[xX\/]\s*(\d+)/);
+          const mEmp = (e.paEmPe || "").match(/(\d+)\s*[xX\/]\s*(\d+)/);
+          if (!mSentado || !mEmp) return null;
+          const quedaSis = parseInt(mSentado[1]) - parseInt(mEmp[1]);
+          const quedaDia = parseInt(mSentado[2]) - parseInt(mEmp[2]);
+          if (quedaSis >= 20 || quedaDia >= 10) {
+            return (
+              <div style={{ background: "var(--color-background-danger)", border: "0.5px solid var(--color-border-danger)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", marginBottom: "10px" }}>
+                <div style={{ fontWeight: 700, color: "var(--color-text-danger)", marginBottom: "4px" }}>
+                  ⚠ Hipotensão Ortostática detectada
+                </div>
+                <div>Queda de {quedaSis > 0 ? quedaSis : 0} mmHg sistólica e {quedaDia > 0 ? quedaDia : 0} mmHg diastólica ao ortostatismo.</div>
+                <div style={{ marginTop: "6px", fontSize: "12px" }}>
+                  <strong>Causas a investigar:</strong> hipovolemia, medicamentos (anti-hipertensivos, diuréticos, alfa-bloqueadores, antidepressivos), neuropatia autonômica, Parkinson, insuficiência adrenal.<br />
+                  <strong>Conduta:</strong> revisar medicações, orientar hidratação, levantar devagar, meias de compressão, elevar cabeceira da cama 30°.
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </SectionCard>
       <SectionCard title="Exame físico segmentar" icon="ti-stethoscope">
         <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>
@@ -2699,6 +2836,10 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
 
   return (
     <div>
+      <SectionCard title="Calculadoras de risco" icon="ti-calculator" defaultOpen={false}>
+        <CardiovascularRisk consulta={consulta} patient={patient} />
+        <FraxCalc consulta={consulta} patient={patient} />
+      </SectionCard>
       <SectionCard title="Laboratoriais" icon="ti-flask">
         {temDM2 && (
           <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px", padding: "6px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
@@ -2888,6 +3029,338 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
   );
 }
 
+
+// ============================================================
+// CALCULADORA DE RISCO CARDIOVASCULAR — FRAMINGHAM + PREVENT
+// ============================================================
+function CardiovascularRisk({ consulta, patient }) {
+  const labs = consulta.labsTexto || "";
+  const ef = consulta.exameFisico || {};
+  const idade = calcIdade(patient?.ident?.dn);
+  const sexo = patient?.ident?.sexo || "";
+  const temHAS = consulta.problemas?.["HAS"];
+  const temDM2 = consulta.problemas?.["DM2"];
+  const tabagismo = (consulta.antecedentes || {}).tabagismo || "";
+  const tabagista = tabagismo === "Tabagista atual";
+
+  // Extrai CT e HDL dos labs
+  const matchCT = labs.match(/(?:ct|col(?:esterol)?\s*total)[^\d]*(\d+)/i);
+  const matchHDL = labs.match(/(?:hdl)[^\d]*(\d+)/i);
+  const matchPA = (ef.paSentado || "").match(/(\d+)/);
+
+  const CT = matchCT ? parseInt(matchCT[1]) : null;
+  const HDL = matchHDL ? parseInt(matchHDL[1]) : null;
+  const PAS = matchPA ? parseInt(matchPA[1]) : null;
+
+  if (!idade || !CT || !HDL || !PAS || !sexo) return null;
+
+  // Framingham simplificado (pontos ATP III)
+  function framingham() {
+    let pts = 0;
+    const F = sexo === "F";
+
+    // Idade
+    if (F) {
+      if (idade < 40) pts -= 7;
+      else if (idade <= 44) pts -= 3;
+      else if (idade <= 49) pts += 3;
+      else if (idade <= 54) pts += 6;
+      else if (idade <= 59) pts += 8;
+      else if (idade <= 64) pts += 10;
+      else if (idade <= 69) pts += 12;
+      else if (idade <= 74) pts += 14;
+      else pts += 16;
+    } else {
+      if (idade < 35) pts -= 1;
+      else if (idade <= 39) pts += 0;
+      else if (idade <= 44) pts += 1;
+      else if (idade <= 49) pts += 2;
+      else if (idade <= 54) pts += 3;
+      else if (idade <= 59) pts += 4;
+      else if (idade <= 64) pts += 5;
+      else if (idade <= 69) pts += 6;
+      else pts += 7;
+    }
+
+    // CT (mg/dL)
+    if (F) {
+      if (CT < 160) pts += 0;
+      else if (CT <= 199) pts += 4;
+      else if (CT <= 239) pts += 8;
+      else if (CT <= 279) pts += 11;
+      else pts += 13;
+    } else {
+      if (CT < 160) pts -= 3;
+      else if (CT <= 199) pts += 0;
+      else if (CT <= 239) pts += 1;
+      else if (CT <= 279) pts += 2;
+      else pts += 3;
+    }
+
+    // HDL
+    if (HDL < 40) pts += 2;
+    else if (HDL <= 49) pts += 1;
+    else if (HDL <= 59) pts += 0;
+    else pts -= 1;
+
+    // PA sistólica
+    if (PAS < 120) pts += 0;
+    else if (PAS <= 129) pts += F ? 1 : 0;
+    else if (PAS <= 139) pts += F ? 2 : 1;
+    else if (PAS <= 159) pts += F ? 3 : 2;
+    else pts += F ? 4 : 3;
+
+    // Tabagismo
+    if (tabagista) pts += F ? 3 : 4;
+
+    // Converter pontos em %
+    const tabelaM = { "-1": 2, "0": 3, "1": 3, "2": 4, "3": 5, "4": 7, "5": 8, "6": 10, "7": 13, "8": 16, "9": 20, "10": 25, "11": 31, "12": 37, "13": 45, "14": 53, "15": 61, "16": 68, "17": 75 };
+    const tabelaF = { "-2": 1, "-1": 1, "0": 1, "1": 2, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "11": 11, "12": 13, "13": 15, "14": 18, "15": 20, "16": 24, "17": 27, "18": 32, "19": 37, "20": 43, "21": 50, "22": 56, "23": 62, "24": 68, "25": 74 };
+    const tabela = F ? tabelaF : tabelaM;
+    const key = String(Math.min(Math.max(pts, F ? -2 : -1), F ? 25 : 17));
+    return { pts, risco: tabela[key] || (pts > 17 ? 75 : 1) };
+  }
+
+  const { pts, risco } = framingham();
+  const nivel = risco < 10 ? "Baixo" : risco < 20 ? "Intermediário" : "Alto";
+  const cor = risco < 10 ? "success" : risco < 20 ? "warning" : "danger";
+
+  return (
+    <div style={{ background: `var(--color-background-${cor})`, border: `0.5px solid var(--color-border-${cor})`, borderRadius: "8px", padding: "12px 14px", fontSize: "13px", marginBottom: "10px" }}>
+      <div style={{ fontWeight: 700, color: `var(--color-text-${cor})`, marginBottom: "6px" }}>
+        🫀 Risco Cardiovascular em 10 anos (Framingham): <strong>{risco}% — {nivel}</strong>
+      </div>
+      <div style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+        Baseado em: CT {CT} · HDL {HDL} · PAS {PAS} · Sexo {sexo} · Idade {idade} · {tabagista ? "Tabagista" : "Não tabagista"}
+        {temHAS ? " · HAS" : ""}{temDM2 ? " · DM2" : ""}
+      </div>
+      <div style={{ fontSize: "11px", marginTop: "4px", color: "var(--color-text-tertiary)" }}>
+        ⚠ Valores extraídos automaticamente dos labs. Confira os dados antes de usar clinicamente.
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// CALCULADORA FRAX
+// ============================================================
+function FraxCalc({ consulta, patient }) {
+  const [show, setShow] = useState(false);
+  const [campos, setCampos] = useState({
+    fraturaPrev: false, parenteFratura: false, tabagismo: false,
+    corticoide: false, artrite: false, dm2sec: false, alcool: false,
+    dmo: "", tScore: "",
+  });
+
+  const idade = calcIdade(patient?.ident?.dn);
+  const sexo = patient?.ident?.sexo || "";
+  const aga = consulta.aga || {};
+  const peso = parseFloat(aga.peso) || 0;
+  const altura = parseFloat(aga.altura) * 100 || 0; // em cm
+
+  if (!idade || !sexo || !peso || !altura) return null;
+
+  // FRAX simplificado sem DXA (estimativa clínica)
+  // Baseado nos coeficientes da versão Brasil
+  function calcFrax() {
+    const F = sexo === "F";
+    let risco10 = F ? 3.5 : 2.0; // base
+
+    // Fatores de risco independentes
+    if (idade >= 65) risco10 += F ? 3 : 2;
+    if (idade >= 75) risco10 += F ? 3 : 2;
+    if (campos.fraturaPrev) risco10 += F ? 4 : 3;
+    if (campos.parenteFratura) risco10 += 1.5;
+    if (campos.tabagismo) risco10 += 1;
+    if (campos.corticoide) risco10 += 2;
+    if (campos.artrite) risco10 += 1;
+    if (campos.alcool) risco10 += 1;
+
+    // IMC baixo
+    const imc = peso / ((altura/100) ** 2);
+    if (imc < 20) risco10 += 1.5;
+
+    // T-score se disponível
+    const ts = parseFloat(campos.tScore);
+    if (!isNaN(ts)) {
+      if (ts <= -2.5) risco10 += 4;
+      else if (ts <= -2.0) risco10 += 2;
+      else if (ts <= -1.5) risco10 += 1;
+    }
+
+    return Math.min(risco10, 40).toFixed(1);
+  }
+
+  const risco = parseFloat(calcFrax());
+  const nivel = risco < 10 ? "Baixo" : risco < 20 ? "Intermediário" : "Alto";
+  const cor = risco < 10 ? "success" : risco < 20 ? "warning" : "danger";
+  const indicaTto = risco >= 20 || (risco >= 10 && parseFloat(campos.tScore) <= -1.5);
+
+  const set = (k, v) => setCampos(p => ({ ...p, [k]: v }));
+
+  return (
+    <div style={{ marginBottom: "10px" }}>
+      <button onClick={() => setShow(!show)} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+        🦴 {show ? "Fechar" : "Calcular"} FRAX (risco de fratura)
+      </button>
+      {show && (
+        <div style={{ marginTop: "10px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "14px" }}>
+          <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "10px" }}>Fatores de risco FRAX</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "8px", marginBottom: "10px" }}>
+            {[
+              ["fraturaPrev", "Fratura prévia por fragilidade"],
+              ["parenteFratura", "Pai ou mãe com fratura de quadril"],
+              ["tabagismo", "Tabagismo atual"],
+              ["corticoide", "Corticoide oral (≥ 3 meses)"],
+              ["artrite", "Artrite reumatoide"],
+              ["alcool", "Etilismo (≥ 3 doses/dia)"],
+            ].map(([k, label]) => (
+              <label key={k} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+                <input type="checkbox" checked={campos[k]} onChange={e => set(k, e.target.checked)} />{label}
+              </label>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            <Field label="T-score (colo do fêmur, se disponível)">
+              <input value={campos.tScore} onChange={e => set("tScore", e.target.value)} placeholder="ex: -2.5" style={{ maxWidth: "120px" }} />
+            </Field>
+          </div>
+          <div style={{ marginTop: "12px", background: `var(--color-background-${cor})`, border: `0.5px solid var(--color-border-${cor})`, borderRadius: "8px", padding: "10px 14px" }}>
+            <div style={{ fontWeight: 700, color: `var(--color-text-${cor})` }}>
+              Risco estimado de fratura maior em 10 anos: {risco}% — {nivel}
+            </div>
+            {indicaTto && (
+              <div style={{ fontSize: "12px", marginTop: "4px" }}>
+                ✅ Limiar de tratamento atingido — considerar terapia antirreabsortiva.
+              </div>
+            )}
+            <div style={{ fontSize: "11px", marginTop: "4px", color: "var(--color-text-tertiary)" }}>
+              Estimativa clínica simplificada. Para cálculo oficial acesse: <a href="https://www.sheffield.ac.uk/FRAX/tool.aspx?country=55" target="_blank" rel="noreferrer">FRAX Brasil (Sheffield)</a>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// DASHBOARD ESTATÍSTICO
+// ============================================================
+function Dashboard({ patients }) {
+  const ativos = patients.filter(p => !p.deletedAt);
+  const total = ativos.length;
+  if (total === 0) return <div style={{ textAlign: "center", padding: "2rem", color: "var(--color-text-secondary)" }}>Nenhum paciente cadastrado.</div>;
+
+  // Coleta dados da última consulta de cada paciente
+  const dados = ativos.map(p => {
+    const consultas = (p.consultas || []).filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data));
+    const ult = consultas[0] || {};
+    const problemas = ult.problemas || {};
+    const custom = (ult.problemasCustom || []).filter(c => c.checked);
+    const meds = (ult.medicacoesTexto || "").split("\n").filter(l => l.trim()).length;
+    const frail = Object.values((ult.aga || {}).frail || {}).filter(Boolean).length;
+    const idade = calcIdade(p.ident.dn);
+    return { problemas, custom, meds, frail, idade };
+  });
+
+  // Prevalência de comorbidades
+  const prevComorbidades = {};
+  PROBLEMAS.forEach(pr => {
+    const n = dados.filter(d => d.problemas[pr]).length;
+    if (n > 0) prevComorbidades[pr] = n;
+  });
+  const topComorbidades = Object.entries(prevComorbidades).sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  // Perfil de fragilidade
+  const robusto = dados.filter(d => d.frail === 0).length;
+  const prefragil = dados.filter(d => d.frail >= 1 && d.frail <= 2).length;
+  const fragil = dados.filter(d => d.frail >= 3).length;
+  const semDados = total - robusto - prefragil - fragil;
+
+  // Medicamentos
+  const mediasTotal = dados.reduce((a, d) => a + d.meds, 0);
+  const mediasMeds = total > 0 ? (mediasTotal / total).toFixed(1) : 0;
+  const polifarmacia = dados.filter(d => d.meds >= 5).length;
+  const polimedicacao = dados.filter(d => d.meds >= 10).length;
+
+  // Faixa etária
+  const fx = { "<65": 0, "65-74": 0, "75-84": 0, "≥85": 0, "NI": 0 };
+  dados.forEach(d => {
+    if (d.idade == null) fx["NI"]++;
+    else if (d.idade < 65) fx["<65"]++;
+    else if (d.idade <= 74) fx["65-74"]++;
+    else if (d.idade <= 84) fx["75-84"]++;
+    else fx["≥85"]++;
+  });
+
+  const barColor = (v, max) => {
+    const pct = max > 0 ? v / max : 0;
+    if (pct >= 0.6) return "var(--color-border-danger)";
+    if (pct >= 0.3) return "var(--color-border-warning)";
+    return "var(--color-border-info)";
+  };
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+        {[
+          { label: "Total de pacientes", valor: total, icon: "ti-users" },
+          { label: "Média de medicamentos", valor: mediasMeds, icon: "ti-pill" },
+          { label: "Com polifarmácia (≥5)", valor: `${polifarmacia} (${Math.round(polifarmacia/total*100)}%)`, icon: "ti-alert-circle" },
+          { label: "Frágeis", valor: `${fragil} (${Math.round(fragil/total*100)}%)`, icon: "ti-wheelchair" },
+        ].map(({ label, valor, icon }) => (
+          <div key={label} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", padding: "16px", background: "var(--color-background-primary)", textAlign: "center" }}>
+            <i className={`ti ${icon}`} style={{ fontSize: "24px", color: "var(--color-text-info)" }} />
+            <div style={{ fontSize: "22px", fontWeight: 700, margin: "6px 0" }}>{valor}</div>
+            <div style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", flexWrap: "wrap" }}>
+        <SectionCard title="Perfil de fragilidade (FRAIL)" icon="ti-heart-rate-monitor">
+          {[["Robusto", robusto, "success"], ["Pré-frágil", prefragil, "warning"], ["Frágil", fragil, "danger"], ["Sem dados", semDados, "info"]].map(([label, n, cor]) => (
+            <div key={label} style={{ marginBottom: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "3px" }}>
+                <span>{label}</span><span style={{ fontWeight: 600 }}>{n} ({Math.round(n/total*100)}%)</span>
+              </div>
+              <div style={{ height: "8px", background: "var(--color-background-secondary)", borderRadius: "4px", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${Math.round(n/total*100)}%`, background: `var(--color-border-${cor})`, borderRadius: "4px", transition: "width 0.5s" }} />
+              </div>
+            </div>
+          ))}
+        </SectionCard>
+
+        <SectionCard title="Faixa etária" icon="ti-calendar">
+          {Object.entries(fx).filter(([, v]) => v > 0).map(([label, n]) => (
+            <div key={label} style={{ marginBottom: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "3px" }}>
+                <span>{label} anos</span><span style={{ fontWeight: 600 }}>{n} ({Math.round(n/total*100)}%)</span>
+              </div>
+              <div style={{ height: "8px", background: "var(--color-background-secondary)", borderRadius: "4px", overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${Math.round(n/total*100)}%`, background: "var(--color-border-info)", borderRadius: "4px" }} />
+              </div>
+            </div>
+          ))}
+        </SectionCard>
+      </div>
+
+      <SectionCard title="Top 10 comorbidades" icon="ti-chart-bar">
+        {topComorbidades.map(([nome, n]) => (
+          <div key={nome} style={{ marginBottom: "8px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "3px" }}>
+              <span>{nome}</span><span style={{ fontWeight: 600 }}>{n}/{total} ({Math.round(n/total*100)}%)</span>
+            </div>
+            <div style={{ height: "8px", background: "var(--color-background-secondary)", borderRadius: "4px", overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${Math.round(n/total*100)}%`, background: barColor(n, total), borderRadius: "4px", transition: "width 0.5s" }} />
+            </div>
+          </div>
+        ))}
+      </SectionCard>
+    </div>
+  );
+}
 
 function PrintDocRenderer({ doc, patient, consulta, onClose }) {
   if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} />;
