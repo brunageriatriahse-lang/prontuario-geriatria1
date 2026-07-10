@@ -1929,11 +1929,11 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
           <button onClick={() => onPrint({ type: "sugestoesIA" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-info)", color: "var(--color-text-info)", border: "0.5px solid var(--color-border-info)" }}>
             <i className="ti ti-sparkles" aria-hidden="true"></i>Sugestões de conduta (IA)
           </button>
-          <button onClick={() => onPrint({ type: "cartaReferencia" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-            <i className="ti ti-mail-forward" aria-hidden="true"></i>Carta de referência
+          <button onClick={() => onPrint({ type: "encaminhamento" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+            <i className="ti ti-mail-forward" aria-hidden="true"></i>Encaminhamento
           </button>
-          <button onClick={() => onPrint({ type: "relatorioInss" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-            <i className="ti ti-file-certificate" aria-hidden="true"></i>Relatório INSS
+          <button onClick={() => onPrint({ type: "laudoMedico" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+            <i className="ti ti-file-certificate" aria-hidden="true"></i>Laudo Médico
           </button>
           <button onClick={() => onPrint({ type: "consultaCompleta" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <i className="ti ti-printer" aria-hidden="true"></i>Imprimir consulta completa
@@ -3654,7 +3654,7 @@ function GraficoEvolucao({ patient }) {
 // ============================================================
 // CARTA DE REFERÊNCIA COM IA
 // ============================================================
-function CartaReferencia({ patient, consulta, onClose }) {
+function Encaminhamento({ patient, consulta, onClose }) {
   const [especialidade, setEspecialidade] = useState("");
   const [motivo, setMotivo] = useState("");
   const [carta, setCarta] = useState("");
@@ -3683,7 +3683,7 @@ function CartaReferencia({ patient, consulta, onClose }) {
       const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
       const ef = consulta.exameFisico || {};
 
-      const prompt = `Você é um médico geriatra do Ambulatório CEMPRE do Hospital dos Servidores do Estado de Pernambuco (HSE-PE). Escreva uma carta de referência profissional em português brasileiro para ${especialidade}.
+      const prompt = `Você é um médico geriatra do Ambulatório CEMPRE do Hospital dos Servidores do Estado de Pernambuco (HSE-PE). Escreva uma encaminhamento profissional em português brasileiro para ${especialidade}.
 
 Dados do paciente:
 - Nome: ${i.nome}, ${idade} anos, sexo ${i.sexo === "F" ? "feminino" : "masculino"}
@@ -3703,17 +3703,13 @@ Instruções:
 - Não invente dados que não foram fornecidos
 - Formate em parágrafos sem bullet points`;
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }]
-        })
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "ia", prompt })
       });
       const data = await resp.json();
-      const texto = data.content?.find(b => b.type === "text")?.text || "";
+      const texto = data.texto || "";
       setCarta(texto);
     } catch(e) {
       setCarta("Erro ao gerar carta: " + e.message);
@@ -3722,7 +3718,7 @@ Instruções:
   }
 
   return (
-    <PrintShell title="Carta de Referência" onClose={onClose} fileName={`Carta_${especialidade}_${patient.ident.nome || "paciente"}`}>
+    <PrintShell title="Encaminhamento" onClose={onClose} fileName={`Encaminhamento_${especialidade}_${patient.ident.nome || "paciente"}`}>
       <div id="print-content">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
           <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
@@ -3769,7 +3765,7 @@ Instruções:
 // ============================================================
 // RELATÓRIO PARA PERÍCIA / INSS COM IA
 // ============================================================
-function RelatorioInss({ patient, consulta, onClose }) {
+function LaudoMedico({ patient, consulta, onClose }) {
   const [relatorio, setRelatorio] = useState("");
   const [gerando, setGerando] = useState(false);
   const [cids, setCids] = useState("");
@@ -3818,17 +3814,13 @@ Estrutura obrigatória do relatório:
 
 Seja objetivo, formal e use linguagem técnica adequada para perícia. Mencione limitações funcionais relevantes.`;
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }]
-        })
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "ia", prompt })
       });
       const data = await resp.json();
-      const texto = data.content?.find(b => b.type === "text")?.text || "";
+      const texto = data.texto || "";
       setRelatorio(texto);
     } catch(e) {
       setRelatorio("Erro ao gerar relatório: " + e.message);
@@ -3837,14 +3829,14 @@ Seja objetivo, formal e use linguagem técnica adequada para perícia. Mencione 
   }
 
   return (
-    <PrintShell title="Relatório para Perícia/INSS" onClose={onClose} fileName={`Relatorio_INSS_${patient.ident.nome || "paciente"}`}>
+    <PrintShell title="Laudo Médico" onClose={onClose} fileName={`Laudo_Medico_${patient.ident.nome || "paciente"}`}>
       <div id="print-content">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
           <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
           <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
           <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
         </div>
-        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "16px" }}>RELATÓRIO MÉDICO PARA FINS PREVIDENCIÁRIOS</div>
+        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "16px" }}>LAUDO MÉDICO</div>
 
         {!relatorio && (
           <div style={{ marginBottom: "16px" }}>
@@ -3933,17 +3925,13 @@ Forneça sugestões práticas e organizadas nas seguintes categorias (inclua ape
 
 Use linguagem clínica concisa. Baseie as sugestões nos dados fornecidos. Não invente dados. Adapte as metas ao perfil de fragilidade (${frailClass}).`;
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }]
-        })
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "ia", prompt })
       });
       const data = await resp.json();
-      const texto = data.content?.find(b => b.type === "text")?.text || "";
+      const texto = data.texto || "";
       setSugestoes(texto);
       setGerado(true);
     } catch(e) {
@@ -4018,8 +4006,8 @@ Use linguagem clínica concisa. Baseie as sugestões nos dados fornecidos. Não 
 
 function PrintDocRenderer({ doc, patient, consulta, onClose }) {
   if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} />;
-  if (doc.type === "cartaReferencia") return <CartaReferencia patient={patient} consulta={consulta} onClose={onClose} />;
-  if (doc.type === "relatorioInss") return <RelatorioInss patient={patient} consulta={consulta} onClose={onClose} />;
+  if (doc.type === "encaminhamento") return <Encaminhamento patient={patient} consulta={consulta} onClose={onClose} />;
+  if (doc.type === "laudoMedico") return <LaudoMedico patient={patient} consulta={consulta} onClose={onClose} />;
   if (doc.type === "sugestoesIA") return <SugestoesCondutaIA patient={patient} consulta={consulta} onClose={onClose} />;
   return null;
 }
