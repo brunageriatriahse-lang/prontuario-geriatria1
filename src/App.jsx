@@ -3654,108 +3654,134 @@ function GraficoEvolucao({ patient }) {
 // ============================================================
 // CARTA DE REFERÊNCIA COM IA
 // ============================================================
+// ============================================================
+// ENCAMINHAMENTO — template estruturado
+// ============================================================
 function Encaminhamento({ patient, consulta, onClose }) {
-  const [especialidade, setEspecialidade] = useState("");
-  const [motivo, setMotivo] = useState("");
-  const [carta, setCarta] = useState("");
-  const [gerando, setGerando] = useState(false);
-
   const ESPECIALIDADES = [
     "Cardiologia","Neurologia","Pneumologia","Nefrologia","Endocrinologia",
     "Reumatologia","Ortopedia","Urologia","Oftalmologia","Otorrinolaringologia",
     "Gastroenterologia","Hematologia","Oncologia","Psiquiatria","Dermatologia",
     "Vascular","Cirurgia Geral","Fisiatria","Nutrição","Psicologia","Fonoaudiologia"
   ];
+  const [especialidade, setEspecialidade] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [observacoes, setObservacoes] = useState("");
+  const [prioridade, setPrioridade] = useState("eletivo");
 
-  async function gerarCarta() {
-    if (!especialidade || !motivo) return;
-    setGerando(true);
-    try {
-      const i = patient.ident;
-      const idade = calcIdade(i.dn);
-      const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
-      const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
-      const diagnosticos = [...ativos, ...customAtivos.map(c => c.nome)].join(", ");
-      const meds = consulta.medicacoesTexto || "não informado";
-      const queixas = consulta.queixas || "não informado";
-      const aga = consulta.aga || {};
-      const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
-      const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
-      const ef = consulta.exameFisico || {};
+  const i = patient.ident;
+  const idade = calcIdade(i.dn);
+  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+  const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
+  const diagnosticos = [...ativos, ...customAtivos.map(c => c.nome)];
+  const meds = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim());
+  const aga = consulta.aga || {};
+  const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+  const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
+  const ef = consulta.exameFisico || {};
+  const aivd = Object.values(aga.aivd || {}).filter(Boolean).length;
+  const abvd = Object.values(aga.abvd || {}).filter(Boolean).length;
+  const hoje = new Date().toLocaleDateString("pt-BR");
 
-      const prompt = `Você é um médico geriatra do Ambulatório CEMPRE do Hospital dos Servidores do Estado de Pernambuco (HSE-PE). Escreva uma encaminhamento profissional em português brasileiro para ${especialidade}.
-
-Dados do paciente:
-- Nome: ${i.nome}, ${idade} anos, sexo ${i.sexo === "F" ? "feminino" : "masculino"}
-- Prontuário: ${i.prontuario}
-- Perfil de fragilidade: ${frailClass}
-- Diagnósticos: ${diagnosticos}
-- Medicações em uso: ${meds}
-- Queixa principal: ${queixas}
-- PA: ${ef.paSentado || "não aferida"}, FC: ${ef.fc || "não aferida"}
-- Motivo do encaminhamento (informado pelo médico): ${motivo}
-
-Instruções:
-- Seja objetivo e clínico, com linguagem médica adequada
-- Destaque os aspectos mais relevantes para ${especialidade}
-- Mencione o contexto geriátrico quando pertinente
-- Inclua saudação inicial e despedida profissional
-- Não invente dados que não foram fornecidos
-- Formate em parágrafos sem bullet points`;
-
-      const resp = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "ia", prompt })
-      });
-      const data = await resp.json();
-      const texto = data.texto || "";
-      setCarta(texto);
-    } catch(e) {
-      setCarta("Erro ao gerar carta: " + e.message);
-    }
-    setGerando(false);
-  }
+  const nomeArquivo = `Encaminhamento_${especialidade}_${i.nome || "paciente"}`;
 
   return (
-    <PrintShell title="Encaminhamento" onClose={onClose} fileName={`Encaminhamento_${especialidade}_${patient.ident.nome || "paciente"}`}>
+    <PrintShell title="Encaminhamento" onClose={onClose} fileName={nomeArquivo} patient={patient} consulta={consulta}>
       <div id="print-content">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
           <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
-          <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
+          <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px" }}>AMBULATÓRIO DE GERIATRIA — CEMPRE</div>
           <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
         </div>
+        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "16px", borderBottom: "1px solid #ccc", paddingBottom: "8px" }}>
+          ENCAMINHAMENTO MÉDICO
+        </div>
 
-        {!carta && (
-          <div style={{ marginBottom: "16px" }}>
-            <Field label="Especialidade de destino">
+        {/* Campos editáveis — ocultos na impressão */}
+        <div className="no-print" style={{ background: "var(--color-background-secondary)", borderRadius: "8px", padding: "12px", marginBottom: "16px" }}>
+          <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "10px" }}>Preencha antes de imprimir:</div>
+          <Row>
+            <Field label="Especialidade">
               <select value={especialidade} onChange={e => setEspecialidade(e.target.value)}>
                 <option value="">Selecione...</option>
                 {ESPECIALIDADES.map(e => <option key={e}>{e}</option>)}
               </select>
             </Field>
-            <Field label="Motivo do encaminhamento (será incluído na carta)">
-              <textarea rows={3} value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ex: investigação de dispneia aos esforços, controle de HAS refratária..." />
+            <Field label="Prioridade">
+              <select value={prioridade} onChange={e => setPrioridade(e.target.value)}>
+                <option value="eletivo">Eletivo</option>
+                <option value="prioritario">Prioritário</option>
+                <option value="urgente">Urgente</option>
+              </select>
             </Field>
-            <button onClick={gerarCarta} disabled={!especialidade || !motivo || gerando} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              {gerando ? <><i className="ti ti-loader-2" aria-hidden="true"></i>Gerando...</> : <><i className="ti ti-sparkles" aria-hidden="true"></i>Gerar carta com IA</>}
-            </button>
-          </div>
-        )}
+          </Row>
+          <Field label="Motivo do encaminhamento">
+            <textarea rows={3} value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ex: investigação de dispneia aos esforços, HAS refratária ao tratamento..." />
+          </Field>
+          <Field label="Observações adicionais (opcional)">
+            <textarea rows={2} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Ex: paciente frágil, necessita de atenção especial..." />
+          </Field>
+        </div>
 
-        {carta && (
-          <>
-            <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.6, fontSize: "13px" }}>{carta}</div>
-            <div style={{ marginTop: "40px", fontSize: "12px" }}>
-              <div>_______________________________</div>
-              <div>Médico(a) Residente em Geriatria</div>
-              <div>CEMPRE — HSE-PE</div>
+        {/* Documento imprimível */}
+        <div style={{ fontSize: "13px", lineHeight: 1.7 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px", marginBottom: "12px", borderBottom: "1px solid #eee", paddingBottom: "10px" }}>
+            <div><strong>Paciente:</strong> {i.nome || "—"}</div>
+            <div><strong>Prontuário:</strong> {i.prontuario || "—"}</div>
+            <div><strong>Data de nascimento:</strong> {i.dn ? fmtDate(i.dn) : "—"} ({idade != null ? `${idade} anos` : "—"})</div>
+            <div><strong>Sexo:</strong> {i.sexo === "F" ? "Feminino" : i.sexo === "M" ? "Masculino" : "—"}</div>
+            <div><strong>Telefone:</strong> {i.telefone || "—"}</div>
+            <div><strong>Data:</strong> {hoje}</div>
+          </div>
+
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Encaminhar para:</strong> {especialidade || "_________________________"}
+            {prioridade !== "eletivo" && <span style={{ marginLeft: "12px", fontWeight: 700, color: prioridade === "urgente" ? "#c00" : "#e67e00" }}>— {prioridade.toUpperCase()}</span>}
+          </div>
+
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Motivo do encaminhamento:</strong>
+            <div style={{ marginTop: "4px", paddingLeft: "12px", whiteSpace: "pre-wrap" }}>{motivo || "_____________________________________________"}</div>
+          </div>
+
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Diagnósticos / Comorbidades:</strong>
+            <div style={{ marginTop: "4px", paddingLeft: "12px" }}>
+              {diagnosticos.length > 0 ? diagnosticos.map((d, i) => <div key={i}>• {d}</div>) : <div>—</div>}
             </div>
-            <button onClick={() => setCarta("")} style={{ marginTop: "12px", fontSize: "12px" }}>
-              ← Refazer carta
-            </button>
-          </>
-        )}
+          </div>
+
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Medicações em uso:</strong>
+            <div style={{ marginTop: "4px", paddingLeft: "12px" }}>
+              {meds.length > 0 ? meds.map((m, i) => <div key={i}>• {m}</div>) : <div>—</div>}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Perfil funcional:</strong> {frailClass} (FRAIL {frailScore}/5) · AIVD {aivd}/9 · ABVD {abvd}/6
+          </div>
+
+          <div style={{ marginBottom: "10px" }}>
+            <strong>Sinais vitais na última consulta:</strong> PA {ef.paSentado || "—"} · FC {ef.fc || "—"} · Peso {ef.peso || aga.peso || "—"} kg
+          </div>
+
+          {observacoes && (
+            <div style={{ marginBottom: "10px" }}>
+              <strong>Observações:</strong>
+              <div style={{ marginTop: "4px", paddingLeft: "12px", whiteSpace: "pre-wrap" }}>{observacoes}</div>
+            </div>
+          )}
+
+          <div style={{ marginTop: "40px", display: "flex", justifyContent: "space-between" }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ borderTop: "1px solid #333", width: "220px", paddingTop: "4px", fontSize: "12px" }}>Médico(a) Residente em Geriatria — CEMPRE/HSE-PE</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ borderTop: "1px solid #333", width: "160px", paddingTop: "4px", fontSize: "12px" }}>CRM</div>
+            </div>
+          </div>
+        </div>
         <DocFooter />
       </div>
     </PrintShell>
@@ -3763,106 +3789,127 @@ Instruções:
 }
 
 // ============================================================
-// RELATÓRIO PARA PERÍCIA / INSS COM IA
+// LAUDO MÉDICO — template estruturado
 // ============================================================
 function LaudoMedico({ patient, consulta, onClose }) {
-  const [relatorio, setRelatorio] = useState("");
-  const [gerando, setGerando] = useState(false);
   const [cids, setCids] = useState("");
+  const [restricoes, setRestricoes] = useState("");
+  const [conclusao, setConclusao] = useState("");
+  const [finalidade, setFinalidade] = useState("previdenciária");
 
-  async function gerarRelatorio() {
-    setGerando(true);
-    try {
-      const i = patient.ident;
-      const idade = calcIdade(i.dn);
-      const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
-      const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
-      const diagnosticos = [...ativos, ...customAtivos.map(c => c.nome)].join(", ");
-      const meds = consulta.medicacoesTexto || "não informado";
-      const aga = consulta.aga || {};
-      const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
-      const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
-      const ef = consulta.exameFisico || {};
-      const aivd = Object.values(aga.aivd || {}).filter(Boolean).length;
-      const abvd = Object.values(aga.abvd || {}).filter(Boolean).length;
-      const imc = calcIMC(aga.peso, aga.altura);
-
-      const prompt = `Você é um médico geriatra do HSE-PE. Escreva um relatório médico estruturado para fins de perícia previdenciária (INSS) em português brasileiro.
-
-Dados do paciente:
-- Nome: ${i.nome}, ${idade} anos, sexo ${i.sexo === "F" ? "feminino" : "masculino"}
-- Prontuário: ${i.prontuario}, CPF: ${i.cpf}
-- Profissão: ${i.profissao || "não informada"}
-- Escolaridade: ${i.escolaridade || "não informada"}
-- Diagnósticos: ${diagnosticos}
-- CIDs informados: ${cids || "a completar"}
-- Medicações em uso: ${meds}
-- AIVD: ${aivd}/9 independente | ABVD: ${abvd}/6 independente
-- Perfil de fragilidade: ${frailClass} (${frailScore}/5 critérios FRAIL)
-- IMC: ${imc || "não calculado"} kg/m²
-- PA: ${ef.paSentado || "não aferida"}, FC: ${ef.fc || "não aferida"}
-- Queixas: ${consulta.queixas || "não informadas"}
-- Labs: ${consulta.labsTexto || "não informados"}
-
-Estrutura obrigatória do relatório:
-1. IDENTIFICAÇÃO DO PACIENTE
-2. HISTÓRICO CLÍNICO E DIAGNÓSTICOS (com CIDs)
-3. MEDICAÇÕES EM USO
-4. AVALIAÇÃO FUNCIONAL (AIVD, ABVD, fragilidade)
-5. EXAME FÍSICO RELEVANTE
-6. CONCLUSÃO E IMPACTO FUNCIONAL PARA PERÍCIA
-
-Seja objetivo, formal e use linguagem técnica adequada para perícia. Mencione limitações funcionais relevantes.`;
-
-      const resp = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "ia", prompt })
-      });
-      const data = await resp.json();
-      const texto = data.texto || "";
-      setRelatorio(texto);
-    } catch(e) {
-      setRelatorio("Erro ao gerar relatório: " + e.message);
-    }
-    setGerando(false);
-  }
+  const i = patient.ident;
+  const idade = calcIdade(i.dn);
+  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+  const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
+  const diagnosticos = [...ativos, ...customAtivos.map(c => c.nome)];
+  const meds = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim());
+  const aga = consulta.aga || {};
+  const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+  const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
+  const ef = consulta.exameFisico || {};
+  const aivd = Object.values(aga.aivd || {}).filter(Boolean).length;
+  const abvd = Object.values(aga.abvd || {}).filter(Boolean).length;
+  const imc = calcIMC(aga.peso, aga.altura);
+  const hoje = new Date().toLocaleDateString("pt-BR");
 
   return (
-    <PrintShell title="Laudo Médico" onClose={onClose} fileName={`Laudo_Medico_${patient.ident.nome || "paciente"}`}>
+    <PrintShell title="Laudo Médico" onClose={onClose} fileName={`Laudo_Medico_${i.nome || "paciente"}`} patient={patient} consulta={consulta}>
       <div id="print-content">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
           <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
-          <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
+          <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px" }}>AMBULATÓRIO DE GERIATRIA — CEMPRE</div>
           <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
         </div>
-        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "16px" }}>LAUDO MÉDICO</div>
+        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "4px", borderBottom: "1px solid #ccc", paddingBottom: "8px" }}>
+          LAUDO MÉDICO
+        </div>
 
-        {!relatorio && (
-          <div style={{ marginBottom: "16px" }}>
-            <Field label="CIDs dos diagnósticos principais (opcional — melhora a qualidade do relatório)">
-              <input value={cids} onChange={e => setCids(e.target.value)} placeholder="Ex: E11, I10, M81, E03" />
-            </Field>
-            <button onClick={gerarRelatorio} disabled={gerando} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              {gerando ? <><i className="ti ti-loader-2" aria-hidden="true"></i>Gerando...</> : <><i className="ti ti-sparkles" aria-hidden="true"></i>Gerar relatório com IA</>}
-            </button>
+        {/* Campos editáveis */}
+        <div className="no-print" style={{ background: "var(--color-background-secondary)", borderRadius: "8px", padding: "12px", marginBottom: "16px" }}>
+          <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "10px" }}>Preencha antes de imprimir:</div>
+          <Field label="Finalidade do laudo">
+            <select value={finalidade} onChange={e => setFinalidade(e.target.value)}>
+              <option value="previdenciária">Previdenciária (INSS/Aposentadoria)</option>
+              <option value="afastamento">Afastamento do trabalho</option>
+              <option value="judicial">Judicial</option>
+              <option value="assistencial">Assistencial (benefícios sociais)</option>
+              <option value="seguro">Seguro de vida/saúde</option>
+            </select>
+          </Field>
+          <Field label="CIDs dos diagnósticos principais">
+            <input value={cids} onChange={e => setCids(e.target.value)} placeholder="Ex: E11, I10, M81, E03, F32" />
+          </Field>
+          <Field label="Restrições e limitações funcionais">
+            <textarea rows={3} value={restricoes} onChange={e => setRestricoes(e.target.value)} placeholder="Ex: incapacidade para atividades que exijam esforço físico intenso, limitação de marcha..." />
+          </Field>
+          <Field label="Conclusão / Parecer médico">
+            <textarea rows={3} value={conclusao} onChange={e => setConclusao(e.target.value)} placeholder="Ex: Paciente apresenta incapacidade laborativa parcial e permanente para atividades que exijam..." />
+          </Field>
+        </div>
+
+        {/* Documento */}
+        <div style={{ fontSize: "13px", lineHeight: 1.7 }}>
+          <div style={{ marginBottom: "10px", fontWeight: 600 }}>
+            Finalidade: Laudo para fins {finalidade}s
           </div>
-        )}
 
-        {relatorio && (
-          <>
-            <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.6, fontSize: "13px" }}>{relatorio}</div>
-            <div style={{ marginTop: "40px", fontSize: "12px" }}>
-              <div>Data: {new Date().toLocaleDateString('pt-BR')}</div>
-              <div style={{ marginTop: "30px" }}>_______________________________</div>
-              <div>Médico(a) Residente em Geriatria</div>
-              <div>CEMPRE — HSE-PE</div>
+          <div style={{ borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "12px" }}>
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>1. IDENTIFICAÇÃO DO PACIENTE</div>
+            <div>Nome: {i.nome || "—"}</div>
+            <div>Data de nascimento: {i.dn ? fmtDate(i.dn) : "—"} — Idade: {idade != null ? `${idade} anos` : "—"}</div>
+            <div>Sexo: {i.sexo === "F" ? "Feminino" : i.sexo === "M" ? "Masculino" : "—"}</div>
+            <div>CPF: {i.cpf || "—"} — Prontuário: {i.prontuario || "—"}</div>
+            <div>Profissão: {i.profissao || "—"} — Escolaridade: {i.escolaridade || "—"}</div>
+          </div>
+
+          <div style={{ borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "12px" }}>
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>2. DIAGNÓSTICOS{cids ? ` / CIDs: ${cids}` : ""}</div>
+            {diagnosticos.length > 0 ? diagnosticos.map((d, idx) => <div key={idx}>• {d}</div>) : <div>—</div>}
+          </div>
+
+          <div style={{ borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "12px" }}>
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>3. MEDICAÇÕES EM USO</div>
+            {meds.length > 0 ? meds.map((m, idx) => <div key={idx}>• {m}</div>) : <div>—</div>}
+          </div>
+
+          <div style={{ borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "12px" }}>
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>4. AVALIAÇÃO FUNCIONAL</div>
+            <div>Perfil de fragilidade: {frailClass} (FRAIL {frailScore}/5 critérios)</div>
+            <div>AIVD (Lawton): independente em {aivd}/9 atividades instrumentais</div>
+            <div>ABVD (Katz): independente em {abvd}/6 atividades básicas</div>
+            {imc && <div>IMC: {imc} kg/m²</div>}
+          </div>
+
+          <div style={{ borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "12px" }}>
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>5. EXAME FÍSICO RELEVANTE</div>
+            <div>PA: {ef.paSentado || "—"} · FC: {ef.fc || "—"} · Peso: {ef.peso || aga.peso || "—"} kg</div>
+            {ef.geral && <div>Geral: {ef.geral}</div>}
+          </div>
+
+          {restricoes && (
+            <div style={{ borderBottom: "1px solid #eee", paddingBottom: "10px", marginBottom: "12px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "4px" }}>6. RESTRIÇÕES E LIMITAÇÕES</div>
+              <div style={{ whiteSpace: "pre-wrap" }}>{restricoes}</div>
             </div>
-            <button onClick={() => setRelatorio("")} style={{ marginTop: "12px", fontSize: "12px" }}>
-              ← Refazer relatório
-            </button>
-          </>
-        )}
+          )}
+
+          <div style={{ marginBottom: "12px" }}>
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>7. CONCLUSÃO</div>
+            <div style={{ whiteSpace: "pre-wrap" }}>{conclusao || "___________________________________________"}</div>
+          </div>
+
+          <div style={{ marginTop: "40px" }}>
+            <div>Recife, {hoje}</div>
+            <div style={{ marginTop: "40px", display: "flex", justifyContent: "space-between" }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ borderTop: "1px solid #333", width: "220px", paddingTop: "4px", fontSize: "12px" }}>Médico(a) Residente em Geriatria — CEMPRE/HSE-PE</div>
+              </div>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ borderTop: "1px solid #333", width: "160px", paddingTop: "4px", fontSize: "12px" }}>CRM</div>
+              </div>
+            </div>
+          </div>
+        </div>
         <DocFooter />
       </div>
     </PrintShell>
@@ -3870,139 +3917,145 @@ Seja objetivo, formal e use linguagem técnica adequada para perícia. Mencione 
 }
 
 // ============================================================
-// SUGESTÕES DE CONDUTA POR IA
+// SUGESTÕES DE CONDUTA — baseadas nos dados da consulta
 // ============================================================
 function SugestoesCondutaIA({ patient, consulta, onClose }) {
-  const [sugestoes, setSugestoes] = useState("");
-  const [gerando, setGerando] = useState(false);
-  const [gerado, setGerado] = useState(false);
+  const i = patient.ident;
+  const idade = calcIdade(i.dn);
+  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+  const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
+  const meds = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim());
+  const aga = consulta.aga || {};
+  const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+  const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
+  const ef = consulta.exameFisico || {};
+  const labs = consulta.labsTexto || "";
+  const imc = parseFloat(calcIMC(aga.peso, aga.altura));
+  const numMeds = meds.length;
+  const aivd = Object.values(aga.aivd || {}).filter(Boolean).length;
+  const abvd = Object.values(aga.abvd || {}).filter(Boolean).length;
+  const forcaNum = parseFloat(aga.testeForca);
+  const circNum = parseFloat(aga.circPanturrilha);
+  const temHAS = ativos.includes("HAS");
+  const temDM2 = ativos.includes("DM2");
+  const temOsteoporose = ativos.includes("Osteoporose");
+  const temDislipidemia = ativos.includes("Dislipidemia");
+  const temDRC = ativos.includes("DRC");
 
-  async function gerarSugestoes() {
-    setGerando(true);
-    try {
-      const i = patient.ident;
-      const idade = calcIdade(i.dn);
-      const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
-      const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
-      const diagnosticos = [...ativos, ...customAtivos.map(c => c.nome)].join(", ");
-      const meds = consulta.medicacoesTexto || "não informado";
-      const queixas = consulta.queixas || "não informado";
-      const aga = consulta.aga || {};
-      const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
-      const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
-      const ef = consulta.exameFisico || {};
-      const labs = consulta.labsTexto || "não informados";
-      const plano = consulta.plano || {};
-      const aivd = Object.values(aga.aivd || {}).filter(Boolean).length;
-      const abvd = Object.values(aga.abvd || {}).filter(Boolean).length;
-      const imc = calcIMC(aga.peso, aga.altura);
-      const numMeds = meds.split("\n").filter(l => l.trim()).length;
+  // PA
+  const mPA = (ef.paSentado || "").match(/(\d+)\s*[xX\/]\s*(\d+)/);
+  const PAS = mPA ? parseInt(mPA[1]) : null;
+  const PAD = mPA ? parseInt(mPA[2]) : null;
+  const metaPA = frailScore >= 3 ? 150 : idade >= 80 ? 140 : 130;
+  const paAcimaMeta = PAS && PAS >= metaPA;
 
-      const prompt = `Você é um médico geriatra experiente. Com base nos dados abaixo de uma consulta geriátrica ambulatorial, forneça sugestões de conduta clínica objetivas, baseadas em evidências e adaptadas ao perfil do paciente.
+  // HbA1c
+  const mHb = labs.match(/(?:hba1c|glicada|hemoglobina glicada)[^\d]*(\d+[,.]?\d*)\s*%?/i);
+  const hba1c = mHb ? parseFloat(mHb[1].replace(',', '.')) : null;
+  const metaHbA1c = frailScore >= 3 ? 8 : 7.5;
+  const hba1cAcimaMeta = hba1c && hba1c > metaHbA1c;
 
-DADOS DA CONSULTA:
-- Paciente: ${i.nome}, ${idade} anos, ${i.sexo === "F" ? "feminina" : "masculino"}
-- Perfil: ${frailClass} (FRAIL ${frailScore}/5)
-- AIVD: ${aivd}/9 | ABVD: ${abvd}/6
-- IMC: ${imc || "não calculado"} kg/m²
-- Diagnósticos ativos: ${diagnosticos || "não informados"}
-- Medicações em uso (${numMeds}): ${meds}
-- Queixas atuais: ${queixas}
-- PA: ${ef.paSentado || "não aferida"} | FC: ${ef.fc || "não aferida"} | Peso: ${ef.peso || aga.peso || "não aferido"} kg
-- Labs recentes: ${labs}
-- Plano atual registrado: ${JSON.stringify(plano)}
+  // Vit D
+  const mVitD = labs.match(/(?:vit(?:amina)?\s*d)[^\d]*(\d+)/i);
+  const vitD = mVitD ? parseInt(mVitD[1]) : null;
 
-INSTRUÇÕES:
-Forneça sugestões práticas e organizadas nas seguintes categorias (inclua apenas as relevantes para este caso):
+  // Constrói sugestões automaticamente
+  const sugestoes = [];
 
-1. **Ajuste de medicações** — otimizações, desprescrições, doses, interações a resolver
-2. **Investigação complementar** — exames laboratoriais, imagem ou escalas a solicitar
-3. **Metas terapêuticas** — alvos de PA, glicada, peso, etc. conforme perfil de fragilidade
-4. **Prevenção e rastreio** — vacinas atrasadas, rastreios pendentes
-5. **Reabilitação e suporte** — fisioterapia, nutrição, outros encaminhamentos
-6. **Orientações ao paciente** — pontos-chave para discutir na consulta
-7. **Alertas importantes** — riscos identificados que merecem atenção imediata
+  // Fragilidade
+  if (frailScore >= 3) sugestoes.push({ cat: "⚠ Fragilidade", items: ["Priorizar abordagem multidisciplinar", "Evitar prescrições novas sem revisão cuidadosa", "Atenção redobrada a quedas, desnutrição e delirium"] });
+  else if (frailScore >= 1) sugestoes.push({ cat: "⚠ Pré-fragilidade", items: ["Estimular atividade física resistida", "Garantir ingesta proteica ≥ 1,2g/kg/dia", "Monitorar evolução dos critérios FRAIL"] });
 
-Use linguagem clínica concisa. Baseie as sugestões nos dados fornecidos. Não invente dados. Adapte as metas ao perfil de fragilidade (${frailClass}).`;
+  // Funcionalidade
+  if (aivd < 7) sugestoes.push({ cat: "Funcionalidade", items: [`AIVD comprometida (${aivd}/9) — avaliar necessidade de TO, fisioterapia ou suporte social`] });
+  if (abvd < 5) sugestoes.push({ cat: "Funcionalidade", items: [`ABVD comprometida (${abvd}/6) — avaliar suporte de cuidador e adaptações domiciliares`] });
 
-      const resp = await fetch(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "ia", prompt })
-      });
-      const data = await resp.json();
-      const texto = data.texto || "";
-      setSugestoes(texto);
-      setGerado(true);
-    } catch(e) {
-      setSugestoes("Erro ao gerar sugestões: " + e.message);
-      setGerado(true);
-    }
-    setGerando(false);
-  }
+  // PA
+  if (paAcimaMeta && temHAS) sugestoes.push({ cat: "Hipertensão", items: [`PA ${ef.paSentado} acima da meta (< ${metaPA}/90 para ${frailClass.toLowerCase()})`, "Revisar adesão e dose das medicações anti-hipertensivas", "Considerar rastreio de HAS secundária se refratária"] });
 
-  // Gera automaticamente ao abrir
-  useState(() => { gerarSugestoes(); }, []);
+  // DM2
+  if (temDM2 && hba1cAcimaMeta) sugestoes.push({ cat: "Diabetes", items: [`HbA1c ${hba1c}% acima da meta (< ${metaHbA1c}% para ${frailClass.toLowerCase()})`, frailScore >= 3 ? "Evitar hipoglicemiantes com risco de hipoglicemia (sulfonilureias)" : "Considerar ajuste de hipoglicemiante"] });
+  if (temDM2 && !labs.toLowerCase().includes("hba1c") && !labs.toLowerCase().includes("glicada")) sugestoes.push({ cat: "Diabetes", items: ["HbA1c não registrada nos labs — solicitar"] });
+
+  // Osteoporose
+  if (temOsteoporose) sugestoes.push({ cat: "Osteoporose", items: ["Confirmar uso de bisfosfonato + vitamina D + cálcio", "Verificar risco de queda e adaptar ambiente domiciliar", "FRAX disponível na aba Prevenção"] });
+
+  // Vit D
+  if (vitD !== null && vitD < 30) sugestoes.push({ cat: "Vitamina D", items: [`Vitamina D ${vitD} ng/mL — deficiente`, "Suplementar colecalciferol 50.000 UI/semana por 8 semanas, depois manutenção 10.000 UI/semana"] });
+
+  // Nutrição
+  if (imc && imc <= 22) sugestoes.push({ cat: "Nutrição", items: [`IMC ${imc} — baixo peso para idoso`, "Encaminhar para nutrição", "Suplemento hiperproteico oral", "Investigar causas (disfagia, depressão, neoplasia)"] });
+  const sarcopenia = (!isNaN(forcaNum) && (i.sexo === "M" ? forcaNum < 27 : forcaNum < 16)) || (!isNaN(circNum) && circNum < 31);
+  if (sarcopenia) sugestoes.push({ cat: "Sarcopenia", items: ["Atividade física resistida ≥ 2x/semana", "Ingesta proteica ≥ 1,2g/kg/dia", "Encaminhar fisioterapia motora", "Considerar SPPB para estadiamento"] });
+
+  // Polifarmácia
+  if (numMeds >= 10) sugestoes.push({ cat: "Polimedicação", items: [`${numMeds} medicamentos — alto risco`, "Revisão sistemática da lista (critérios STOPP/START)", "Desprescrever conforme Beers 2023"] });
+  else if (numMeds >= 5) sugestoes.push({ cat: "Polifarmácia", items: [`${numMeds} medicamentos — revisar indicações`, "Atenção a Beers 2023 e interações sinalizadas"] });
+
+  // Quedas
+  if ((aga.quedas === "sim")) sugestoes.push({ cat: "Quedas", items: ["Revisar medicações que aumentam risco de queda", "Encaminhar fisioterapia para treino de equilíbrio", "Avaliar necessidade de dispositivo de auxílio", "Orientar adaptações domiciliares (barras, tapetes)"] });
+
+  // Vacinas
+  const vac = consulta.vacinas || {};
+  const vacsAusar = [];
+  if (!vac.influenza?.dose) vacsAusar.push("Influenza");
+  if (!vac.covid?.dose) vacsAusar.push("COVID-19");
+  if (!vac.pneumo?.vpc20 && !vac.pneumo?.vpc13) vacsAusar.push("Pneumocócica");
+  if (vacsAusar.length > 0) sugestoes.push({ cat: "Vacinação", items: [`Vacinas pendentes: ${vacsAusar.join(", ")}`, "Verificar calendário de vacinação do idoso"] });
+
+  // Dislipidemia
+  const mLDL = labs.match(/(?:ldl|ld)[^\d]*(\d+)/i);
+  const ldl = mLDL ? parseInt(mLDL[1]) : null;
+  if (temDislipidemia && ldl !== null && ldl > 70) sugestoes.push({ cat: "Dislipidemia", items: [`LDL ${ldl} mg/dL — verificar meta conforme risco cardiovascular`, "Confirmar uso de estatina e adesão"] });
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
       <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "680px", padding: "24px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
           <div style={{ fontWeight: 600, fontSize: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <i className="ti ti-sparkles" style={{ color: "var(--color-text-info)" }} aria-hidden="true"></i>
-            Sugestões de conduta — IA
+            <i className="ti ti-checklist" style={{ color: "var(--color-text-info)" }} aria-hidden="true"></i>
+            Sugestões de conduta
           </div>
           <button onClick={onClose}><i className="ti ti-x" aria-hidden="true"></i></button>
         </div>
 
-        <Alert type="info">
-          Sugestões geradas por IA com base nos dados desta consulta. Revise criticamente antes de aplicar — a decisão clínica final é sempre do médico.
-        </Alert>
+        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "12px", padding: "8px 12px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
+          Gerado automaticamente com base nos dados desta consulta. Revise criticamente — a decisão clínica final é sempre do médico.
+        </div>
 
-        {gerando && (
+        {sugestoes.length === 0 && (
           <div style={{ textAlign: "center", padding: "2rem", color: "var(--color-text-secondary)" }}>
-            <i className="ti ti-loader-2" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
-            Analisando dados da consulta...
+            <i className="ti ti-circle-check" style={{ fontSize: "32px", display: "block", marginBottom: "8px", color: "var(--color-text-success)" }} aria-hidden="true"></i>
+            Nenhuma sugestão específica identificada com os dados preenchidos nesta consulta.
           </div>
         )}
 
-        {gerado && sugestoes && (
-          <>
-            <div style={{
-              background: "var(--color-background-secondary)",
-              borderRadius: "8px",
-              padding: "16px",
-              fontSize: "13px",
-              lineHeight: 1.7,
-              whiteSpace: "pre-wrap",
-              maxHeight: "60vh",
-              overflowY: "auto",
-            }}>
-              {sugestoes}
+        <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
+          {sugestoes.map((s, i) => (
+            <div key={i} style={{ marginBottom: "12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", overflow: "hidden" }}>
+              <div style={{ background: "var(--color-background-info)", padding: "8px 12px", fontWeight: 600, fontSize: "13px", color: "var(--color-text-info)" }}>
+                {s.cat}
+              </div>
+              <div style={{ padding: "10px 12px" }}>
+                {s.items.map((item, j) => (
+                  <div key={j} style={{ fontSize: "13px", padding: "3px 0", display: "flex", gap: "8px" }}>
+                    <span style={{ color: "var(--color-text-info)", flexShrink: 0 }}>→</span>
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ display: "flex", gap: "8px", marginTop: "14px", justifyContent: "flex-end" }}>
-              <button onClick={gerarSugestoes} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <i className="ti ti-refresh" aria-hidden="true"></i>Regenerar
-              </button>
-              <button onClick={() => {
-                const blob = new Blob([sugestoes], { type: "text/plain;charset=utf-8" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `Sugestoes_${patient.ident.nome || "paciente"}_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.txt`;
-                document.body.appendChild(a); a.click(); document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-              }} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <i className="ti ti-download" aria-hidden="true"></i>Baixar texto
-              </button>
-              <button onClick={onClose} style={{ fontSize: "13px" }}>Fechar</button>
-            </div>
-          </>
-        )}
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", marginTop: "14px", justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ fontSize: "13px" }}>Fechar</button>
+        </div>
       </div>
     </div>
   );
 }
+
 
 function PrintDocRenderer({ doc, patient, consulta, onClose }) {
   if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} />;
