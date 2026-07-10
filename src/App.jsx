@@ -454,16 +454,71 @@ function checkInteracoes(texto) {
   const lower = texto.toLowerCase();
   const alerts = [];
   INTERACOES.forEach(({ grupos, msg }) => {
-    // Verifica se há ao menos 1 fármaco de CADA grupo presente no texto
     const todosGruposPresentes = grupos.every(grupo =>
       grupo.some(drug => {
-        // Busca palavra delimitada para evitar falsos positivos
-        const regex = new RegExp(`(^|\\s|,|;|\\+|-|\\()${drug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+        const regex = new RegExp(`(^|\\s|,|;|\\+|-|\\()${drug.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`, 'i');
         return regex.test(lower);
       })
     );
     if (todosGruposPresentes) alerts.push(msg);
   });
+  return alerts;
+}
+
+function checkAlertasEspeciais(texto) {
+  if (!texto) return [];
+  const lower = texto.toLowerCase();
+  const alerts = [];
+
+  function temAlgum(lista) {
+    return lista.some(drug => {
+      const regex = new RegExp("(^|\\s|,|;|\\+|-|\\()" + drug.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&"), "i");
+      return regex.test(lower);
+    });
+  }
+
+  const IECA     = ["captopril","enalapril","lisinopril","ramipril","perindopril","benazepril","quinapril","trandolapril"];
+  const BRA      = ["losartana","valsartana","irbesartana","olmesartana","telmisartana","candesartana"];
+  const AINE     = ["ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","cetorolaco","celecoxibe"];
+  const DIUR     = ["furosemida","hidroclorotiazida","indapamida","clortalidona","bumetanida","espironolactona"];
+  const ANTICOAG = ["varfarina","warfarina","acenocumarol","rivaroxabana","apixabana","dabigatrana","edoxabana"];
+  const ANTIAGR  = ["aas","ácido acetilsalicílico","aspirina","clopidogrel","ticagrelor","prasugrel"];
+  const IBP      = ["omeprazol","pantoprazol","lansoprazol","rabeprazol","esomeprazol","dexlansoprazol"];
+  const BZD      = ["diazepam","clonazepam","alprazolam","lorazepam","midazolam","bromazepam","nitrazepam","zolpidem","zopiclona"];
+  const BETABLOQ = ["propranolol","metoprolol","atenolol","carvedilol","bisoprolol","nebivolol"];
+  const ANTIHIPER = ["captopril","enalapril","lisinopril","ramipril","losartana","valsartana","anlodipino","nifedipina","hidroclorotiazida","indapamida","furosemida","espironolactona","doxazosina","alfuzosina","clonidina","metildopa"];
+  const QT_DRUGS = ["amiodarona","sotalol","haloperidol","tioridazina","clorpromazina","quetiapina","ziprasidona","metadona","azitromicina","claritromicina","eritromicina","ciprofloxacino","levofloxacino","moxifloxacino","ondansetrona","domperidona","citalopram","escitalopram","fluconazol"];
+
+  // 1. Tríplice whammy
+  if ((temAlgum(IECA) || temAlgum(BRA)) && temAlgum(AINE) && temAlgum(DIUR)) {
+    alerts.push({ tipo: "danger", msg: "⚠ TRÍPLICE WHAMMY: IECA/BRA + AINE + Diurético — risco alto de insuficiência renal aguda. Monitorar função renal e evitar AINEs." });
+  }
+
+  // 2. Prolongamento de QT (≥2 fármacos)
+  const qtMeds = QT_DRUGS.filter(drug => {
+    const regex = new RegExp("(^|\\s|,|;|\\+|-|\\()" + drug.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&"), "i");
+    return regex.test(lower);
+  });
+  if (qtMeds.length >= 2) {
+    alerts.push({ tipo: "warning", msg: "⚠ PROLONGAMENTO DE QT: " + qtMeds.length + " fármacos de risco (" + qtMeds.slice(0,3).join(", ") + (qtMeds.length > 3 ? "..." : "") + "). Risco de Torsades de Pointes — considerar ECG." });
+  }
+
+  // 3. Anticoagulação sem proteção gástrica
+  if ((temAlgum(ANTICOAG) || temAlgum(ANTIAGR)) && !temAlgum(IBP)) {
+    alerts.push({ tipo: "warning", msg: "⚠ ANTICOAGULAÇÃO SEM PROTEÇÃO GÁSTRICA: considerar IBP (omeprazol, pantoprazol) para reduzir risco de sangramento digestivo." });
+  }
+
+  // 4. Risco de queda por medicamentos
+  const medsCaida = [];
+  if (temAlgum(BETABLOQ)) medsCaida.push("betabloqueador");
+  if (temAlgum(DIUR)) medsCaida.push("diurético");
+  if (temAlgum(BZD)) medsCaida.push("benzodiazepínico/Z-drug");
+  if (temAlgum(ANTIHIPER) && !medsCaida.includes("diurético")) medsCaida.push("anti-hipertensivo");
+  if (temAlgum(["amitriptilina","nortriptilina","trazodona","mirtazapina","olanzapina","quetiapina","haloperidol"])) medsCaida.push("psicotrópico");
+  if (medsCaida.length >= 2) {
+    alerts.push({ tipo: "warning", msg: "⚠ RISCO DE QUEDA POR MEDICAMENTOS: " + medsCaida.join(", ") + ". Revisar doses, horários e necessidade — especialmente se histórico de quedas." });
+  }
+
   return alerts;
 }
 
@@ -1611,6 +1666,7 @@ function ConsultasView({ patient, onOpenConsulta, onCreateConsulta, onRemoveCons
       <button onClick={onCreateConsulta} style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "14px" }}>
         <i className="ti ti-plus" aria-hidden="true"></i>Nova consulta
       </button>
+      <GraficoEvolucao patient={patient} />
       <div style={{ display: "grid", gap: "8px" }}>
         {consultas.map(c => {
           const numProblemas = Object.values(c.problemas || {}).filter(Boolean).length + (c.problemasCustom || []).filter(x => x.checked).length;
@@ -1865,13 +1921,24 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "20px", paddingTop: "16px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "20px", paddingTop: "16px", borderTop: "0.5px solid var(--color-border-tertiary)", flexWrap: "wrap", gap: "8px" }}>
         <button onClick={onSave} style={{ display: "flex", alignItems: "center", gap: "6px", background: "var(--color-background-success)", color: "var(--color-text-success)", border: "0.5px solid var(--color-border-success)" }}>
           <i className="ti ti-device-floppy" aria-hidden="true"></i>Salvar agora
         </button>
-        <button onClick={() => onPrint({ type: "consultaCompleta" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <i className="ti ti-printer" aria-hidden="true"></i>Imprimir consulta completa
-        </button>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <button onClick={() => onPrint({ type: "sugestoesIA" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-info)", color: "var(--color-text-info)", border: "0.5px solid var(--color-border-info)" }}>
+            <i className="ti ti-sparkles" aria-hidden="true"></i>Sugestões de conduta (IA)
+          </button>
+          <button onClick={() => onPrint({ type: "cartaReferencia" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+            <i className="ti ti-mail-forward" aria-hidden="true"></i>Carta de referência
+          </button>
+          <button onClick={() => onPrint({ type: "relatorioInss" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+            <i className="ti ti-file-certificate" aria-hidden="true"></i>Relatório INSS
+          </button>
+          <button onClick={() => onPrint({ type: "consultaCompleta" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <i className="ti ti-printer" aria-hidden="true"></i>Imprimir consulta completa
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -2086,6 +2153,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
   const beersAlerts = linhas.filter(l => checkBeers(l));
   const interacoes = checkInteracoes(texto);
+  const alertasEspeciais = checkAlertasEspeciais(texto);
   const numMeds = linhas.length;
   const polifarmacia = numMeds >= 5;
   const polimedicacao = numMeds >= 10;
@@ -2130,6 +2198,13 @@ function MedicacoesTab({ consulta, updateConsulta }) {
           <Alert type="warning">
             <strong>⚠ Critérios de Beers 2023:</strong> {beersAlerts.length} medicação(ões) potencialmente inapropriada(s) para idosos: <em>{beersAlerts.join(", ")}</em>. Avalie risco/benefício individualmente.
           </Alert>
+        )}
+        {alertasEspeciais.length > 0 && (
+          <div style={{ marginBottom: "10px" }}>
+            {alertasEspeciais.map((a, i) => (
+              <Alert key={i} type={a.tipo}>{a.msg}</Alert>
+            ))}
+          </div>
         )}
         {interacoes.length > 0 && (
           <div style={{ marginBottom: "10px" }}>
@@ -3466,8 +3541,486 @@ function Dashboard({ patients }) {
   );
 }
 
+// ============================================================
+// GRÁFICO DE EVOLUÇÃO (Peso e PA)
+// ============================================================
+function GraficoEvolucao({ patient }) {
+  const consultas = [...(patient.consultas || [])]
+    .filter(c => !c.deletedAt)
+    .sort((a, b) => new Date(a.data) - new Date(b.data));
+
+  const dadosPeso = consultas
+    .map(c => ({ data: c.data, valor: parseFloat((c.aga || {}).peso || (c.exameFisico || {}).peso) }))
+    .filter(d => !isNaN(d.valor) && d.valor > 0);
+
+  const dadosPA = consultas
+    .map(c => {
+      const pa = ((c.exameFisico || {}).paSentado || "");
+      const m = pa.match(/(\d+)\s*[xX\/]\s*(\d+)/);
+      return m ? { data: c.data, sis: parseInt(m[1]), dia: parseInt(m[2]) } : null;
+    })
+    .filter(Boolean);
+
+  if (dadosPeso.length < 2 && dadosPA.length < 2) return null;
+
+  const SVGLine = ({ dados, key, cor, min, max, width = 400, height = 100 }) => {
+    if (dados.length < 2) return null;
+    const pad = 8;
+    const w = width - pad * 2;
+    const h = height - pad * 2;
+    const range = max - min || 1;
+    const pts = dados.map((d, i) => {
+      const x = pad + (i / (dados.length - 1)) * w;
+      const y = pad + h - ((d - min) / range) * h;
+      return `${x},${y}`;
+    });
+    return (
+      <svg width={width} height={height} style={{ width: "100%", height: "auto" }}>
+        <polyline points={pts.join(" ")} fill="none" stroke={cor} strokeWidth="2" />
+        {dados.map((d, i) => {
+          const x = pad + (i / (dados.length - 1)) * w;
+          const y = pad + h - ((d - min) / range) * h;
+          return <circle key={i} cx={x} cy={y} r="4" fill={cor} />;
+        })}
+      </svg>
+    );
+  };
+
+  return (
+    <div style={{ marginTop: "16px" }}>
+      {dadosPeso.length >= 2 && (
+        <SectionCard title="Evolução do peso (kg)" icon="ti-scale" defaultOpen={true}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "4px" }}>
+            <span>{fmtDate(dadosPeso[0].data)}</span>
+            <span>{fmtDate(dadosPeso[dadosPeso.length-1].data)}</span>
+          </div>
+          <SVGLine
+            dados={dadosPeso.map(d => d.valor)}
+            cor="var(--color-border-info)"
+            min={Math.min(...dadosPeso.map(d => d.valor)) - 2}
+            max={Math.max(...dadosPeso.map(d => d.valor)) + 2}
+          />
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "8px" }}>
+            {dadosPeso.map((d, i) => (
+              <span key={i} style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+                {fmtDate(d.data)}: <strong>{d.valor} kg</strong>
+              </span>
+            ))}
+          </div>
+          {dadosPeso.length >= 2 && (() => {
+            const diff = dadosPeso[dadosPeso.length-1].valor - dadosPeso[0].valor;
+            const cor = diff < -3 ? "danger" : diff > 3 ? "warning" : "success";
+            return <div style={{ fontSize: "13px", marginTop: "6px", color: `var(--color-text-${cor})` }}>
+              {diff > 0 ? "+" : ""}{diff.toFixed(1)} kg desde a primeira consulta
+            </div>;
+          })()}
+        </SectionCard>
+      )}
+      {dadosPA.length >= 2 && (
+        <SectionCard title="Evolução da PA (mmHg)" icon="ti-heartbeat" defaultOpen={true}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "4px" }}>
+            <span>{fmtDate(dadosPA[0].data)}</span>
+            <span>{fmtDate(dadosPA[dadosPA.length-1].data)}</span>
+          </div>
+          <SVGLine
+            dados={dadosPA.map(d => d.sis)}
+            cor="var(--color-border-danger)"
+            min={Math.min(...dadosPA.map(d => d.dia)) - 10}
+            max={Math.max(...dadosPA.map(d => d.sis)) + 10}
+          />
+          <SVGLine
+            dados={dadosPA.map(d => d.dia)}
+            cor="var(--color-border-warning)"
+            min={Math.min(...dadosPA.map(d => d.dia)) - 10}
+            max={Math.max(...dadosPA.map(d => d.sis)) + 10}
+          />
+          <div style={{ display: "flex", gap: "6px", fontSize: "11px", marginTop: "4px" }}>
+            <span style={{ color: "var(--color-text-danger)" }}>— Sistólica</span>
+            <span style={{ color: "var(--color-text-warning)" }}>— Diastólica</span>
+          </div>
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "8px" }}>
+            {dadosPA.map((d, i) => (
+              <span key={i} style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+                {fmtDate(d.data)}: <strong>{d.sis}/{d.dia}</strong>
+              </span>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// CARTA DE REFERÊNCIA COM IA
+// ============================================================
+function CartaReferencia({ patient, consulta, onClose }) {
+  const [especialidade, setEspecialidade] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [carta, setCarta] = useState("");
+  const [gerando, setGerando] = useState(false);
+
+  const ESPECIALIDADES = [
+    "Cardiologia","Neurologia","Pneumologia","Nefrologia","Endocrinologia",
+    "Reumatologia","Ortopedia","Urologia","Oftalmologia","Otorrinolaringologia",
+    "Gastroenterologia","Hematologia","Oncologia","Psiquiatria","Dermatologia",
+    "Vascular","Cirurgia Geral","Fisiatria","Nutrição","Psicologia","Fonoaudiologia"
+  ];
+
+  async function gerarCarta() {
+    if (!especialidade || !motivo) return;
+    setGerando(true);
+    try {
+      const i = patient.ident;
+      const idade = calcIdade(i.dn);
+      const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+      const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
+      const diagnosticos = [...ativos, ...customAtivos.map(c => c.nome)].join(", ");
+      const meds = consulta.medicacoesTexto || "não informado";
+      const queixas = consulta.queixas || "não informado";
+      const aga = consulta.aga || {};
+      const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+      const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
+      const ef = consulta.exameFisico || {};
+
+      const prompt = `Você é um médico geriatra do Ambulatório CEMPRE do Hospital dos Servidores do Estado de Pernambuco (HSE-PE). Escreva uma carta de referência profissional em português brasileiro para ${especialidade}.
+
+Dados do paciente:
+- Nome: ${i.nome}, ${idade} anos, sexo ${i.sexo === "F" ? "feminino" : "masculino"}
+- Prontuário: ${i.prontuario}
+- Perfil de fragilidade: ${frailClass}
+- Diagnósticos: ${diagnosticos}
+- Medicações em uso: ${meds}
+- Queixa principal: ${queixas}
+- PA: ${ef.paSentado || "não aferida"}, FC: ${ef.fc || "não aferida"}
+- Motivo do encaminhamento (informado pelo médico): ${motivo}
+
+Instruções:
+- Seja objetivo e clínico, com linguagem médica adequada
+- Destaque os aspectos mais relevantes para ${especialidade}
+- Mencione o contexto geriátrico quando pertinente
+- Inclua saudação inicial e despedida profissional
+- Não invente dados que não foram fornecidos
+- Formate em parágrafos sem bullet points`;
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      const data = await resp.json();
+      const texto = data.content?.find(b => b.type === "text")?.text || "";
+      setCarta(texto);
+    } catch(e) {
+      setCarta("Erro ao gerar carta: " + e.message);
+    }
+    setGerando(false);
+  }
+
+  return (
+    <PrintShell title="Carta de Referência" onClose={onClose} fileName={`Carta_${especialidade}_${patient.ident.nome || "paciente"}`}>
+      <div id="print-content">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+          <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
+          <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
+          <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
+        </div>
+
+        {!carta && (
+          <div style={{ marginBottom: "16px" }}>
+            <Field label="Especialidade de destino">
+              <select value={especialidade} onChange={e => setEspecialidade(e.target.value)}>
+                <option value="">Selecione...</option>
+                {ESPECIALIDADES.map(e => <option key={e}>{e}</option>)}
+              </select>
+            </Field>
+            <Field label="Motivo do encaminhamento (será incluído na carta)">
+              <textarea rows={3} value={motivo} onChange={e => setMotivo(e.target.value)} placeholder="Ex: investigação de dispneia aos esforços, controle de HAS refratária..." />
+            </Field>
+            <button onClick={gerarCarta} disabled={!especialidade || !motivo || gerando} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              {gerando ? <><i className="ti ti-loader-2" aria-hidden="true"></i>Gerando...</> : <><i className="ti ti-sparkles" aria-hidden="true"></i>Gerar carta com IA</>}
+            </button>
+          </div>
+        )}
+
+        {carta && (
+          <>
+            <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.6, fontSize: "13px" }}>{carta}</div>
+            <div style={{ marginTop: "40px", fontSize: "12px" }}>
+              <div>_______________________________</div>
+              <div>Médico(a) Residente em Geriatria</div>
+              <div>CEMPRE — HSE-PE</div>
+            </div>
+            <button onClick={() => setCarta("")} style={{ marginTop: "12px", fontSize: "12px" }}>
+              ← Refazer carta
+            </button>
+          </>
+        )}
+        <DocFooter />
+      </div>
+    </PrintShell>
+  );
+}
+
+// ============================================================
+// RELATÓRIO PARA PERÍCIA / INSS COM IA
+// ============================================================
+function RelatorioInss({ patient, consulta, onClose }) {
+  const [relatorio, setRelatorio] = useState("");
+  const [gerando, setGerando] = useState(false);
+  const [cids, setCids] = useState("");
+
+  async function gerarRelatorio() {
+    setGerando(true);
+    try {
+      const i = patient.ident;
+      const idade = calcIdade(i.dn);
+      const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+      const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
+      const diagnosticos = [...ativos, ...customAtivos.map(c => c.nome)].join(", ");
+      const meds = consulta.medicacoesTexto || "não informado";
+      const aga = consulta.aga || {};
+      const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+      const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
+      const ef = consulta.exameFisico || {};
+      const aivd = Object.values(aga.aivd || {}).filter(Boolean).length;
+      const abvd = Object.values(aga.abvd || {}).filter(Boolean).length;
+      const imc = calcIMC(aga.peso, aga.altura);
+
+      const prompt = `Você é um médico geriatra do HSE-PE. Escreva um relatório médico estruturado para fins de perícia previdenciária (INSS) em português brasileiro.
+
+Dados do paciente:
+- Nome: ${i.nome}, ${idade} anos, sexo ${i.sexo === "F" ? "feminino" : "masculino"}
+- Prontuário: ${i.prontuario}, CPF: ${i.cpf}
+- Profissão: ${i.profissao || "não informada"}
+- Escolaridade: ${i.escolaridade || "não informada"}
+- Diagnósticos: ${diagnosticos}
+- CIDs informados: ${cids || "a completar"}
+- Medicações em uso: ${meds}
+- AIVD: ${aivd}/9 independente | ABVD: ${abvd}/6 independente
+- Perfil de fragilidade: ${frailClass} (${frailScore}/5 critérios FRAIL)
+- IMC: ${imc || "não calculado"} kg/m²
+- PA: ${ef.paSentado || "não aferida"}, FC: ${ef.fc || "não aferida"}
+- Queixas: ${consulta.queixas || "não informadas"}
+- Labs: ${consulta.labsTexto || "não informados"}
+
+Estrutura obrigatória do relatório:
+1. IDENTIFICAÇÃO DO PACIENTE
+2. HISTÓRICO CLÍNICO E DIAGNÓSTICOS (com CIDs)
+3. MEDICAÇÕES EM USO
+4. AVALIAÇÃO FUNCIONAL (AIVD, ABVD, fragilidade)
+5. EXAME FÍSICO RELEVANTE
+6. CONCLUSÃO E IMPACTO FUNCIONAL PARA PERÍCIA
+
+Seja objetivo, formal e use linguagem técnica adequada para perícia. Mencione limitações funcionais relevantes.`;
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      const data = await resp.json();
+      const texto = data.content?.find(b => b.type === "text")?.text || "";
+      setRelatorio(texto);
+    } catch(e) {
+      setRelatorio("Erro ao gerar relatório: " + e.message);
+    }
+    setGerando(false);
+  }
+
+  return (
+    <PrintShell title="Relatório para Perícia/INSS" onClose={onClose} fileName={`Relatorio_INSS_${patient.ident.nome || "paciente"}`}>
+      <div id="print-content">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+          <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
+          <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
+          <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
+        </div>
+        <div style={{ textAlign: "center", fontWeight: 700, fontSize: "15px", marginBottom: "16px" }}>RELATÓRIO MÉDICO PARA FINS PREVIDENCIÁRIOS</div>
+
+        {!relatorio && (
+          <div style={{ marginBottom: "16px" }}>
+            <Field label="CIDs dos diagnósticos principais (opcional — melhora a qualidade do relatório)">
+              <input value={cids} onChange={e => setCids(e.target.value)} placeholder="Ex: E11, I10, M81, E03" />
+            </Field>
+            <button onClick={gerarRelatorio} disabled={gerando} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              {gerando ? <><i className="ti ti-loader-2" aria-hidden="true"></i>Gerando...</> : <><i className="ti ti-sparkles" aria-hidden="true"></i>Gerar relatório com IA</>}
+            </button>
+          </div>
+        )}
+
+        {relatorio && (
+          <>
+            <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.6, fontSize: "13px" }}>{relatorio}</div>
+            <div style={{ marginTop: "40px", fontSize: "12px" }}>
+              <div>Data: {new Date().toLocaleDateString('pt-BR')}</div>
+              <div style={{ marginTop: "30px" }}>_______________________________</div>
+              <div>Médico(a) Residente em Geriatria</div>
+              <div>CEMPRE — HSE-PE</div>
+            </div>
+            <button onClick={() => setRelatorio("")} style={{ marginTop: "12px", fontSize: "12px" }}>
+              ← Refazer relatório
+            </button>
+          </>
+        )}
+        <DocFooter />
+      </div>
+    </PrintShell>
+  );
+}
+
+// ============================================================
+// SUGESTÕES DE CONDUTA POR IA
+// ============================================================
+function SugestoesCondutaIA({ patient, consulta, onClose }) {
+  const [sugestoes, setSugestoes] = useState("");
+  const [gerando, setGerando] = useState(false);
+  const [gerado, setGerado] = useState(false);
+
+  async function gerarSugestoes() {
+    setGerando(true);
+    try {
+      const i = patient.ident;
+      const idade = calcIdade(i.dn);
+      const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+      const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
+      const diagnosticos = [...ativos, ...customAtivos.map(c => c.nome)].join(", ");
+      const meds = consulta.medicacoesTexto || "não informado";
+      const queixas = consulta.queixas || "não informado";
+      const aga = consulta.aga || {};
+      const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+      const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
+      const ef = consulta.exameFisico || {};
+      const labs = consulta.labsTexto || "não informados";
+      const plano = consulta.plano || {};
+      const aivd = Object.values(aga.aivd || {}).filter(Boolean).length;
+      const abvd = Object.values(aga.abvd || {}).filter(Boolean).length;
+      const imc = calcIMC(aga.peso, aga.altura);
+      const numMeds = meds.split("\n").filter(l => l.trim()).length;
+
+      const prompt = `Você é um médico geriatra experiente. Com base nos dados abaixo de uma consulta geriátrica ambulatorial, forneça sugestões de conduta clínica objetivas, baseadas em evidências e adaptadas ao perfil do paciente.
+
+DADOS DA CONSULTA:
+- Paciente: ${i.nome}, ${idade} anos, ${i.sexo === "F" ? "feminina" : "masculino"}
+- Perfil: ${frailClass} (FRAIL ${frailScore}/5)
+- AIVD: ${aivd}/9 | ABVD: ${abvd}/6
+- IMC: ${imc || "não calculado"} kg/m²
+- Diagnósticos ativos: ${diagnosticos || "não informados"}
+- Medicações em uso (${numMeds}): ${meds}
+- Queixas atuais: ${queixas}
+- PA: ${ef.paSentado || "não aferida"} | FC: ${ef.fc || "não aferida"} | Peso: ${ef.peso || aga.peso || "não aferido"} kg
+- Labs recentes: ${labs}
+- Plano atual registrado: ${JSON.stringify(plano)}
+
+INSTRUÇÕES:
+Forneça sugestões práticas e organizadas nas seguintes categorias (inclua apenas as relevantes para este caso):
+
+1. **Ajuste de medicações** — otimizações, desprescrições, doses, interações a resolver
+2. **Investigação complementar** — exames laboratoriais, imagem ou escalas a solicitar
+3. **Metas terapêuticas** — alvos de PA, glicada, peso, etc. conforme perfil de fragilidade
+4. **Prevenção e rastreio** — vacinas atrasadas, rastreios pendentes
+5. **Reabilitação e suporte** — fisioterapia, nutrição, outros encaminhamentos
+6. **Orientações ao paciente** — pontos-chave para discutir na consulta
+7. **Alertas importantes** — riscos identificados que merecem atenção imediata
+
+Use linguagem clínica concisa. Baseie as sugestões nos dados fornecidos. Não invente dados. Adapte as metas ao perfil de fragilidade (${frailClass}).`;
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      const data = await resp.json();
+      const texto = data.content?.find(b => b.type === "text")?.text || "";
+      setSugestoes(texto);
+      setGerado(true);
+    } catch(e) {
+      setSugestoes("Erro ao gerar sugestões: " + e.message);
+      setGerado(true);
+    }
+    setGerando(false);
+  }
+
+  // Gera automaticamente ao abrir
+  useState(() => { gerarSugestoes(); }, []);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
+      <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "680px", padding: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <div style={{ fontWeight: 600, fontSize: "15px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <i className="ti ti-sparkles" style={{ color: "var(--color-text-info)" }} aria-hidden="true"></i>
+            Sugestões de conduta — IA
+          </div>
+          <button onClick={onClose}><i className="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+
+        <Alert type="info">
+          Sugestões geradas por IA com base nos dados desta consulta. Revise criticamente antes de aplicar — a decisão clínica final é sempre do médico.
+        </Alert>
+
+        {gerando && (
+          <div style={{ textAlign: "center", padding: "2rem", color: "var(--color-text-secondary)" }}>
+            <i className="ti ti-loader-2" style={{ fontSize: "28px", display: "block", marginBottom: "8px" }} aria-hidden="true"></i>
+            Analisando dados da consulta...
+          </div>
+        )}
+
+        {gerado && sugestoes && (
+          <>
+            <div style={{
+              background: "var(--color-background-secondary)",
+              borderRadius: "8px",
+              padding: "16px",
+              fontSize: "13px",
+              lineHeight: 1.7,
+              whiteSpace: "pre-wrap",
+              maxHeight: "60vh",
+              overflowY: "auto",
+            }}>
+              {sugestoes}
+            </div>
+            <div style={{ display: "flex", gap: "8px", marginTop: "14px", justifyContent: "flex-end" }}>
+              <button onClick={gerarSugestoes} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <i className="ti ti-refresh" aria-hidden="true"></i>Regenerar
+              </button>
+              <button onClick={() => {
+                const blob = new Blob([sugestoes], { type: "text/plain;charset=utf-8" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `Sugestoes_${patient.ident.nome || "paciente"}_${new Date().toLocaleDateString("pt-BR").replace(/\//g,"-")}.txt`;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+              }} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <i className="ti ti-download" aria-hidden="true"></i>Baixar texto
+              </button>
+              <button onClick={onClose} style={{ fontSize: "13px" }}>Fechar</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PrintDocRenderer({ doc, patient, consulta, onClose }) {
   if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} />;
+  if (doc.type === "cartaReferencia") return <CartaReferencia patient={patient} consulta={consulta} onClose={onClose} />;
+  if (doc.type === "relatorioInss") return <RelatorioInss patient={patient} consulta={consulta} onClose={onClose} />;
+  if (doc.type === "sugestoesIA") return <SugestoesCondutaIA patient={patient} consulta={consulta} onClose={onClose} />;
   return null;
 }
 
