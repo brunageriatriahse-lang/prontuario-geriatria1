@@ -2892,6 +2892,92 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
   const nComorbidades = ativos.length + (consulta.problemasCustom || []).filter(c => c.checked).length;
   const ehMultimorbido = nComorbidades >= 3;
+  const labs = consulta.labsTexto || "";
+  const idade = calcIdade(patient?.ident?.dn);
+
+  // ============================================================
+  // ESTRATIFICAÇÃO DE RISCO CARDIOVASCULAR ESC + META DE LDL
+  // ============================================================
+  const temDAC   = ativos.includes("DAC");
+  const temAVC   = ativos.includes("AVC");
+  const temDAOP  = ativos.includes("DAOP");
+  const temDRC   = ativos.includes("DRC");
+  const temHAS   = ativos.includes("HAS");
+  const temDislipi = ativos.includes("Dislipidemia");
+
+  // Extrai TFG dos labs — ou calcula por CKD-EPI se tiver creatinina
+  const mTFG = labs.match(/(?:tfg|tgf|egfr|taxa de filtra)[^\d]*(\d+)/i);
+  let tfg = mTFG ? parseInt(mTFG[1]) : null;
+
+  // CKD-EPI 2021 a partir da creatinina se TFG não estiver nos labs
+  if (!tfg && idade) {
+    const mCr = labs.match(/(?:cr(?:eatinina)?)[^\d]*(\d+[,.]\d+|\d+)/i);
+    if (mCr) {
+      const cr = parseFloat(mCr[1].replace(',', '.'));
+      const sexo = patient?.ident?.sexo || "";
+      if (cr > 0 && cr < 20) {
+        // CKD-EPI 2021 (sem raça)
+        const kappa = sexo === "F" ? 0.7 : 0.9;
+        const alpha = sexo === "F" ? -0.241 : -0.302;
+        const crK = cr / kappa;
+        const tfgCalc = 142 *
+          Math.pow(Math.min(crK, 1), alpha) *
+          Math.pow(Math.max(crK, 1), -1.200) *
+          Math.pow(0.9938, idade) *
+          (sexo === "F" ? 1.012 : 1);
+        tfg = Math.round(tfgCalc);
+      }
+    }
+  }
+
+  // Extrai LDL dos labs
+  const mLDL = labs.match(/(?:ldl|ld)[^\d]*(\d+)/i);
+  const ldlValor = mLDL ? parseInt(mLDL[1]) : null;
+
+  // Extrai CT dos labs
+  const mCT = labs.match(/(?:ct|col(?:esterol)?\s*total)[^\d]*(\d+)/i);
+  const ctValor = mCT ? parseInt(mCT[1]) : null;
+
+  // Extrai PA sistólica
+  const ef = consulta.exameFisico || {};
+  const mPA = (ef.paSentado || "").match(/(\d+)/);
+  const PAS = mPA ? parseInt(mPA[1]) : null;
+
+  // Estratificação ESC
+  function estratificarRiscoESC() {
+    // Muito alto risco
+    if (temDAC || temAVC || temDAOP) return { nivel: "Muito alto risco", metaLDL: 55, cor: "danger", motivo: "ASCVD documentada (DAC/AVC/DAOP)" };
+    if (temDM2 && (temDAC || temAVC || temDAOP)) return { nivel: "Muito alto risco", metaLDL: 55, cor: "danger", motivo: "DM2 com ASCVD" };
+    if (tfg !== null && tfg < 30) return { nivel: "Muito alto risco", metaLDL: 55, cor: "danger", motivo: `DRC grave (TFG ${tfg} mL/min/1,73m²)` };
+    if (ctValor !== null && ctValor > 310) return { nivel: "Muito alto risco", metaLDL: 55, cor: "danger", motivo: `CT muito elevado (${ctValor} mg/dL)` };
+    if (ldlValor !== null && ldlValor > 190) return { nivel: "Muito alto risco", metaLDL: 55, cor: "danger", motivo: `LDL muito elevado (${ldlValor} mg/dL)` };
+    if (PAS !== null && PAS >= 180) return { nivel: "Muito alto risco", metaLDL: 55, cor: "danger", motivo: `PA muito elevada (${ef.paSentado})` };
+
+    // Alto risco
+    if (temDM2 && (nComorbidades >= 3 || (idade && idade > 50))) return { nivel: "Alto risco", metaLDL: 70, cor: "warning", motivo: "DM2 com fatores de risco adicionais" };
+    if (tfg !== null && tfg >= 30 && tfg < 60) return { nivel: "Alto risco", metaLDL: 70, cor: "warning", motivo: `DRC moderada (TFG ${tfg} mL/min/1,73m²)` };
+    if (temHAS && nComorbidades >= 3) return { nivel: "Alto risco", metaLDL: 70, cor: "warning", motivo: "HAS com múltiplos fatores de risco" };
+
+    // Moderado risco
+    if (temDM2) return { nivel: "Moderado risco", metaLDL: 100, cor: "warning", motivo: "DM2 sem complicações" };
+    if (nComorbidades >= 2) return { nivel: "Moderado risco", metaLDL: 100, cor: "warning", motivo: "Múltiplos fatores de risco" };
+
+    // Baixo risco
+    return { nivel: "Baixo risco", metaLDL: 116, cor: "success", motivo: "Sem fatores de risco maiores identificados" };
+  }
+
+  const riscoESC = (temDAC || temAVC || temDAOP || temDRC || temDM2 || temHAS || temDislipi || ldlValor || ctValor)
+    ? estratificarRiscoESC() : null;
+
+  // Alerta de LDL
+  let alertaLDL = null;
+  if (riscoESC && ldlValor !== null) {
+    if (ldlValor >= riscoESC.metaLDL) {
+      alertaLDL = { tipo: "warning", msg: `⚠ LDL ${ldlValor} mg/dL acima da meta para ${riscoESC.nivel}: < ${riscoESC.metaLDL} mg/dL` };
+    } else {
+      alertaLDL = { tipo: "success", msg: `✓ LDL ${ldlValor} mg/dL dentro da meta para ${riscoESC.nivel}: < ${riscoESC.metaLDL} mg/dL` };
+    }
+  }
 
   let metaHbA1c = null, perfilHbA1c = null;
   if (temDM2) {
@@ -2905,7 +2991,6 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   // Detecta HbA1c no texto de labs
   let alertaHbA1c = null;
   if (temDM2 && metaHbA1c) {
-    const labs = consulta.labsTexto || "";
     const matchHb = labs.match(/(?:hba1c|glicada|hemoglobina glicada)[^0-9]*(\d+[,.]?\d*)\s*%?/i);
     if (matchHb) {
       const valor = parseFloat(matchHb[1].replace(',', '.'));
@@ -2925,6 +3010,28 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
         <FraxCalc consulta={consulta} patient={patient} />
       </SectionCard>
       <SectionCard title="Laboratoriais" icon="ti-flask">
+        {riscoESC && (
+          <div style={{ background: `var(--color-background-${riscoESC.cor})`, border: `0.5px solid var(--color-border-${riscoESC.cor})`, borderRadius: "8px", padding: "10px 14px", fontSize: "13px", marginBottom: "10px" }}>
+            <div style={{ fontWeight: 700, color: `var(--color-text-${riscoESC.cor})`, marginBottom: "4px" }}>
+              🫀 Risco cardiovascular ESC: {riscoESC.nivel}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "4px" }}>
+              {riscoESC.motivo} · Meta de LDL: &lt; {riscoESC.metaLDL} mg/dL
+              {tfg && !mTFG && <span style={{ marginLeft: "8px" }}>· TFG calculada (CKD-EPI): <strong>{tfg} mL/min/1,73m²</strong></span>}
+              {tfg && mTFG && <span style={{ marginLeft: "8px" }}>· TFG: <strong>{tfg} mL/min/1,73m²</strong></span>}
+            </div>
+            {alertaLDL && (
+              <div style={{ marginTop: "4px", fontWeight: 600, color: `var(--color-text-${alertaLDL.tipo})` }}>
+                {alertaLDL.msg}
+              </div>
+            )}
+            {!ldlValor && (
+              <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>
+                Digite o valor do LDL nos labs para verificar a meta
+              </div>
+            )}
+          </div>
+        )}
         {temDM2 && (
           <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px", padding: "6px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
             🎯 <strong>Meta de HbA1c ({perfilHbA1c}):</strong> {metaHbA1c}
@@ -2933,6 +3040,16 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
         {alertaHbA1c && (
           <Alert type={alertaHbA1c.startsWith('✓') ? "success" : "warning"}>{alertaHbA1c}</Alert>
         )}
+        {tfg && !mTFG && (() => {
+          const estadio = tfg >= 90 ? null : tfg >= 60 ? "G2 (leve)" : tfg >= 45 ? "G3a (moderada leve)" : tfg >= 30 ? "G3b (moderada grave)" : tfg >= 15 ? "G4 (grave)" : "G5 (falência renal)";
+          if (!estadio) return null;
+          return (
+            <Alert type={tfg < 30 ? "danger" : tfg < 60 ? "warning" : "info"}>
+              🧪 TFG calculada por CKD-EPI: <strong>{tfg} mL/min/1,73m²</strong> — DRC {estadio}
+              {tfg < 60 && " · Considerar ajuste de doses e monitorar potássio/creatinina"}
+            </Alert>
+          );
+        })()}
         <textarea
           rows={10}
           value={consulta.labsTexto || ""}
