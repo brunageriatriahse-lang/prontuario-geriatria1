@@ -1027,6 +1027,7 @@ function DocFooter() {
 
 export default function App() {
   const [autenticado, setAutenticado] = useState(() => sessionStorage.getItem('auth') === '1');
+  const [ambulatorio, setAmbulatorio] = useState(() => sessionStorage.getItem('ambulatorio') || null);
   const [senhaDigitada, setSenhaDigitada] = useState('');
   const [erroSenha, setErroSenha] = useState(false);
   const [patients, setPatients] = useState(null);
@@ -1043,10 +1044,11 @@ export default function App() {
   const saveTimers = useRef({});
 
   useEffect(() => {
-    if (!autenticado) return; // não carrega dados antes do login
+    if (!autenticado || !ambulatorio) return;
+    setPatients(null); // reset ao trocar ambulatório
     (async () => {
       try {
-        const list = await listPatients();
+        const list = await listPatients(ambulatorio);
         let anyMigrated = false;
         const migrated = list.map(p => {
           if (p.consultas) return p;
@@ -1262,7 +1264,7 @@ export default function App() {
         setPatients([]);
       }
     })();
-  }, [autenticado]);
+  }, [autenticado, ambulatorio]);
 
   const [lastSaved, setLastSaved] = useState(null);
 
@@ -1271,7 +1273,7 @@ export default function App() {
     setSaveStatus("saving");
     saveTimers.current[patient.id] = setTimeout(async () => {
       try {
-        await savePatient(patient);
+        await savePatient(patient, ambulatorio);
         setSaveStatus("saved");
         setLastSaved(new Date());
         setTimeout(() => setSaveStatus("idle"), 1200);
@@ -1318,6 +1320,14 @@ export default function App() {
     }
   }
 
+  function selecionarAmbulatorio(amb) {
+    sessionStorage.setItem('ambulatorio', amb);
+    setAmbulatorio(amb);
+    setPatients(null);
+    setActiveId(null);
+    setView("list");
+  }
+
   if (!autenticado) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-background-secondary)' }}>
@@ -1352,6 +1362,70 @@ export default function App() {
     );
   }
 
+  // Tela de seleção de ambulatório
+  if (!ambulatorio) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-background-secondary)' }}>
+        <div style={{ width: '100%', maxWidth: '560px', padding: '0 16px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+            <div style={{ fontWeight: 700, fontSize: '20px', marginBottom: '6px' }}>Prontuário de Geriatria</div>
+            <div style={{ fontSize: '14px', color: 'var(--color-text-secondary)' }}>HSE-PE — Selecione o ambulatório</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            {[
+              {
+                id: 'cempre',
+                titulo: 'CEMPRE',
+                subtitulo: 'Centro de Medicina Preventiva',
+                descricao: 'Ambulatório de geriatria — consultas ambulatoriais de seguimento',
+                icon: 'ti-building-hospital',
+                cor: 'var(--color-text-info)',
+                bg: 'var(--color-background-info)',
+                border: 'var(--color-border-info)',
+              },
+              {
+                id: 'residencia',
+                titulo: 'Residência',
+                subtitulo: 'Ambulatório de Geriatria',
+                descricao: 'Pacientes da residência médica em geriatria — HSE-PE',
+                icon: 'ti-school',
+                cor: 'var(--color-text-success)',
+                bg: 'var(--color-background-success)',
+                border: 'var(--color-border-success)',
+              },
+            ].map(amb => (
+              <button
+                key={amb.id}
+                onClick={() => selecionarAmbulatorio(amb.id)}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  padding: '32px 20px', borderRadius: '16px', cursor: 'pointer', textAlign: 'center',
+                  background: amb.bg, border: `1.5px solid ${amb.border}`,
+                  transition: 'transform 0.1s', gap: '10px',
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+              >
+                <i className={`ti ${amb.icon}`} style={{ fontSize: '40px', color: amb.cor }} aria-hidden="true" />
+                <div style={{ fontWeight: 700, fontSize: '18px', color: amb.cor }}>{amb.titulo}</div>
+                <div style={{ fontSize: '13px', fontWeight: 500, color: amb.cor, opacity: 0.8 }}>{amb.subtitulo}</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>{amb.descricao}</div>
+              </button>
+            ))}
+          </div>
+          <div style={{ textAlign: 'center', marginTop: '20px' }}>
+            <button
+              onClick={() => { sessionStorage.removeItem('auth'); sessionStorage.removeItem('ambulatorio'); setAutenticado(false); setAmbulatorio(null); }}
+              style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
+            >
+              Sair
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (patients === null) {
     return (
       <div style={{ padding: "3rem 1rem", textAlign: "center", color: "var(--color-text-secondary)" }}>
@@ -1370,7 +1444,7 @@ export default function App() {
     setMode("prontuario");
     setView("record");
     try {
-      await savePatient(p);
+      await savePatient(p, ambulatorio);
     } catch (e) {
       console.error(e);
     }
@@ -1382,7 +1456,7 @@ export default function App() {
     if (activeId === id) { setActiveId(null); setView("list"); }
     const target = (patients || []).find(p => p.id === id);
     if (target) {
-      try { await savePatient({ ...target, deletedAt: now, updatedAt: now }); } catch (e) { console.error(e); }
+      try { await savePatient({ ...target, deletedAt: now, updatedAt: now }, ambulatorio); } catch (e) { console.error(e); }
     }
   }
 
@@ -1391,7 +1465,7 @@ export default function App() {
     setPatients(prev => prev.map(p => p.id === id ? { ...p, deletedAt: null, updatedAt: now } : p));
     const target = (patients || []).find(p => p.id === id);
     if (target) {
-      try { await savePatient({ ...target, deletedAt: null, updatedAt: now }); } catch (e) { console.error(e); }
+      try { await savePatient({ ...target, deletedAt: null, updatedAt: now }, ambulatorio); } catch (e) { console.error(e); }
     }
   }
 
@@ -1540,7 +1614,7 @@ export default function App() {
     <div id="app-main-content" style={{ width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem", flexWrap: "wrap", gap: "8px" }}>
         <div>
-          <h1 style={{ margin: 0 }}>Prontuário de geriatria — CEMPRE</h1>
+          <h1 style={{ margin: 0 }}>Prontuário de geriatria — {ambulatorio === 'cempre' ? 'CEMPRE' : 'Residência'}</h1>
           <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-text-secondary)" }}>HSE-PE · dados salvos no Google Sheets</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -1548,6 +1622,9 @@ export default function App() {
           {saveStatus === "saved" && <Pill color="success"><i className="ti ti-check" aria-hidden="true"></i>Salvo</Pill>}
           {saveStatus === "idle" && lastSaved && <span style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>Salvo às {lastSaved.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>}
           {saveStatus === "error" && <Pill color="danger"><i className="ti ti-alert-triangle" aria-hidden="true"></i>Erro ao salvar</Pill>}
+          <button onClick={() => { sessionStorage.removeItem('ambulatorio'); setAmbulatorio(null); setPatients(null); setActiveId(null); setView("list"); }} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+            <i className="ti ti-switch-horizontal" aria-hidden="true"></i>Trocar
+          </button>
           {view === "list" && (trashedPatients.length > 0 || trashedConsultasCount > 0) && (
             <button onClick={() => setView("trash")} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               <i className="ti ti-trash" aria-hidden="true"></i>Lixeira
