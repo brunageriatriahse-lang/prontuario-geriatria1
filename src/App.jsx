@@ -11,6 +11,10 @@ const GOOGLE_CLIENT_ID = "467817041013-amr370inb53rdqr6eoarme46m03bo4a7.apps.goo
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const PASTA_RAIZ = "PRONTUÁRIO CEMPRE - PACIENTES BRUNA";
 
+function getNomeAmbulatorio(ambulatorio) {
+  return ambulatorio === 'residencia' ? 'AMBULATÓRIO DE GERIATRIA - HSE' : 'AMBULATÓRIO DE GERIATRIA - CEMPRE';
+}
+
 let _driveToken = null;
 let _driveTokenExpiry = 0;
 
@@ -1284,6 +1288,18 @@ export default function App() {
     }, 700);
   }, []);
 
+  // Ctrl+S para salvar imediatamente
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (activePatient) persistPatient(activePatient);
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activePatient, persistPatient]);
+
   const activePatient = useMemo(() => (patients || []).find(p => p.id === activeId) || null, [patients, activeId]);
   const activeConsulta = useMemo(() => (activePatient?.consultas || []).find(c => c.id === activeConsultaId) || null, [activePatient, activeConsultaId]);
 
@@ -1334,7 +1350,7 @@ export default function App() {
         <div style={{ background: 'var(--color-background-primary)', border: '0.5px solid var(--color-border-tertiary)', borderRadius: '16px', padding: '40px 36px', width: '100%', maxWidth: '360px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <div style={{ fontWeight: 700, fontSize: '17px', marginBottom: '4px' }}>Prontuário de Geriatria</div>
-            <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>CEMPRE — HSE-PE</div>
+            <div style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>HSE-PE</div>
           </div>
           <form onSubmit={tentarLogin}>
             <div style={{ marginBottom: '16px' }}>
@@ -1614,7 +1630,7 @@ export default function App() {
     <div id="app-main-content" style={{ width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem", flexWrap: "wrap", gap: "8px" }}>
         <div>
-          <h1 style={{ margin: 0 }}>Prontuário de geriatria — {ambulatorio === 'cempre' ? 'CEMPRE' : 'Residência'}</h1>
+          <h1 style={{ margin: 0 }}>{ambulatorio === 'cempre' ? 'AMBULATÓRIO DE GERIATRIA — CEMPRE' : 'AMBULATÓRIO DE GERIATRIA — HSE'}</h1>
           <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-text-secondary)" }}>HSE-PE · dados salvos no Google Sheets</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -1994,7 +2010,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} sexoPaciente={patient.ident.sexo || ""} />}
       {activeTab === "prevencao" && <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
+      {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} todasConsultas={patient?.consultas || []} />}
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
 
@@ -2169,6 +2185,131 @@ function ProblemasTab({ consulta, updateConsulta }) {
           <strong style={{ fontWeight: 500 }}>{comPrevencao.length}</strong> comorbidade(s) ativa(s) possuem itens de rastreio específico habilitados na aba Prevenção: {comPrevencao.join(", ")}.
         </Alert>
       )}
+
+      {/* ÍNDICE DE CHARLSON */}
+      {(() => {
+        const prob = consulta.problemas || {};
+        const custom = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome.toLowerCase());
+        const has = (k) => prob[k] || custom.some(c => c.includes(k.toLowerCase()));
+        const idade = calcIdade(patient?.ident?.dn);
+
+        const charlsonItens = [
+          { nome: "IAM prévio", pts: 1, cond: prob["DAC"] },
+          { nome: "Insuficiência cardíaca", pts: 1, cond: prob["Insuficiência cardíaca"] || prob["IC"] },
+          { nome: "DAOP / Doença vascular periférica", pts: 1, cond: prob["DAOP"] },
+          { nome: "AVC / AIT", pts: 1, cond: prob["AVC"] || prob["AIT"] },
+          { nome: "Demência", pts: 1, cond: prob["Demência"] || prob["Doença de Alzheimer"] || prob["Síndrome demencial"] },
+          { nome: "DPOC", pts: 1, cond: prob["DPOC"] },
+          { nome: "Doença do tecido conjuntivo", pts: 1, cond: prob["Artrite reumatoide"] || prob["LES"] || prob["Esclerodermia"] },
+          { nome: "Úlcera péptica", pts: 1, cond: has("úlcera") },
+          { nome: "DRC leve (Cr 1,5–3,0)", pts: 1, cond: prob["DRC"] },
+          { nome: "Diabetes sem complicações", pts: 1, cond: prob["DM2"] || prob["DM1"] },
+          { nome: "Hemiplegia", pts: 2, cond: has("hemiplegia") },
+          { nome: "DRC moderada/grave (Cr >3,0 ou diálise)", pts: 2, cond: has("diálise") || has("hemodiálise") },
+          { nome: "Diabetes com complicações (neuropatia, nefropatia, retinopatia)", pts: 2, cond: has("nefropatia diabética") || has("retinopatia") || has("neuropatia diabética") },
+          { nome: "Neoplasia maligna sem metástase", pts: 2, cond: has("neoplasia") || has("câncer") || has("ca ") || has("ca de") },
+          { nome: "Leucemia", pts: 2, cond: has("leucemia") },
+          { nome: "Linfoma", pts: 2, cond: has("linfoma") },
+          { nome: "Hepatopatia moderada/grave (cirrose, HTP)", pts: 3, cond: has("cirrose") || has("hepatopatia") },
+          { nome: "Neoplasia maligna com metástase", pts: 6, cond: has("metástase") || has("metastatico") },
+          { nome: "AIDS", pts: 6, cond: has("aids") || has("hiv") },
+        ];
+
+        const pontosDoencas = charlsonItens.filter(it => it.cond).reduce((s, it) => s + it.pts, 0);
+        const pontosIdade = idade ? (idade < 50 ? 0 : idade < 60 ? 1 : idade < 70 ? 2 : idade < 80 ? 3 : 4) : 0;
+        const charlsonTotal = pontosDoencas + pontosIdade;
+        const mortalidade10a = charlsonTotal === 0 ? 3.3 : charlsonTotal === 1 ? 12 : charlsonTotal === 2 ? 26 : charlsonTotal >= 3 && charlsonTotal <= 4 ? 52 : 85;
+
+        if (charlsonTotal === 0 && pontosDoencas === 0) return null;
+        return (
+          <div style={{ marginTop: "12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "12px" }}>
+            <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "8px" }}>
+              📊 Índice de Charlson — {charlsonTotal} pontos
+              <span style={{ fontWeight: 400, fontSize: "12px", color: "var(--color-text-secondary)", marginLeft: "8px" }}>
+                (doenças: {pontosDoencas} + idade: {pontosIdade})
+              </span>
+            </div>
+            <div style={{ fontSize: "13px", marginBottom: "6px" }}>
+              Mortalidade estimada em 10 anos: <strong>{mortalidade10a}%</strong>
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+              Comorbidades contadas: {charlsonItens.filter(it => it.cond).map(it => `${it.nome} (${it.pts}pt)`).join(", ") || "nenhuma"}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* CHADS2-VASc e HAS-BLED */}
+      {(consulta.problemas?.["FA"] || consulta.problemas?.["Flutter atrial"]) && (() => {
+        const prob = consulta.problemas || {};
+        const idade = calcIdade(patient?.ident?.dn);
+        const sexo = patient?.ident?.sexo || "";
+        const custom = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome.toLowerCase());
+
+        // CHA2DS2-VASc (2020 ESC)
+        const chadsItens = [
+          { label: "IC ou FEVE <40%", pts: 1, val: prob["Insuficiência cardíaca"] || prob["IC"] },
+          { label: "HAS", pts: 1, val: prob["HAS"] },
+          { label: "Idade ≥ 75 anos", pts: 2, val: idade >= 75 },
+          { label: "DM", pts: 1, val: prob["DM2"] || prob["DM1"] },
+          { label: "AVC/AIT/TE prévio", pts: 2, val: prob["AVC"] || prob["AIT"] },
+          { label: "DAP / DAC / placa aórtica", pts: 1, val: prob["DAC"] || prob["DAOP"] },
+          { label: "Idade 65–74 anos", pts: 1, val: idade >= 65 && idade < 75 },
+          { label: "Sexo feminino", pts: 1, val: sexo === "F" },
+        ];
+        const chadsTotal = chadsItens.filter(it => it.val).reduce((s, it) => s + it.pts, 0);
+        // Pontuação máxima ajustada (sexo F não conta sozinho)
+        const chadsEfetivo = sexo === "F" ? Math.max(0, chadsTotal - 1) : chadsTotal;
+        const anticoagular = (sexo === "M" && chadsEfetivo >= 1) || (sexo === "F" && chadsEfetivo >= 2);
+
+        // HAS-BLED
+        const ef = consulta.exameFisico || {};
+        const mPA = (ef.paSentado || "").match(/(\d+)/);
+        const PAS = mPA ? parseInt(mPA[1]) : null;
+        const labs = consulta.labsTexto || "";
+        const meds = (consulta.medicacoesTexto || "").toLowerCase();
+        const hasBledItens = [
+          { label: "HAS não controlada (PA sistólica >160)", pts: 1, val: PAS && PAS > 160 },
+          { label: "Disfunção renal ou hepática", pts: 1, val: prob["DRC"] || custom.some(c => c.includes("hepatopatia") || c.includes("cirrose")) },
+          { label: "AVC prévio", pts: 1, val: prob["AVC"] },
+          { label: "Sangramento prévio ou predisposição", pts: 1, val: custom.some(c => c.includes("sangramento") || c.includes("hemorragia")) },
+          { label: "INR lábil (se em uso de varfarina)", pts: 1, val: meds.includes("varfarina") || meds.includes("warfarina") },
+          { label: "Idade > 65 anos", pts: 1, val: idade > 65 },
+          { label: "Drogas (AINE, antiplaquetário) ou álcool", pts: 1, val: meds.includes("ibuprofeno") || meds.includes("diclofenaco") || meds.includes("aas") || meds.includes("clopidogrel") },
+        ];
+        const hasBledTotal = hasBledItens.filter(it => it.val).reduce((s, it) => s + it.pts, 0);
+
+        return (
+          <div style={{ marginTop: "12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "12px" }}>
+              <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "8px" }}>
+                🫀 CHA₂DS₂-VASc — {chadsTotal} pontos
+              </div>
+              {chadsItens.filter(it => it.val).map((it, i) => (
+                <div key={i} style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>• {it.label} (+{it.pts})</div>
+              ))}
+              <div style={{ marginTop: "8px", fontWeight: 600, fontSize: "13px", color: anticoagular ? "var(--color-text-danger)" : "var(--color-text-success)" }}>
+                {anticoagular ? "✅ Anticoagulação recomendada" : "⬜ Anticoagulação não indicada"}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>
+                {sexo === "F" ? `Score efetivo (excluindo sexo): ${chadsEfetivo}` : `Score: ${chadsTotal}`}
+              </div>
+            </div>
+            <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "12px" }}>
+              <div style={{ fontWeight: 600, fontSize: "13px", marginBottom: "8px" }}>
+                🩸 HAS-BLED — {hasBledTotal} pontos
+              </div>
+              {hasBledItens.filter(it => it.val).map((it, i) => (
+                <div key={i} style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>• {it.label} (+{it.pts})</div>
+              ))}
+              <div style={{ marginTop: "8px", fontWeight: 600, fontSize: "13px", color: hasBledTotal >= 3 ? "var(--color-text-warning)" : "var(--color-text-success)" }}>
+                {hasBledTotal >= 3 ? `⚠ Alto risco de sangramento (${hasBledTotal}≥3) — não contraindicação, mas aumentar vigilância` : `Risco baixo/moderado de sangramento`}
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>Fatores modificáveis devem ser corrigidos</div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -2247,9 +2388,88 @@ function MedicacoesTab({ consulta, updateConsulta }) {
     d.drug.some(drug => linhas.some(l => l.toLowerCase().includes(drug)))
   );
 
+  // Alertas de desprescrição avançados com planos detalhados
+  const alertasDesprescricao = [];
+
+  // 1. IBP sem indicação clara (uso crônico)
+  const temIBP = linhas.some(l => /omeprazol|pantoprazol|lansoprazol|rabeprazol|esomeprazol/i.test(l));
+  const temIndicacaoIBP = (consulta.problemas?.["DRGE"] || consulta.problemas?.["Úlcera péptica"] || consulta.problemas?.["Esofagite"] ||
+    (consulta.medicacoesTexto || "").toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|varfarina|ibuprofeno|diclofenaco|prednisona|dexametasona|corticoide/));
+  if (temIBP && !temIndicacaoIBP) {
+    alertasDesprescricao.push({
+      titulo: "⚠ IBP sem indicação clara — sugerir tentativa de desmame",
+      tipo: "warning",
+      itens: [
+        "Uso crônico de IBP (>3 meses) sem indicação documentada (DRGE, úlcera, uso de AINE/AAS/anticoagulante)",
+        "Riscos do uso prolongado: deficiência de B12, Mg, Ca; infecções intestinais (C. diff); pneumonia; osteoporose",
+        "Plano de desmame sugerido:",
+        "→ Semanas 1–2: manter dose atual",
+        "→ Semanas 3–4: reduzir para dose mínima (omeprazol 20mg/dia)",
+        "→ Semanas 5–8: tentar uso em dias alternados",
+        "→ Após 8 semanas: tentar suspensão com uso por demanda se sintomas retornarem",
+        "Orientar: elevar cabeceira, evitar alimentos ácidos, refeições menores",
+      ]
+    });
+  }
+
+  // 2. Benzodiazepínico em uso (>4 semanas implícito pelo uso continuado)
+  const temBZD = linhas.some(l => /diazepam|clonazepam|alprazolam|lorazepam|midazolam|bromazepam|nitrazepam|zolpidem|zopiclona/i.test(l));
+  if (temBZD) {
+    alertasDesprescricao.push({
+      titulo: "⚠ Benzodiazepínico / Z-drug — plano de retirada gradual",
+      tipo: "danger",
+      itens: [
+        "Benzodiazepínicos e Z-drugs são potencialmente inapropriados em idosos (Critérios de Beers 2023)",
+        "Riscos: quedas, fraturas de quadril, delirium, declínio cognitivo, dependência física",
+        "Plano de retirada gradual sugerido (nunca suspender abruptamente):",
+        "→ Converter para benzodiazepínico de meia-vida longa (diazepam) se necessário",
+        "→ Reduzir 10–25% da dose a cada 1–2 semanas conforme tolerância",
+        "→ Nas últimas etapas (doses baixas), reduzir mais lentamente",
+        "→ Oferecer alternativa não farmacológica: TCC para insônia (CBT-I), higiene do sono",
+        "→ Para ansiedade: considerar ISRS, buspirona ou pregabalina como substitutos",
+        "Duração total do desmame: 4–16 semanas dependendo da dose e tempo de uso",
+      ]
+    });
+  }
+
+  // 3. Antipsicótico para demência
+  const temAntipsicótico = linhas.some(l => /haloperidol|risperidona|quetiapina|olanzapina|aripiprazol|ziprasidona|clozapina|clorpromazina/i.test(l));
+  const temDemência = consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"];
+  if (temAntipsicótico && temDemência) {
+    alertasDesprescricao.push({
+      titulo: "⚠ Antipsicótico em demência — reavaliar e tentar redução de dose",
+      tipo: "warning",
+      itens: [
+        "Antipsicóticos em demência aumentam risco de AVC, morte súbita, sedação e piora cognitiva",
+        "Indicação deve ser reavaliada a cada 3 meses — sintomas comportamentais frequentemente remitem",
+        "Antes de manter/aumentar: esgotar medidas não farmacológicas (ambiente estruturado, rotina, estimulação)",
+        "Plano de redução sugerido:",
+        "→ Reduzir 25–50% da dose atual",
+        "→ Aguardar 2–4 semanas observando recorrência dos sintomas",
+        "→ Se estável: tentar suspensão",
+        "→ Se piora: retornar à dose mínima eficaz",
+        "Exceção: psicose grave ou agressividade com risco para si ou outros — reavaliar em 3 meses",
+      ]
+    });
+  }
+
   return (
     <div>
       <SectionCard title="Medicações em uso" icon="ti-pill">
+        {alertasDesprescricao.length > 0 && (
+          <div style={{ marginBottom: "10px" }}>
+            {alertasDesprescricao.map((a, i) => (
+              <div key={i} style={{ background: `var(--color-background-${a.tipo})`, border: `0.5px solid var(--color-border-${a.tipo})`, borderRadius: "8px", padding: "12px 14px", fontSize: "13px", marginBottom: "10px" }}>
+                <div style={{ fontWeight: 700, color: `var(--color-text-${a.tipo})`, marginBottom: "6px" }}>{a.titulo}</div>
+                {a.itens.map((item, j) => (
+                  <div key={j} style={{ fontSize: "12px", padding: "2px 0", color: item.startsWith("→") ? "var(--color-text-info)" : "var(--color-text-primary)", fontWeight: item.startsWith("→") ? 500 : 400 }}>
+                    {item.startsWith("→") ? item : `• ${item}`}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
         {polifarmacia && (
           <div style={{ background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "8px", padding: "12px 14px", fontSize: "13px", marginBottom: "10px" }}>
             <div style={{ fontWeight: 700, color: "var(--color-text-warning)", marginBottom: "6px" }}>
@@ -2292,7 +2512,55 @@ function MedicacoesTab({ consulta, updateConsulta }) {
           placeholder={"Liste as medicações em uso, uma por linha. Ex:\nLosartana 50mg - 1cp pela manhã e à noite\nAAS 100mg - 1cp após almoço"}
         />
       </SectionCard>
-      <SectionCard title="Medicações de uso prévio / descontinuadas" icon="ti-history" defaultOpen={true}>
+      <SectionCard title="Histórico de medicações — linha do tempo" icon="ti-history" defaultOpen={false}>
+        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "10px" }}>
+          Registre medicações iniciadas ou suspensas com data e motivo. Use para rastrear a evolução do tratamento ao longo das consultas.
+        </div>
+        {(() => {
+          const historico = Array.isArray(consulta.historicoMedicacoes) ? consulta.historicoMedicacoes : [];
+          function addItem() {
+            updateConsulta(p => ({ ...p, historicoMedicacoes: [...(p.historicoMedicacoes || []), { id: uid(), medicacao: "", evento: "iniciado", data: "", motivo: "" }] }));
+          }
+          function updItem(id, k, v) {
+            updateConsulta(p => ({ ...p, historicoMedicacoes: (p.historicoMedicacoes || []).map(x => x.id === id ? { ...x, [k]: v } : x) }));
+          }
+          function remItem(id) {
+            updateConsulta(p => ({ ...p, historicoMedicacoes: (p.historicoMedicacoes || []).filter(x => x.id !== id) }));
+          }
+          return (
+            <div>
+              {historico.map(item => (
+                <div key={item.id} style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "10px", padding: "10px", background: "var(--color-background-secondary)", borderRadius: "8px" }}>
+                  <div style={{ flex: "1 1 180px" }}>
+                    <Field label="Medicação"><input value={item.medicacao || ""} onChange={e => updItem(item.id, "medicacao", e.target.value)} placeholder="Nome e dose..." /></Field>
+                  </div>
+                  <div>
+                    <Field label="Evento">
+                      <select value={item.evento || "iniciado"} onChange={e => updItem(item.id, "evento", e.target.value)}>
+                        <option value="iniciado">Iniciado</option>
+                        <option value="suspenso">Suspenso</option>
+                        <option value="ajustado">Dose ajustada</option>
+                        <option value="substituido">Substituído</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <div>
+                    <Field label="Data"><input type="date" value={item.data || ""} onChange={e => updItem(item.id, "data", e.target.value)} /></Field>
+                  </div>
+                  <div style={{ flex: "1 1 160px" }}>
+                    <Field label="Motivo"><input value={item.motivo || ""} onChange={e => updItem(item.id, "motivo", e.target.value)} placeholder="Ex: efeito adverso, sem indicação..." /></Field>
+                  </div>
+                  <button onClick={() => remItem(item.id)} style={{ marginTop: "20px" }}><i className="ti ti-trash" aria-hidden="true"></i></button>
+                </div>
+              ))}
+              <button onClick={addItem} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+                <i className="ti ti-plus" aria-hidden="true"></i>Adicionar evento
+              </button>
+            </div>
+          );
+        })()}
+      </SectionCard>
+      <SectionCard title="Medicações de uso prévio / descontinuadas" icon="ti-notes" defaultOpen={false}>
         <textarea rows={3} value={consulta.medicacoesPrevias || ""} onChange={e => updateConsulta(p => ({ ...p, medicacoesPrevias: e.target.value }))} placeholder="Medicação, motivo da descontinuação..." />
       </SectionCard>
     </div>
@@ -2357,6 +2625,11 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
               </label>
             ))}
           </div>
+          {aivdCount < 9 && (
+            <Field label="Justificativa para perda de AIVD">
+              <textarea rows={2} value={aga.aivdJustificativa || ""} onChange={e => set("aivdJustificativa", e.target.value)} placeholder="Ex: não faz compras por não sair de casa, não lida com finanças por demência..." />
+            </Field>
+          )}
         </Field>
         <Field label={`ABVD (Katz) — independente em ${abvdCount}/6`}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "4px" }}>
@@ -2366,6 +2639,11 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
               </label>
             ))}
           </div>
+          {abvdCount < 6 && (
+            <Field label="Justificativa para perda de ABVD">
+              <textarea rows={2} value={aga.abvdJustificativa || ""} onChange={e => set("abvdJustificativa", e.target.value)} placeholder="Ex: dependente para banho por artrose grave, necessita auxílio para transferência por fraqueza..." />
+            </Field>
+          )}
         </Field>
       </SectionCard>
 
@@ -2424,11 +2702,189 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
         {!aga.semQueixasCognitivas && (
           <>
             <Field label="Descrição da queixa cognitiva"><textarea rows={2} value={aga.queixasCognitivasDescricao || ""} onChange={e => set("queixasCognitivasDescricao", e.target.value)} placeholder="ex: esquecimento de compromissos, dificuldade para encontrar palavras..." /></Field>
+
+            {/* MEEM estruturado */}
+            <SectionCard title="MEEM — Mini Exame do Estado Mental" icon="ti-clipboard-list" defaultOpen={false}>
+              {(() => {
+                const escolaridade = consulta._escolaridade || "";
+                const itens = [
+                  { key: "meemOrientacaoTempo", label: "Orientação no tempo (ano, estação, mês, dia, dia da semana)", max: 5 },
+                  { key: "meemOrientacaoEspaco", label: "Orientação no espaço (país, estado, cidade, local, andar)", max: 5 },
+                  { key: "meemRegistro", label: "Registro (repetir 3 palavras)", max: 3 },
+                  { key: "meemAtencao", label: "Atenção e cálculo (serial 7s ou soletrar MUNDO)", max: 5 },
+                  { key: "meemEvocacao", label: "Evocação (recordar 3 palavras)", max: 3 },
+                  { key: "meemLinguagemNomeacao", label: "Nomeação (relógio e caneta)", max: 2 },
+                  { key: "meemLinguagemRepetir", label: "Repetição ('Nem aqui, nem ali, nem lá')", max: 1 },
+                  { key: "meemLinguagemComando", label: "Comando de 3 etapas", max: 3 },
+                  { key: "meemLinguagemLer", label: "Leitura ('Feche os olhos')", max: 1 },
+                  { key: "meemLinguagemEscrever", label: "Escrever uma frase", max: 1 },
+                  { key: "meemCopia", label: "Cópia do pentágono", max: 1 },
+                ];
+                const total = itens.reduce((s, it) => s + (parseInt(aga[it.key]) || 0), 0);
+                const maxTotal = 30;
+                // Pontos de corte por escolaridade (Bertolucci et al.)
+                const cutoff = !escolaridade ? 24 : escolaridade.includes("Analfabeto") ? 13 : escolaridade.includes("1") || escolaridade.includes("Fundamental I") ? 18 : escolaridade.includes("Fundamental") || escolaridade.includes("Médio") ? 24 : 26;
+                const alterado = total < cutoff;
+                return (
+                  <div>
+                    {itens.map(it => (
+                      <div key={it.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", gap: "8px" }}>
+                        <span style={{ fontSize: "13px", flex: 1 }}>{it.label}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <input type="number" min="0" max={it.max} value={aga[it.key] ?? ""} onChange={e => set(it.key, e.target.value)} style={{ width: "52px", textAlign: "center" }} />
+                          <span style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>/{it.max}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: "10px", padding: "10px", background: alterado ? "var(--color-background-warning)" : "var(--color-background-success)", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 700, color: alterado ? "var(--color-text-warning)" : "var(--color-text-success)" }}>
+                        MEEM Total: {total}/{maxTotal} {alterado ? "⚠ Abaixo do ponto de corte" : "✓ Dentro do esperado"}
+                      </span>
+                      <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>Ponto de corte: {cutoff}</span>
+                    </div>
+                    {total !== (parseInt(aga.meem) || 0) && (
+                      <button onClick={() => set("meem", String(total))} style={{ marginTop: "6px", fontSize: "12px" }}>
+                        Salvar pontuação ({total}) no campo MEEM
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+            </SectionCard>
+
+            {/* Mini-Cog estruturado */}
+            <SectionCard title="Mini-Cog" icon="ti-clock" defaultOpen={false}>
+              {(() => {
+                const evocacao = parseInt(aga.minicogEvocacao) || 0;
+                const relogio = parseInt(aga.minicogRelogio) || 0; // 0=anormal, 1=normal
+                let resultado = "";
+                if (evocacao === 3) resultado = "Normal (baixo risco de demência)";
+                else if (evocacao === 0) resultado = "Alterado (alta suspeita de demência)";
+                else if (evocacao <= 2 && relogio === 1) resultado = "Normal (baixo risco)";
+                else if (evocacao <= 2 && relogio === 0) resultado = "Alterado (suspeita de demência)";
+                const alterado = resultado.includes("Alterado");
+                return (
+                  <div>
+                    <Field label="Evocação das 3 palavras (0–3)">
+                      <input type="number" min="0" max="3" value={aga.minicogEvocacao ?? ""} onChange={e => set("minicogEvocacao", e.target.value)} style={{ maxWidth: "80px" }} />
+                    </Field>
+                    <Field label="Desenho do relógio">
+                      <select value={aga.minicogRelogio ?? ""} onChange={e => set("minicogRelogio", e.target.value)}>
+                        <option value="">Selecione...</option>
+                        <option value="1">Normal (ponteiros e números corretos)</option>
+                        <option value="0">Anormal</option>
+                      </select>
+                    </Field>
+                    {resultado && (
+                      <Alert type={alterado ? "warning" : "success"}>{resultado}</Alert>
+                    )}
+                    {resultado && parseInt(aga.minicogEvocacao) !== undefined && (
+                      <button onClick={() => set("minicog", alterado ? "Alterado" : "Normal")} style={{ fontSize: "12px" }}>
+                        Salvar resultado no campo Mini-Cog
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+            </SectionCard>
+
+            {/* MoCA */}
+            <SectionCard title="MoCA — Montreal Cognitive Assessment" icon="ti-brain" defaultOpen={false}>
+              {(() => {
+                const itensMoca = [
+                  { key: "mocaVisuoespacial", label: "Visuoespacial/Executivo (trilha, cubo, relógio)", max: 5 },
+                  { key: "mocaNomeacao", label: "Nomeação (leão, rinoceronte, camelo)", max: 3 },
+                  { key: "mocaMemoria", label: "Memória (evocação das 5 palavras)", max: 5 },
+                  { key: "mocaAtencao", label: "Atenção (dígitos, vigilância, serial 7)", max: 6 },
+                  { key: "mocaLinguagem", label: "Linguagem (frases, fluência verbal)", max: 3 },
+                  { key: "mocaAbstracao", label: "Abstração (semelhanças)", max: 2 },
+                  { key: "mocaEvocacao", label: "Evocação tardia (5 palavras)", max: 5 },
+                  { key: "mocaOrientacao", label: "Orientação (data, mês, ano, dia, local, cidade)", max: 6 },
+                ];
+                const total = itensMoca.reduce((s, it) => s + (parseInt(aga[it.key]) || 0), 0);
+                // +1 ponto se escolaridade ≤ 12 anos
+                const escolaridade = consulta._escolaridade || "";
+                const bonus = (!escolaridade || escolaridade.includes("Fundamental") || escolaridade.includes("Médio")) ? 1 : 0;
+                const totalCorrigido = Math.min(total + bonus, 30);
+                const alterado = totalCorrigido < 26;
+                return (
+                  <div>
+                    {itensMoca.map(it => (
+                      <div key={it.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", gap: "8px" }}>
+                        <span style={{ fontSize: "13px", flex: 1 }}>{it.label}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <input type="number" min="0" max={it.max} value={aga[it.key] ?? ""} onChange={e => set(it.key, e.target.value)} style={{ width: "52px", textAlign: "center" }} />
+                          <span style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>/{it.max}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: "10px", padding: "10px", background: alterado ? "var(--color-background-warning)" : "var(--color-background-success)", borderRadius: "8px" }}>
+                      <div style={{ fontWeight: 700, color: alterado ? "var(--color-text-warning)" : "var(--color-text-success)" }}>
+                        MoCA: {total} {bonus ? `+1 (escolaridade) = ${totalCorrigido}` : ""}/30 {alterado ? "⚠ Abaixo de 26 — rastreio positivo" : "✓ Normal (≥ 26)"}
+                      </div>
+                    </div>
+                    {totalCorrigido !== (parseInt(aga.moca) || 0) && (
+                      <button onClick={() => set("moca", String(totalCorrigido))} style={{ marginTop: "6px", fontSize: "12px" }}>
+                        Salvar pontuação ({totalCorrigido}) no campo MoCA
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+            </SectionCard>
+
             <Row cols="repeat(3, 1fr)">
-              <Field label="Mini-Cog"><input value={aga.minicog || ""} onChange={e => set("minicog", e.target.value)} /></Field>
-              <Field label="MEEM"><input value={aga.meem || ""} onChange={e => set("meem", e.target.value)} /></Field>
-              <Field label="MoCA"><input value={aga.moca || ""} onChange={e => set("moca", e.target.value)} /></Field>
+              <Field label="Mini-Cog (resultado)"><input value={aga.minicog || ""} onChange={e => set("minicog", e.target.value)} placeholder="Normal / Alterado" /></Field>
+              <Field label="MEEM (pontuação)"><input value={aga.meem || ""} onChange={e => set("meem", e.target.value)} /></Field>
+              <Field label="MoCA (pontuação)"><input value={aga.moca || ""} onChange={e => set("moca", e.target.value)} /></Field>
             </Row>
+
+            {/* CDR */}
+            {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"]) && (
+              <SectionCard title="CDR — Clinical Dementia Rating" icon="ti-chart-line" defaultOpen={false}>
+                {(() => {
+                  const dominios = [
+                    { key: "cdrMemoria", label: "Memória" },
+                    { key: "cdrOrientacao", label: "Orientação" },
+                    { key: "cdrJulgamento", label: "Julgamento e resolução de problemas" },
+                    { key: "cdrComunidade", label: "Atividades na comunidade" },
+                    { key: "cdrLar", label: "Lar e hobbies" },
+                    { key: "cdrCuidado", label: "Cuidados pessoais" },
+                  ];
+                  const opts = [
+                    { value: "0", label: "0 — Normal" },
+                    { value: "0.5", label: "0,5 — Questionável" },
+                    { value: "1", label: "1 — Leve" },
+                    { value: "2", label: "2 — Moderada" },
+                    { value: "3", label: "3 — Grave" },
+                  ];
+                  const cdrGlobal = aga.cdrGlobal || "";
+                  return (
+                    <div>
+                      {dominios.map(d => (
+                        <Field key={d.key} label={d.label}>
+                          <select value={aga[d.key] || ""} onChange={e => set(d.key, e.target.value)}>
+                            <option value="">Selecione...</option>
+                            {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        </Field>
+                      ))}
+                      <Field label="CDR Global (clínico)">
+                        <select value={cdrGlobal} onChange={e => set("cdrGlobal", e.target.value)}>
+                          <option value="">Selecione...</option>
+                          {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </Field>
+                      {cdrGlobal && (
+                        <Alert type={cdrGlobal === "0" ? "success" : cdrGlobal === "0.5" ? "info" : cdrGlobal === "1" ? "warning" : "danger"}>
+                          CDR {cdrGlobal}: {cdrGlobal === "0" ? "Sem demência" : cdrGlobal === "0.5" ? "Comprometimento cognitivo leve / Questionável" : cdrGlobal === "1" ? "Demência leve" : cdrGlobal === "2" ? "Demência moderada" : "Demência grave"}
+                        </Alert>
+                      )}
+                    </div>
+                  );
+                })()}
+              </SectionCard>
+            )}
           </>
         )}
       </SectionCard>
@@ -2443,13 +2899,134 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
         {!aga.semQueixasHumor && (
           <>
             <Field label="Descrição da queixa de humor"><textarea rows={2} value={aga.queixasHumorDescricao || ""} onChange={e => set("queixasHumorDescricao", e.target.value)} placeholder="ex: tristeza, anedonia, irritabilidade..." /></Field>
-            <Field label="GDS-15 (pontuação)" hint="Pontuação ≥6 sugere rastreio positivo para sintomas depressivos">
+
+            {/* GDS-15 estruturado */}
+            <SectionCard title="GDS-15 — Escala de Depressão Geriátrica" icon="ti-clipboard-list" defaultOpen={false}>
+              {(() => {
+                const GDS_QUESTOES = [
+                  { key: "gdsQ1",  texto: "1. Está satisfeito(a) com sua vida?", depressivo: "nao" },
+                  { key: "gdsQ2",  texto: "2. Abandonou muitas de suas atividades e interesses?", depressivo: "sim" },
+                  { key: "gdsQ3",  texto: "3. Sente que sua vida está vazia?", depressivo: "sim" },
+                  { key: "gdsQ4",  texto: "4. Fica com frequência aborrecido(a)?", depressivo: "sim" },
+                  { key: "gdsQ5",  texto: "5. Está de bom humor na maior parte do tempo?", depressivo: "nao" },
+                  { key: "gdsQ6",  texto: "6. Tem medo de que algo ruim vá lhe acontecer?", depressivo: "sim" },
+                  { key: "gdsQ7",  texto: "7. Sente-se feliz na maior parte do tempo?", depressivo: "nao" },
+                  { key: "gdsQ8",  texto: "8. Sente-se frequentemente desamparado(a)?", depressivo: "sim" },
+                  { key: "gdsQ9",  texto: "9. Prefere ficar em casa a sair e fazer coisas novas?", depressivo: "sim" },
+                  { key: "gdsQ10", texto: "10. Acha que tem mais problemas de memória do que a maioria?", depressivo: "sim" },
+                  { key: "gdsQ11", texto: "11. Acha que é maravilhoso estar vivo(a)?", depressivo: "nao" },
+                  { key: "gdsQ12", texto: "12. Sente-se inútil?", depressivo: "sim" },
+                  { key: "gdsQ13", texto: "13. Sente-se cheio(a) de energia?", depressivo: "nao" },
+                  { key: "gdsQ14", texto: "14. Sente que sua situação é sem esperança?", depressivo: "sim" },
+                  { key: "gdsQ15", texto: "15. Acha que a maioria das pessoas está melhor do que você?", depressivo: "sim" },
+                ];
+                const pontos = GDS_QUESTOES.reduce((s, q) => {
+                  const resp = aga[q.key];
+                  if (!resp) return s;
+                  return s + (resp === q.depressivo ? 1 : 0);
+                }, 0);
+                const respondidas = GDS_QUESTOES.filter(q => aga[q.key]).length;
+                const positivo = pontos >= 6;
+                const nivel = pontos <= 5 ? "Normal" : pontos <= 10 ? "Depressão leve" : "Depressão grave";
+                const corNivel = pontos <= 5 ? "success" : pontos <= 10 ? "warning" : "danger";
+                return (
+                  <div>
+                    {GDS_QUESTOES.map(q => (
+                      <div key={q.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", gap: "8px", padding: "6px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                        <span style={{ fontSize: "13px", flex: 1 }}>{q.texto}</span>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          {["sim", "nao"].map(opt => (
+                            <label key={opt} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", cursor: "pointer" }}>
+                              <input type="radio" name={q.key} value={opt} checked={aga[q.key] === opt} onChange={() => set(q.key, opt)} />
+                              {opt === "sim" ? "Sim" : "Não"}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {respondidas > 0 && (
+                      <div style={{ marginTop: "12px", padding: "10px 14px", background: `var(--color-background-${corNivel})`, borderRadius: "8px" }}>
+                        <div style={{ fontWeight: 700, color: `var(--color-text-${corNivel})` }}>
+                          GDS-15: {pontos}/15 — {nivel}
+                          {respondidas < 15 && <span style={{ fontWeight: 400, fontSize: "12px" }}> ({respondidas}/15 respondidas)</span>}
+                        </div>
+                        {positivo && <div style={{ fontSize: "12px", marginTop: "4px" }}>Rastreio positivo (≥6 pontos) — considerar avaliação clínica detalhada e tratamento</div>}
+                      </div>
+                    )}
+                    {pontos !== (parseInt(aga.gds15) || 0) && respondidas === 15 && (
+                      <button onClick={() => set("gds15", String(pontos))} style={{ marginTop: "8px", fontSize: "12px" }}>
+                        Salvar pontuação ({pontos}) no campo GDS-15
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
+            </SectionCard>
+
+            <Field label="GDS-15 (pontuação resumida)" hint="Pontuação ≥6 sugere rastreio positivo para sintomas depressivos">
               <input type="number" min="0" max="15" value={aga.gds15 || ""} onChange={e => set("gds15", e.target.value)} style={{ maxWidth: "100px" }} />
             </Field>
             {gdsPositive && <Alert type="warning">GDS-15 = {gdsNum}: rastreio positivo para sintomas depressivos. Considerar avaliação complementar.</Alert>}
           </>
         )}
       </SectionCard>
+
+      {/* NPI — apenas se demência na lista de problemas */}
+      {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"]) && (
+        <SectionCard title="NPI — Inventário Neuropsiquiátrico (simplificado)" icon="ti-brain" defaultOpen={false}>
+          {(() => {
+            const NPI_SINTOMAS = [
+              { key: "npiDelirios", label: "Delírios (crenças falsas fixas)" },
+              { key: "npiAlucinacoes", label: "Alucinações (visuais, auditivas)" },
+              { key: "npiAgitacao", label: "Agitação / Agressividade" },
+              { key: "npiDepressao", label: "Depressão / Disforia" },
+              { key: "npiAnsiedade", label: "Ansiedade" },
+              { key: "npiEuforia", label: "Euforia / Elação" },
+              { key: "npiApatia", label: "Apatia / Indiferença" },
+              { key: "npiDesinibicao", label: "Desinibição" },
+              { key: "npiIrritabilidade", label: "Irritabilidade / Labilidade emocional" },
+              { key: "npiMotor", label: "Comportamento motor aberrante (agitação motora)" },
+              { key: "npiSono", label: "Distúrbios do sono e comportamento noturno" },
+              { key: "npiApetite", label: "Distúrbios do apetite e alimentação" },
+            ];
+            const presentes = NPI_SINTOMAS.filter(s => aga[s.key] === "sim");
+            return (
+              <div>
+                <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "10px" }}>
+                  Marque os sintomas neuropsiquiátricos presentes no último mês. Para cada sintoma presente, descreva a intensidade e o impacto no campo de observações.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "6px", marginBottom: "12px" }}>
+                  {NPI_SINTOMAS.map(s => (
+                    <label key={s.key} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", padding: "6px 8px", borderRadius: "6px", background: aga[s.key] === "sim" ? "var(--color-background-warning)" : "var(--color-background-secondary)" }}>
+                      <input type="checkbox" checked={aga[s.key] === "sim"} onChange={e => set(s.key, e.target.checked ? "sim" : "nao")} />
+                      {s.label}
+                    </label>
+                  ))}
+                </div>
+                {presentes.length > 0 && (
+                  <Alert type="warning">
+                    {presentes.length} sintoma(s) neuropsiquiátrico(s) presente(s): {presentes.map(s => s.label).join(", ")}
+                  </Alert>
+                )}
+                <Field label="Observações / Intensidade dos sintomas">
+                  <textarea rows={3} value={aga.npiObservacoes || ""} onChange={e => set("npiObservacoes", e.target.value)} placeholder="Ex: agitação vespertina, alucinações visuais noturnas, recusa alimentar..." />
+                </Field>
+                <Field label="Impacto no cuidador">
+                  <select value={aga.npiImpactoCuidador || ""} onChange={e => set("npiImpactoCuidador", e.target.value)}>
+                    <option value="">Selecione...</option>
+                    <option value="0">Sem impacto</option>
+                    <option value="1">Mínimo</option>
+                    <option value="2">Leve</option>
+                    <option value="3">Moderado</option>
+                    <option value="4">Grave</option>
+                    <option value="5">Extremo</option>
+                  </select>
+                </Field>
+              </div>
+            );
+          })()}
+        </SectionCard>
+      )}
 
       <SectionCard title="Sono" icon="ti-moon">
         <Field label="">
@@ -2510,7 +3087,115 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
         </Row>
       </SectionCard>
 
+      {/* TUG e SPPB */}
+      <SectionCard title="Desempenho físico — TUG e SPPB" icon="ti-run" defaultOpen={false}>
+        {/* TUG */}
+        <Field label="TUG — Timed Up and Go (segundos)" hint="Paciente levanta, caminha 3m, retorna e senta">
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <input type="number" step="0.1" value={aga.tug || ""} onChange={e => set("tug", e.target.value)} style={{ maxWidth: "100px" }} placeholder="seg" />
+            {aga.tug && (() => {
+              const t = parseFloat(aga.tug);
+              const risco = t < 10 ? { label: "Baixo risco de queda", tipo: "success" } : t <= 20 ? { label: "Risco moderado de queda", tipo: "warning" } : { label: "⚠ Alto risco de queda", tipo: "danger" };
+              return <Pill color={risco.tipo}>{risco.label} ({t}s)</Pill>;
+            })()}
+          </div>
+        </Field>
+
+        {/* SPPB */}
+        <div style={{ fontWeight: 600, fontSize: "13px", margin: "12px 0 8px" }}>SPPB — Short Physical Performance Battery</div>
+        <Row cols="repeat(3, 1fr)">
+          <Field label="Teste de equilíbrio (0–4)" hint="0=incapaz, 4=tandem 10s">
+            <input type="number" min="0" max="4" value={aga.sppbEquilibrio ?? ""} onChange={e => set("sppbEquilibrio", e.target.value)} />
+          </Field>
+          <Field label="Velocidade de marcha (0–4)" hint="0=incapaz, 4=<4,82s para 4m">
+            <input type="number" min="0" max="4" value={aga.sppbMarcha ?? ""} onChange={e => set("sppbMarcha", e.target.value)} />
+          </Field>
+          <Field label="Levantar/sentar 5x (0–4)" hint="0=incapaz, 4=<11,2s">
+            <input type="number" min="0" max="4" value={aga.sppbLevantarSentar ?? ""} onChange={e => set("sppbLevantarSentar", e.target.value)} />
+          </Field>
+        </Row>
+        {(() => {
+          const sppbTotal = (parseInt(aga.sppbEquilibrio) || 0) + (parseInt(aga.sppbMarcha) || 0) + (parseInt(aga.sppbLevantarSentar) || 0);
+          if (!aga.sppbEquilibrio && !aga.sppbMarcha && !aga.sppbLevantarSentar) return null;
+          const nivel = sppbTotal <= 3 ? { label: "Limitação grave", tipo: "danger" } : sppbTotal <= 6 ? { label: "Limitação moderada", tipo: "warning" } : sppbTotal <= 9 ? { label: "Limitação leve", tipo: "warning" } : { label: "Desempenho preservado", tipo: "success" };
+          return (
+            <Alert type={nivel.tipo}>
+              SPPB Total: {sppbTotal}/12 — {nivel.label}
+              {sppbTotal <= 9 && " · Risco aumentado de incapacidade e mortalidade"}
+            </Alert>
+          );
+        })()}
+      </SectionCard>
+
+      {/* SARC-F */}
+      <SectionCard title="SARC-F — Rastreio de sarcopenia" icon="ti-activity" defaultOpen={false}>
+        {(() => {
+          const questoes = [
+            { key: "sarcfForca", label: "Força: Quanta dificuldade para carregar 4,5 kg?", opts: [["0","Nenhuma"],["1","Alguma"],["2","Muita/incapaz"]] },
+            { key: "sarcfCaminhada", label: "Caminhada: Quanta dificuldade para cruzar um cômodo?", opts: [["0","Nenhuma"],["1","Alguma"],["2","Muita/usa apoio/incapaz"]] },
+            { key: "sarcfLevantarCadeira", label: "Levantar da cadeira: Quanta dificuldade?", opts: [["0","Nenhuma"],["1","Alguma"],["2","Muita/incapaz sem ajuda"]] },
+            { key: "sarcfEscadas", label: "Subir 10 degraus: Quanta dificuldade?", opts: [["0","Nenhuma"],["1","Alguma"],["2","Muita/incapaz"]] },
+            { key: "sarcfQuedas", label: "Quedas: Quantas vezes caiu no último ano?", opts: [["0","Nenhuma"],["1","1–3 quedas"],["2","4 ou mais quedas"]] },
+          ];
+          const total = questoes.reduce((s, q) => s + (parseInt(aga[q.key]) || 0), 0);
+          const positivo = total >= 4;
+          return (
+            <div>
+              {questoes.map(q => (
+                <Field key={q.key} label={q.label}>
+                  <select value={aga[q.key] ?? ""} onChange={e => set(q.key, e.target.value)}>
+                    <option value="">Selecione...</option>
+                    {q.opts.map(([v, l]) => <option key={v} value={v}>{l} ({v} pt)</option>)}
+                  </select>
+                </Field>
+              ))}
+              {questoes.some(q => aga[q.key] !== undefined && aga[q.key] !== "") && (
+                <Alert type={positivo ? "warning" : "success"}>
+                  SARC-F: {total}/10 — {positivo ? "⚠ Rastreio POSITIVO para sarcopenia (≥4 pontos) — confirmar com força de preensão e circunferência de panturrilha" : "Rastreio negativo (<4 pontos)"}
+                </Alert>
+              )}
+            </div>
+          );
+        })()}
+      </SectionCard>
+
       <SectionCard title="Nutrição" icon="ti-apple">
+        {/* MNA-SF integrado */}
+        <SectionCard title="MNA-SF — Mini Avaliação Nutricional" icon="ti-salad" defaultOpen={false}>
+          {(() => {
+            const imc = parseFloat(calcIMC(aga.peso, aga.altura));
+            const questoes = [
+              { key: "mnaPerdaApetite", label: "A) Ingestão alimentar diminuiu nos últimos 3 meses por falta de apetite, problemas digestivos ou dificuldade de mastigar/deglutir?", opts: [["0","Diminuição acentuada"],["1","Diminuição moderada"],["2","Sem diminuição"]] },
+              { key: "mnaPerdaPeso", label: "B) Perda de peso nos últimos 3 meses?", opts: [["0",">3 kg"],["1","Não sabe"],["2","Entre 1–3 kg"],["3","Sem perda"]] },
+              { key: "mnaMobilidade", label: "C) Mobilidade?", opts: [["0","Acamado ou cadeira de rodas"],["1","Levanta mas não sai de casa"],["2","Sai de casa"]] },
+              { key: "mnaEstresse", label: "D) Estresse psicológico ou doença aguda nos últimos 3 meses?", opts: [["0","Sim"],["2","Não"]] },
+              { key: "mnaCognicao", label: "E) Problemas neuropsicológicos?", opts: [["0","Demência ou depressão grave"],["1","Demência leve"],["2","Sem problemas"]] },
+            ];
+            const qImc = !isNaN(imc) ? (imc < 19 ? 0 : imc < 21 ? 1 : imc < 23 ? 2 : 3) : null;
+            const total = questoes.reduce((s, q) => s + (parseInt(aga[q.key]) || 0), 0) + (qImc !== null ? qImc : 0);
+            const status = total <= 7 ? { label: "Desnutrição", tipo: "danger" } : total <= 11 ? { label: "Risco de desnutrição", tipo: "warning" } : { label: "Estado nutricional normal", tipo: "success" };
+            return (
+              <div>
+                {questoes.map(q => (
+                  <Field key={q.key} label={q.label}>
+                    <select value={aga[q.key] ?? ""} onChange={e => set(q.key, e.target.value)}>
+                      <option value="">Selecione...</option>
+                      {q.opts.map(([v, l]) => <option key={v} value={v}>{l} ({v} pt)</option>)}
+                    </select>
+                  </Field>
+                ))}
+                <Field label="F) IMC (calculado automaticamente)">
+                  <div style={{ fontSize: "13px", padding: "6px 0" }}>
+                    {!isNaN(imc) ? `IMC ${imc} → ${qImc} ponto(s)` : "Preencha peso e altura para calcular"}
+                  </div>
+                </Field>
+                {questoes.some(q => aga[q.key] !== undefined && aga[q.key] !== "") && (
+                  <Alert type={status.tipo}>MNA-SF: {total}/14 — {status.label}</Alert>
+                )}
+              </div>
+            );
+          })()}
+        </SectionCard>
         <Row cols="repeat(4, 1fr)">
           <Field label="Peso atual (kg)"><input type="number" value={aga.peso || ""} onChange={e => set("peso", e.target.value)} /></Field>
           <Field label="Peso habitual (kg)"><input type="number" value={aga.pesoHabitual || ""} onChange={e => set("pesoHabitual", e.target.value)} /></Field>
@@ -2785,11 +3470,25 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
   );
 }
 
-function ExameTab({ consulta, updateConsulta, patient }) {
+function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
   const e = consulta.exameFisico || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, exameFisico: { ...p.exameFisico, [k]: v } }));
   const sexo = patient?.ident?.sexo;
   const F = sexo === "F";
+
+  // Consulta anterior para copiar exame físico
+  const consultaAnterior = (() => {
+    if (!todasConsultas) return null;
+    const sorted = [...todasConsultas].filter(c => !c.deletedAt && c.id !== consulta.id).sort((a, b) => new Date(b.data) - new Date(a.data));
+    return sorted[0] || null;
+  })();
+
+  function copiarExameFisico() {
+    if (!consultaAnterior?.exameFisico) return;
+    const { peso, hgt, paSentado, paEmPe, fc, sato2, fr, temp, eva, ...segmentar } = consultaAnterior.exameFisico;
+    // Copia apenas o segmentar (não copia sinais vitais)
+    updateConsulta(p => ({ ...p, exameFisico: { ...p.exameFisico, ...segmentar } }));
+  }
 
   // Perfil do paciente para metas
   const aga = consulta.aga || {};
@@ -2947,9 +3646,16 @@ function ExameTab({ consulta, updateConsulta, patient }) {
         })()}
       </SectionCard>
       <SectionCard title="Exame físico segmentar" icon="ti-stethoscope">
-        <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>
-          Achados padrão pré-preenchidos conforme sexo {sexo ? `(${F ? "Feminino" : "Masculino"})` : "— informe o sexo na aba Identificação para texto personalizado"} — edite conforme o exame real.
-        </p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+          <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", margin: 0 }}>
+            Achados padrão pré-preenchidos conforme sexo {sexo ? `(${F ? "Feminino" : "Masculino"})` : "— informe o sexo na aba Identificação"} — edite conforme o exame real.
+          </p>
+          {consultaAnterior?.exameFisico && (
+            <button onClick={copiarExameFisico} style={{ fontSize: "12px", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "4px", padding: "4px 10px" }}>
+              <i className="ti ti-copy" aria-hidden="true"></i>Sem novidades (copiar anterior)
+            </button>
+          )}
+        </div>
         {campos.map(([k, label, padrao]) => (
           <Field key={k} label={label}>
             <textarea rows={2} value={e[k] !== undefined ? e[k] : padrao} onChange={ev => set(k, ev.target.value)} placeholder={k === "outros" ? "Outros achados relevantes..." : undefined} />
@@ -3080,6 +3786,156 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
     }
   }
 
+  // ============================================================
+  // ALERTAS DE LABORATORIAIS ADICIONAIS
+  // ============================================================
+  const sexoPac = patient?.ident?.sexo || "";
+  const alertasLabs = [];
+
+  // Hemoglobina / Anemia
+  const mHb = labs.match(/(?:hb|hemoglobina|hgb)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)(?!\s*a1c|\s*glicada)/i);
+  if (mHb) {
+    const hb = parseFloat(mHb[1].replace(',', '.'));
+    const limiteAnemia = sexoPac === "F" ? 12 : 13;
+    if (hb < limiteAnemia) {
+      const grau = hb < 8 ? "grave" : hb < 10 ? "moderada" : "leve";
+      alertasLabs.push({
+        tipo: hb < 10 ? "danger" : "warning",
+        titulo: `⚠ Anemia ${grau} — Hb ${hb} g/dL (meta ≥ ${limiteAnemia} para ${sexoPac === "F" ? "mulheres" : "homens"})`,
+        itens: [
+          "Investigação: ferritina, ferro sérico, TIBC, B12, folato, reticulócitos, esfregaço",
+          "Se Hb < 10: considerar investigação de sangramento oculto (PSO, EDA, colonoscopia)",
+          "Atenção: anemia agrava fragilidade, quedas e insuficiência cardíaca",
+        ]
+      });
+    }
+  }
+
+  // Sódio — hiponatremia
+  const mNa = labs.match(/(?:na|s[oó]dio|na\+)(?:\s*[:=]?\s*)(\d+)/i);
+  if (mNa) {
+    const na = parseInt(mNa[1]);
+    if (na < 135) {
+      const grau = na < 125 ? "grave" : na < 130 ? "moderada" : "leve";
+      alertasLabs.push({
+        tipo: na < 125 ? "danger" : "warning",
+        titulo: `⚠ Hiponatremia ${grau} — Na ${na} mEq/L (normal 135–145)`,
+        itens: [
+          "Causas comuns no idoso: diuréticos tiazídicos, ISRS, desmopressina, hipotireoidismo",
+          "Investigar: osmolalidade sérica e urinária, sódio urinário, TSH",
+          na < 125 ? "⚠ Hiponatremia grave — risco de convulsão e herniação cerebral, avaliar internação" : "Corrigir lentamente (máx 8–10 mEq/L em 24h)",
+        ]
+      });
+    }
+  }
+
+  // Potássio — hipercalemia e hipocalemia
+  const mK = labs.match(/(?:k|pot[aá]ssio|k\+)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
+  if (mK) {
+    const k = parseFloat(mK[1].replace(',', '.'));
+    if (k > 5.5) {
+      alertasLabs.push({
+        tipo: k > 6.5 ? "danger" : "warning",
+        titulo: `⚠ Hipercalemia — K ${k} mEq/L (normal 3,5–5,0)`,
+        itens: [
+          "Causas: IECA, BRA, espironolactona, AINEs, DRC",
+          k > 6.5 ? "⚠ Hipercalemia grave — risco de arritmia, ECG imediato" : "Revisar medicações hipercalemiantes",
+          "Tríplice whammy (IECA+AINE+diurético) aumenta risco — revisar prescrição",
+        ]
+      });
+    } else if (k < 3.5) {
+      alertasLabs.push({
+        tipo: k < 3.0 ? "danger" : "warning",
+        titulo: `⚠ Hipocalemia — K ${k} mEq/L (normal 3,5–5,0)`,
+        itens: [
+          "Causas: furosemida, tiazídicos, diarreia, hiperaldosteronismo",
+          "Repor potássio VO ou EV conforme gravidade",
+          "Atenção: hipocalemia potencializa toxicidade da digoxina",
+        ]
+      });
+    }
+  }
+
+  // Vitamina B12
+  const mB12 = labs.match(/(?:b12|vitamina\s*b12|cobalamina)(?:\s*[:=]?\s*)(\d+)/i);
+  if (mB12) {
+    const b12 = parseInt(mB12[1]);
+    if (b12 < 300) {
+      alertasLabs.push({
+        tipo: b12 < 150 ? "danger" : "warning",
+        titulo: `⚠ Vitamina B12 baixa — ${b12} pg/mL (referência ≥ 300)`,
+        itens: [
+          "Risco de neuropatia periférica, declínio cognitivo e anemia megaloblástica",
+          "Causas: metformina, IBP prolongado, gastrite atrófica, dieta vegetariana",
+          "Repor: cianocobalamina 1000 mcg/dia VO por 30 dias, depois manutenção",
+          "Solicitar folato sérico e homocisteína se disponível",
+        ]
+      });
+    } else if (b12 >= 300 && b12 < 400) {
+      alertasLabs.push({
+        tipo: "info",
+        titulo: `ℹ B12 limítrofe — ${b12} pg/mL (zona cinza 300–400)`,
+        itens: ["Considerar reposição especialmente se uso de metformina ou IBP crônico, ou se sintomas de deficiência"]
+      });
+    }
+  }
+
+  // TSH
+  const mTSH = labs.match(/(?:tsh)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
+  if (mTSH) {
+    const tsh = parseFloat(mTSH[1].replace(',', '.'));
+    if (tsh > 10) {
+      alertasLabs.push({
+        tipo: "danger",
+        titulo: `⚠ Hipotireoidismo primário — TSH ${tsh} mUI/L (normal 0,5–4,5)`,
+        itens: [
+          "TSH > 10: hipotireoidismo franco — iniciar levotiroxina",
+          "Dose inicial em idoso: 25–50 mcg/dia, aumentar 12,5–25 mcg a cada 4–6 semanas",
+          "Impacto: piora de dislipidemia, disfunção cognitiva, depressão e insuficiência cardíaca",
+          "Dosar T4 livre para confirmar e titular dose",
+        ]
+      });
+    } else if (tsh > 6 && tsh <= 10) {
+      alertasLabs.push({
+        tipo: "warning",
+        titulo: `⚠ Hipotireoidismo subclínico — TSH ${tsh} mUI/L`,
+        itens: [
+          "Em idoso ≥ 80 anos: TSH até 6–7 pode ser aceitável (alvo mais brando)",
+          "Tratar se TSH > 10 ou se sintomas presentes",
+          "Verificar anticorpos anti-TPO para avaliar risco de progressão",
+        ]
+      });
+    } else if (tsh < 0.1) {
+      alertasLabs.push({
+        tipo: "danger",
+        titulo: `⚠ Hipertireoidismo — TSH ${tsh} mUI/L (suprimido)`,
+        itens: [
+          "Risco de FA, osteoporose e piora cognitiva no idoso",
+          "Dosar T3 e T4 livre",
+          "Encaminhar endocrinologia — considerar cintilografia de tireoide",
+        ]
+      });
+    }
+  }
+
+  // Albumina
+  const mAlb = labs.match(/(?:albumina)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
+  if (mAlb) {
+    const alb = parseFloat(mAlb[1].replace(',', '.'));
+    if (alb < 3.5) {
+      alertasLabs.push({
+        tipo: alb < 3.0 ? "danger" : "warning",
+        titulo: `⚠ Hipoalbuminemia — Albumina ${alb} g/dL (normal ≥ 3,5)`,
+        itens: [
+          "Marcador de desnutrição grave e pior prognóstico em idosos",
+          alb < 3.0 ? "⚠ Albumina < 3,0: mortalidade aumentada significativamente" : "Avaliar causa: desnutrição, hepatopatia, síndrome nefrótica, inflamação crônica",
+          "Encaminhar nutrição para suporte nutricional intensivo",
+          "Atenção: albumina baixa altera farmacocinética de medicações altamente ligadas a proteínas (fenitoína, warfarina)",
+        ]
+      });
+    }
+  }
+
   return (
     <div>
       <SectionCard title="Calculadoras de risco" icon="ti-calculator" defaultOpen={false}>
@@ -3127,6 +3983,14 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
             </Alert>
           );
         })()}
+        {alertasLabs.length > 0 && alertasLabs.map((a, idx) => (
+          <div key={idx} style={{ background: `var(--color-background-${a.tipo})`, border: `0.5px solid var(--color-border-${a.tipo})`, borderRadius: "8px", padding: "10px 14px", fontSize: "13px", marginBottom: "10px" }}>
+            <div style={{ fontWeight: 700, color: `var(--color-text-${a.tipo})`, marginBottom: a.itens?.length ? "6px" : 0 }}>{a.titulo}</div>
+            {a.itens && a.itens.map((item, i) => (
+              <div key={i} style={{ fontSize: "12px", color: "var(--color-text-primary)", padding: "2px 0" }}>• {item}</div>
+            ))}
+          </div>
+        ))}
         <textarea
           rows={10}
           value={consulta.labsTexto || ""}
@@ -3149,6 +4013,43 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
 function PlanoTab({ consulta, updateConsulta, patient }) {
   const pl = consulta.plano || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, plano: { ...p.plano, [k]: v } }));
+  const [showPrescricao, setShowPrescricao] = useState(false);
+  const [medicacoesSelecionadas, setMedicacoesSelecionadas] = useState([]);
+  const [medicacoesAdicionais, setMedicacoesAdicionais] = useState("");
+
+  // Meds da consulta para prescrição
+  const medsLista = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim());
+
+  function toggleMed(med) {
+    setMedicacoesSelecionadas(prev =>
+      prev.includes(med) ? prev.filter(m => m !== med) : [...prev, med]
+    );
+  }
+
+  function gerarPrescricaoWord() {
+    const todasMeds = [...medicacoesSelecionadas, ...medicacoesAdicionais.split("\n").filter(l => l.trim())];
+    if (todasMeds.length === 0) { alert("Selecione ao menos uma medicação."); return; }
+    const hoje = new Date().toLocaleDateString("pt-BR");
+    const nomePaciente = patient?.ident?.nome || "paciente";
+    const idade = calcIdade(patient?.ident?.dn);
+    const nomeArquivo = "RECEITAS - " + nomePaciente.replace(/[^a-zA-ZÀ-ÿ0-9 ]/g, "").trim() + " " + hoje.replace(/\//g, "-") + ".docx";
+
+    preencherReceitasDocx({
+      nome: nomePaciente,
+      prontuario: patient?.ident?.prontuario || "",
+      maeNome: patient?.ident?.maeNome || "",
+      idade: idade != null ? idade : "",
+      sexo: patient?.ident?.sexo || "",
+    }).then(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = nomeArquivo;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setShowPrescricao(false);
+    }).catch(e => alert("Erro ao gerar receita: " + e.message));
+  }
 
   const sexo = patient?.ident?.sexo || "";
   const F = sexo === "F";
@@ -3238,7 +4139,42 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
 
   return (
     <div>
+      {showPrescricao && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
+          <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "520px", padding: "24px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <div style={{ fontWeight: 600, fontSize: "15px" }}>📋 Gerar receita</div>
+              <button onClick={() => setShowPrescricao(false)}><i className="ti ti-x" aria-hidden="true"></i></button>
+            </div>
+            {medsLista.length > 0 && (
+              <div style={{ marginBottom: "14px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>Medicações em uso — selecione as que entram na receita:</div>
+                {medsLista.map((med, i) => (
+                  <label key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "13px", marginBottom: "6px", cursor: "pointer" }}>
+                    <input type="checkbox" checked={medicacoesSelecionadas.includes(med)} onChange={() => toggleMed(med)} style={{ marginTop: "2px" }} />
+                    <span>{med}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <Field label="Medicações adicionais (opcional — uma por linha)">
+              <textarea rows={3} value={medicacoesAdicionais} onChange={e => setMedicacoesAdicionais(e.target.value)} placeholder="Ex: Dipirona 500mg - 1cp se dor ou febre..." />
+            </Field>
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "12px" }}>
+              <button onClick={() => setShowPrescricao(false)} style={{ fontSize: "13px" }}>Cancelar</button>
+              <button onClick={gerarPrescricaoWord} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <i className="ti ti-file-word" aria-hidden="true"></i>Gerar receita Word
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <SectionCard title="Plano terapêutico" icon="ti-target-arrow">
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "10px" }}>
+          <button onClick={() => { setMedicacoesSelecionadas(medsLista); setShowPrescricao(true); }} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+            <i className="ti ti-file-word" aria-hidden="true"></i>Gerar receita a partir das medicações
+          </button>
+        </div>
         <Field label="1. Ajuste medicamentoso"><textarea rows={4} value={pl.ajuste || ""} onChange={e => set("ajuste", e.target.value)} placeholder="Descreva os ajustes de medicações..." /></Field>
 
         <Field label="2. Solicito">
@@ -3526,6 +4462,153 @@ function FraxCalc({ consulta, patient }) {
 // DASHBOARD ESTATÍSTICO MELHORADO
 // ============================================================
 function Dashboard({ patients }) {
+  function exportarExcel() {
+    const ativos = patients.filter(p => !p.deletedAt);
+    const headers = [
+      // Identificação
+      "Nome", "Prontuário", "CPF", "DN", "Idade", "Sexo", "Naturalidade", "Procedência",
+      "Profissão", "Escolaridade", "Estado civil", "Mora com", "Telefone", "Acompanhante", "Cuidador",
+      // Última consulta
+      "Data última consulta", "Nº consultas",
+      // Sinais vitais
+      "PA sentado", "PA em pé", "FC", "FR", "SatO2", "Temp", "Peso", "HGT", "EVA (dor)",
+      // AGA — funcionalidade
+      "AIVD (Lawton)", "AIVD Justificativa", "ABVD (Katz)", "ABVD Justificativa",
+      // AGA — fragilidade
+      "FRAIL score", "Perfil fragilidade",
+      // AGA — cognição
+      "MEEM", "MoCA", "Relógio", "GDS-15",
+      // AGA — nutrição
+      "IMC", "Classificação IMC", "Circunf. panturrilha", "Força preensão (kgf)",
+      // AGA — quedas
+      "Quedas no último ano", "Nº quedas",
+      // Antecedentes
+      "Tabagismo", "Etilismo", "Cirurgias prévias", "Internamentos", "Alergias", "Histórico familiar",
+      // Medicações
+      "Nº medicamentos", "Medicações em uso", "Polifarmácia",
+      // Alertas
+      "Beers detectados", "Interações detectadas",
+      // Labs
+      "Exames laboratoriais", "Exames de imagem",
+      // Comorbidades
+      "Comorbidades (lista)", "Nº comorbidades", "HAS", "DM2", "DAC", "AVC", "DRC", "Dislipidemia",
+      "Hipotireoidismo", "Osteoporose", "Insuficiência cardíaca", "FA", "DPOC", "Demência",
+      // Plano
+      "Solicitado", "Orientações", "Encaminhamentos", "Retorno programado",
+      // Rastreio
+      "Vacina influenza", "Vacina pneumo", "Vacina COVID",
+    ];
+
+    const rows = [headers];
+
+    ativos.forEach(p => {
+      const i = p.ident || {};
+      const consultas = (p.consultas || []).filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data));
+      const ult = consultas[0] || {};
+      const aga = ult.aga || {};
+      const ef = ult.exameFisico || {};
+      const ant = ult.antecedentes || {};
+      const pl = ult.plano || {};
+      const prob = ult.problemas || {};
+      const custom = (ult.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
+      const vac = ult.vacinas || {};
+
+      // Fragilidade
+      const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+      const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
+
+      // AIVD/ABVD
+      const aivdCount = Object.values(aga.aivd || {}).filter(Boolean).length;
+      const abvdCount = Object.values(aga.abvd || {}).filter(Boolean).length;
+
+      // Medicações
+      const medsLista = (ult.medicacoesTexto || "").split("\n").filter(l => l.trim());
+      const numMeds = medsLista.length;
+      const beers = medsLista.filter(l => checkBeers(l)).join("; ");
+      const interacoes = checkInteracoes(ult.medicacoesTexto || "").join("; ");
+
+      // Comorbidades
+      const ativosProb = PROBLEMAS.filter(pr => prob[pr]);
+      const todasComorbidades = [...ativosProb, ...custom];
+      const idade = calcIdade(i.dn);
+
+      // IMC
+      const imc = calcIMC(aga.peso, aga.altura);
+      const imcLabel = imc ? (parseFloat(imc) <= 22 ? "Baixo peso" : parseFloat(imc) < 27 ? "Eutrofia" : "Sobrepeso") : "";
+
+      // Vacinas
+      const vacInfluenza = (vac.influenza?.historico || []).length > 0 ? "Sim" : "Não registrada";
+      const vacPneumo = (vac.pneumococo?.historico || []).length > 0 ? "Sim" : "Não registrada";
+      const vacCovid = (vac.covid?.historico || []).length > 0 ? "Sim" : "Não registrada";
+
+      rows.push([
+        // Identificação
+        i.nome || "", i.prontuario || "", i.cpf || "", i.dn || "", idade != null ? idade : "",
+        i.sexo || "", i.naturalidade || "", i.procedencia || "",
+        i.profissao || "", i.escolaridade || "", i.estadoCivil || "", i.moraCom || "",
+        i.telefone || "", i.acompanhante || "", i.cuidador || "",
+        // Última consulta
+        ult.data ? fmtDate(ult.data) : "", consultas.length,
+        // Sinais vitais
+        ef.paSentado || "", ef.paEmPe || "", ef.fc || "", ef.fr || "",
+        ef.sato2 || "", ef.temp || "", ef.peso || aga.peso || "", ef.hgt || "", ef.eva || "",
+        // Funcionalidade
+        `${aivdCount}/9`, aga.aivdJustificativa || "",
+        `${abvdCount}/6`, aga.abvdJustificativa || "",
+        // Fragilidade
+        `${frailScore}/5`, frailClass,
+        // Cognição
+        aga.meem || "", aga.moca || "", aga.relogio || "", aga.gds || "",
+        // Nutrição
+        imc || "", imcLabel, aga.circPanturrilha || "", aga.testeForca || "",
+        // Quedas
+        aga.quedas || "", aga.quedasNum || "",
+        // Antecedentes
+        ant.tabagismo || "", ant.etilismo || "", ant.cirurgias || "",
+        ant.internamentos || "", ant.alergias || "", ant.historicofamiliar || "",
+        // Medicações
+        numMeds, medsLista.join("; "), numMeds >= 5 ? "Sim" : "Não",
+        // Alertas
+        beers, interacoes,
+        // Labs
+        ult.labsTexto || "", ult.imagemTexto || "",
+        // Comorbidades
+        todasComorbidades.join("; "), todasComorbidades.length,
+        prob["HAS"] ? "Sim" : "Não", prob["DM2"] ? "Sim" : "Não",
+        prob["DAC"] ? "Sim" : "Não", prob["AVC"] ? "Sim" : "Não",
+        prob["DRC"] ? "Sim" : "Não", prob["Dislipidemia"] ? "Sim" : "Não",
+        prob["Hipotireoidismo"] ? "Sim" : "Não", prob["Osteoporose"] ? "Sim" : "Não",
+        prob["Insuficiência cardíaca"] ? "Sim" : "Não", prob["FA"] ? "Sim" : "Não",
+        prob["DPOC"] ? "Sim" : "Não",
+        (prob["Demência"] || prob["Síndrome demencial"] || prob["Doença de Alzheimer"]) ? "Sim" : "Não",
+        // Plano
+        pl.solicito || "", pl.orientacoes || "", pl.encaminhamentos || "", pl.retorno || "",
+        // Vacinas
+        vacInfluenza, vacPneumo, vacCovid,
+      ]);
+    });
+
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const bom = "\uFEFF";
+    const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pacientes_completo_${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function backupJSON() {
+    const dados = { exportadoEm: new Date().toISOString(), totalPacientes: patients.length, pacientes: patients };
+    const blob = new Blob([JSON.stringify(dados, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backup_prontuario_${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
   const ativos = patients.filter(p => !p.deletedAt);
   const total = ativos.length;
   if (total === 0) return <div style={{ textAlign: "center", padding: "2rem", color: "var(--color-text-secondary)" }}>Nenhum paciente cadastrado.</div>;
@@ -3726,12 +4809,18 @@ function Dashboard({ patients }) {
           </div>
         ))}
       </SectionCard>
+
+      <div style={{ display: "flex", gap: "10px", marginTop: "8px", flexWrap: "wrap" }}>
+        <button onClick={exportarExcel} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+          <i className="ti ti-file-spreadsheet" aria-hidden="true"></i>Exportar lista (CSV/Excel)
+        </button>
+        <button onClick={backupJSON} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+          <i className="ti ti-database-export" aria-hidden="true"></i>Backup completo (JSON)
+        </button>
+      </div>
     </div>
   );
 }
-
-// ============================================================
-// GRÁFICO DE EVOLUÇÃO (Peso e PA)
 // ============================================================
 function GraficoEvolucao({ patient }) {
   const consultas = [...(patient.consultas || [])]
@@ -3749,6 +4838,15 @@ function GraficoEvolucao({ patient }) {
       return m ? { data: c.data, sis: parseInt(m[1]), dia: parseInt(m[2]) } : null;
     })
     .filter(Boolean);
+
+  // Dados cognitivos
+  const dadosMEEM = consultas
+    .map(c => ({ data: c.data, valor: parseInt((c.aga || {}).meem) }))
+    .filter(d => !isNaN(d.valor) && d.valor > 0);
+
+  const dadosMoCA = consultas
+    .map(c => ({ data: c.data, valor: parseInt((c.aga || {}).moca) }))
+    .filter(d => !isNaN(d.valor) && d.valor > 0);
 
   if (dadosPeso.length < 2 && dadosPA.length < 2) return null;
 
@@ -3834,6 +4932,44 @@ function GraficoEvolucao({ patient }) {
               </span>
             ))}
           </div>
+        </SectionCard>
+      )}
+      {(dadosMEEM.length >= 2 || dadosMoCA.length >= 2) && (
+        <SectionCard title="Progressão cognitiva" icon="ti-brain" defaultOpen={true}>
+          {dadosMEEM.length >= 2 && (
+            <>
+              <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "4px" }}>MEEM (pontuação)</div>
+              <SVGLine dados={dadosMEEM.map(d => d.valor)} cor="var(--color-border-info)" min={Math.min(...dadosMEEM.map(d => d.valor)) - 2} max={30} />
+              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "4px" }}>
+                {dadosMEEM.map((d, i) => (
+                  <span key={i} style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+                    {fmtDate(d.data)}: <strong>{d.valor}/30</strong>
+                  </span>
+                ))}
+              </div>
+              {dadosMEEM.length >= 2 && (() => {
+                const diff = dadosMEEM[dadosMEEM.length-1].valor - dadosMEEM[0].valor;
+                return diff < -2 && <div style={{ fontSize: "13px", color: "var(--color-text-danger)", marginTop: "4px" }}>⚠ Declínio de {Math.abs(diff)} pontos no MEEM desde a primeira consulta</div>;
+              })()}
+            </>
+          )}
+          {dadosMoCA.length >= 2 && (
+            <>
+              <div style={{ fontSize: "13px", fontWeight: 600, margin: "10px 0 4px" }}>MoCA (pontuação)</div>
+              <SVGLine dados={dadosMoCA.map(d => d.valor)} cor="var(--color-border-warning)" min={Math.min(...dadosMoCA.map(d => d.valor)) - 2} max={30} />
+              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "4px" }}>
+                {dadosMoCA.map((d, i) => (
+                  <span key={i} style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+                    {fmtDate(d.data)}: <strong>{d.valor}/30</strong>
+                  </span>
+                ))}
+              </div>
+              {dadosMoCA.length >= 2 && (() => {
+                const diff = dadosMoCA[dadosMoCA.length-1].valor - dadosMoCA[0].valor;
+                return diff < -2 && <div style={{ fontSize: "13px", color: "var(--color-text-danger)", marginTop: "4px" }}>⚠ Declínio de {Math.abs(diff)} pontos no MoCA desde a primeira consulta</div>;
+              })()}
+            </>
+          )}
         </SectionCard>
       )}
     </div>
@@ -4275,7 +5411,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div id="print-content">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
         <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
-        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>AMBULATÓRIO DE GERIATRIA - CEMPRE</div>
+        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>{getNomeAmbulatorio(sessionStorage.getItem("ambulatorio") || "cempre")}</div>
         <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
       </div>
       <div style={{ marginBottom: "4px" }}><span style={label}>Paciente:</span> {i.nome || "—"}</div>
