@@ -2004,7 +2004,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       </div>
 
       {activeTab === "ident" && <IdentTab patient={patient} updatePatient={updatePatient} />}
-      {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "antecedentes" && <AntecedentesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} />}
@@ -2120,7 +2120,7 @@ function ComorbidadeItem({ nome, checked, onToggle, nota, onNotaChange, onRemove
   );
 }
 
-function ProblemasTab({ consulta, updateConsulta }) {
+function ProblemasTab({ consulta, updateConsulta, patient }) {
   const problemas = consulta.problemas || {};
   const notas = consulta.problemasNotas || {};
   const custom = consulta.problemasCustom || [];
