@@ -1077,7 +1077,7 @@ export default function App() {
             });
             if (consultasLimpas.length !== (p.consultas || []).length) {
               const atualizado = { ...p, consultas: consultasLimpas, updatedAt: new Date().toISOString() };
-              savePatient(atualizado).catch(e => console.error("Falha ao expurgar consultas antigas", e));
+              savePatient(atualizado, ambulatorio).catch(e => console.error("Falha ao expurgar consultas antigas", e));
               return atualizado;
             }
             return p;
@@ -1115,7 +1115,7 @@ export default function App() {
           });
           if (mudouPaciente) {
             const atualizado = { ...p, consultas: consultasMigradas };
-            savePatient(atualizado).catch(e => console.error("Falha ao migrar rastreio para array", e));
+            savePatient(atualizado, ambulatorio).catch(e => console.error("Falha ao migrar rastreio para array", e));
             return atualizado;
           }
           return p;
@@ -1167,7 +1167,7 @@ export default function App() {
           });
           if (mudouPaciente) {
             const atualizado = { ...p, consultas: consultasMigradas };
-            savePatient(atualizado).catch(e => console.error("Falha ao migrar receitas para array", e));
+            savePatient(atualizado, ambulatorio).catch(e => console.error("Falha ao migrar receitas para array", e));
             return atualizado;
           }
           return p;
@@ -1217,7 +1217,7 @@ export default function App() {
           });
           if (mudouPaciente) {
             const atualizado = { ...p, consultas: consultasMigradas };
-            savePatient(atualizado).catch(e => console.error("Falha ao migrar documentos únicos para lista", e));
+            savePatient(atualizado, ambulatorio).catch(e => console.error("Falha ao migrar documentos únicos para lista", e));
             return atualizado;
           }
           return p;
@@ -1247,7 +1247,7 @@ export default function App() {
           });
           if (mudouPaciente) {
             const atualizado = { ...p, consultas: consultasSaneadas };
-            savePatient(atualizado).catch(e => console.error("Falha ao sanear datas de vacina", e));
+            savePatient(atualizado, ambulatorio).catch(e => console.error("Falha ao sanear datas de vacina", e));
             return atualizado;
           }
           return p;
@@ -1255,9 +1255,9 @@ export default function App() {
 
         setPatients(sanitizados);
         if (anyMigrated) {
-          sanitizados.forEach(p => { savePatient(p).catch(e => console.error("Falha ao persistir migração", e)); });
+          sanitizados.forEach(p => { savePatient(p, ambulatorio).catch(e => console.error("Falha ao persistir migração", e)); });
         }
-        expurgados.forEach(({ id }) => { apiDeletePatient(id).catch(e => console.error("Falha ao expurgar paciente antigo", e)); });
+        expurgados.forEach(({ id }) => { apiDeletePatient(id, ambulatorio).catch(e => console.error("Falha ao expurgar paciente antigo", e)); });
       } catch (e) {
         console.error(e);
         setLoadError(e.message);
@@ -1588,7 +1588,7 @@ export default function App() {
     const target = (patients || []).find(p => p.id === patientId);
     if (target) {
       const updated = { ...target, consultas: target.consultas.map(c => c.id === consultaId ? { ...c, deletedAt: null, updatedAt: now } : c) };
-      savePatient(updated).catch(e => console.error(e));
+      savePatient(updated, ambulatorio).catch(e => console.error(e));
     }
   }
 
@@ -1597,7 +1597,7 @@ export default function App() {
     const target = (patients || []).find(p => p.id === patientId);
     if (target) {
       const updated = { ...target, consultas: target.consultas.filter(c => c.id !== consultaId) };
-      savePatient(updated).catch(e => console.error(e));
+      savePatient(updated, ambulatorio).catch(e => console.error(e));
     }
   }
 
@@ -4428,4 +4428,3 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
     </PrintShell>
   );
 }
-// deploy
