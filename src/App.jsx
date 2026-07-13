@@ -4428,3 +4428,4 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
     </PrintShell>
   );
 }
+// deploy
