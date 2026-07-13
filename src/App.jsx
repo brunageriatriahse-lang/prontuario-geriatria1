@@ -1742,7 +1742,7 @@ export default function App() {
       )}
     </div>
 
-      {printDoc && <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} />}
+      {printDoc && <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} ambulatorio={ambulatorio} />}
     </>
   );
 }
@@ -5120,9 +5120,8 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
 }
 
 
-function PrintDocRenderer({ doc, patient, consulta, onClose }) {
-  if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} />;
-
+function PrintDocRenderer({ doc, patient, consulta, onClose, ambulatorio }) {
+  if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} ambulatorio={ambulatorio} />;
   if (doc.type === "sugestoesIA") return <SugestoesCondutaIA patient={patient} consulta={consulta} onClose={onClose} />;
   return null;
 }
@@ -5385,7 +5384,7 @@ function VacinacaoPrint({ patient, consulta, onClose }) {
   );
 }
 
-function ConsultaCompletaPrint({ patient, consulta, onClose }) {
+function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
   const idade = calcIdade(patient.ident.dn);
   const i = patient.ident;
   const a = consulta.antecedentes || {};
@@ -5411,7 +5410,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose }) {
       <div id="print-content">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
         <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
-        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>{getNomeAmbulatorio(sessionStorage.getItem("ambulatorio") || "cempre")}</div>
+        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>{getNomeAmbulatorio(ambulatorio || sessionStorage.getItem("ambulatorio") || "cempre")}</div>
         <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
       </div>
       <div style={{ marginBottom: "4px" }}><span style={label}>Paciente:</span> {i.nome || "—"}</div>
