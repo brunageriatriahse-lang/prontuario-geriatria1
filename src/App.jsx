@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, Component } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { listPatients, savePatient, deletePatient as apiDeletePatient, purgePatient } from './api.js';
 import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
@@ -1029,56 +1029,7 @@ function DocFooter() {
   );
 }
 
-class ErrorBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
-  }
-  componentDidCatch(error, info) {
-    console.error("Erro capturado pelo ErrorBoundary:", error, info);
-  }
-  handleReset = () => {
-    this.setState({ hasError: false, error: null });
-  };
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--color-background-secondary)", padding: "24px" }}>
-          <div style={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "16px", padding: "32px", maxWidth: "480px", width: "100%", textAlign: "center" }}>
-            <i className="ti ti-alert-triangle" style={{ fontSize: "36px", color: "var(--color-text-danger)", display: "block", marginBottom: "12px" }} aria-hidden="true"></i>
-            <div style={{ fontWeight: 700, fontSize: "16px", marginBottom: "8px" }}>Ocorreu um erro inesperado</div>
-            <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "16px" }}>
-              A tela ficou em branco por causa de um erro no aplicativo. Você pode tentar recarregar sem perder os dados salvos (eles já foram gravados no Google Sheets a cada alteração).
-            </div>
-            {this.state.error && (
-              <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "16px", textAlign: "left", background: "var(--color-background-secondary)", borderRadius: "8px", padding: "10px", overflowX: "auto" }}>
-                {String(this.state.error.message || this.state.error)}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
-              <button onClick={this.handleReset} style={{ padding: "8px 16px" }}>Tentar novamente</button>
-              <button onClick={() => window.location.reload()} style={{ padding: "8px 16px" }}>Recarregar página</button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 export default function App() {
-  return (
-    <ErrorBoundary>
-      <AppInner />
-    </ErrorBoundary>
-  );
-}
-
-function AppInner() {
   const [autenticado, setAutenticado] = useState(() => sessionStorage.getItem('auth') === '1');
   const [ambulatorio, setAmbulatorio] = useState(() => sessionStorage.getItem('ambulatorio') || null);
   const [senhaDigitada, setSenhaDigitada] = useState('');
@@ -1337,6 +1288,9 @@ function AppInner() {
     }, 700);
   }, []);
 
+  const activePatient = useMemo(() => (patients || []).find(p => p.id === activeId) || null, [patients, activeId]);
+  const activeConsulta = useMemo(() => (activePatient?.consultas || []).find(c => c.id === activeConsultaId) || null, [activePatient, activeConsultaId]);
+
   // Ctrl+S para salvar imediatamente
   useEffect(() => {
     function handleKeyDown(e) {
@@ -1348,9 +1302,6 @@ function AppInner() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activePatient, persistPatient]);
-
-  const activePatient = useMemo(() => (patients || []).find(p => p.id === activeId) || null, [patients, activeId]);
-  const activeConsulta = useMemo(() => (activePatient?.consultas || []).find(c => c.id === activeConsultaId) || null, [activePatient, activeConsultaId]);
 
   const updateActivePatient = useCallback((updater) => {
     if (!activeId) return;
@@ -2053,7 +2004,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       </div>
 
       {activeTab === "ident" && <IdentTab patient={patient} updatePatient={updatePatient} />}
-      {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
+      {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "antecedentes" && <AntecedentesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} />}
@@ -2169,7 +2120,7 @@ function ComorbidadeItem({ nome, checked, onToggle, nota, onNotaChange, onRemove
   );
 }
 
-function ProblemasTab({ consulta, updateConsulta, patient }) {
+function ProblemasTab({ consulta, updateConsulta }) {
   const problemas = consulta.problemas || {};
   const notas = consulta.problemasNotas || {};
   const custom = consulta.problemasCustom || [];
