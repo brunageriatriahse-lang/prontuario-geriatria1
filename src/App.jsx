@@ -2562,54 +2562,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
           placeholder={"Liste as medicações em uso, uma por linha. Ex:\nLosartana 50mg - 1cp pela manhã e à noite\nAAS 100mg - 1cp após almoço"}
         />
       </SectionCard>
-      <SectionCard title="Histórico de medicações — linha do tempo" icon="ti-history" defaultOpen={false}>
-        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "10px" }}>
-          Registre medicações iniciadas ou suspensas com data e motivo. Use para rastrear a evolução do tratamento ao longo das consultas.
-        </div>
-        {(() => {
-          const historico = Array.isArray(consulta.historicoMedicacoes) ? consulta.historicoMedicacoes : [];
-          function addItem() {
-            updateConsulta(p => ({ ...p, historicoMedicacoes: [...(p.historicoMedicacoes || []), { id: uid(), medicacao: "", evento: "iniciado", data: "", motivo: "" }] }));
-          }
-          function updItem(id, k, v) {
-            updateConsulta(p => ({ ...p, historicoMedicacoes: (p.historicoMedicacoes || []).map(x => x.id === id ? { ...x, [k]: v } : x) }));
-          }
-          function remItem(id) {
-            updateConsulta(p => ({ ...p, historicoMedicacoes: (p.historicoMedicacoes || []).filter(x => x.id !== id) }));
-          }
-          return (
-            <div>
-              {historico.map(item => (
-                <div key={item.id} style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "10px", padding: "10px", background: "var(--color-background-secondary)", borderRadius: "8px" }}>
-                  <div style={{ flex: "1 1 180px" }}>
-                    <Field label="Medicação"><input value={item.medicacao || ""} onChange={e => updItem(item.id, "medicacao", e.target.value)} placeholder="Nome e dose..." /></Field>
-                  </div>
-                  <div>
-                    <Field label="Evento">
-                      <select value={item.evento || "iniciado"} onChange={e => updItem(item.id, "evento", e.target.value)}>
-                        <option value="iniciado">Iniciado</option>
-                        <option value="suspenso">Suspenso</option>
-                        <option value="ajustado">Dose ajustada</option>
-                        <option value="substituido">Substituído</option>
-                      </select>
-                    </Field>
-                  </div>
-                  <div>
-                    <Field label="Data"><input type="date" value={item.data || ""} onChange={e => updItem(item.id, "data", e.target.value)} /></Field>
-                  </div>
-                  <div style={{ flex: "1 1 160px" }}>
-                    <Field label="Motivo"><input value={item.motivo || ""} onChange={e => updItem(item.id, "motivo", e.target.value)} placeholder="Ex: efeito adverso, sem indicação..." /></Field>
-                  </div>
-                  <button onClick={() => remItem(item.id)} style={{ marginTop: "20px" }}><i className="ti ti-trash" aria-hidden="true"></i></button>
-                </div>
-              ))}
-              <button onClick={addItem} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
-                <i className="ti ti-plus" aria-hidden="true"></i>Adicionar evento
-              </button>
-            </div>
-          );
-        })()}
-      </SectionCard>
+
       <SectionCard title="Medicações de uso prévio / descontinuadas" icon="ti-notes" defaultOpen={false}>
         <textarea rows={3} value={consulta.medicacoesPrevias || ""} onChange={e => updateConsulta(p => ({ ...p, medicacoesPrevias: e.target.value }))} placeholder="Medicação, motivo da descontinuação..." />
       </SectionCard>
@@ -2883,12 +2836,6 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
               })()}
             </SectionCard>
 
-            <Row cols="repeat(3, 1fr)">
-              <Field label="Mini-Cog (resultado)"><input value={aga.minicog || ""} onChange={e => set("minicog", e.target.value)} placeholder="Normal / Alterado" /></Field>
-              <Field label="MEEM (pontuação)"><input value={aga.meem || ""} onChange={e => set("meem", e.target.value)} /></Field>
-              <Field label="MoCA (pontuação)"><input value={aga.moca || ""} onChange={e => set("moca", e.target.value)} /></Field>
-            </Row>
-
             {/* CDR */}
             {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"]) && (
               <SectionCard title="CDR — Clinical Dementia Rating" icon="ti-chart-line" defaultOpen={false}>
@@ -3013,7 +2960,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
               })()}
             </SectionCard>
 
-            <Field label="GDS-15 (pontuação resumida)" hint="Pontuação ≥6 sugere rastreio positivo para sintomas depressivos">
+            <Field label="GDS-15 (pontuação)" hint="Pontuação ≥6 sugere rastreio positivo para sintomas depressivos">
               <input type="number" min="0" max="15" value={aga.gds15 || ""} onChange={e => set("gds15", e.target.value)} style={{ maxWidth: "100px" }} />
             </Field>
             {gdsPositive && <Alert type="warning">GDS-15 = {gdsNum}: rastreio positivo para sintomas depressivos. Considerar avaliação complementar.</Alert>}
@@ -4090,6 +4037,7 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
       maeNome: patient?.ident?.maeNome || "",
       idade: idade != null ? idade : "",
       sexo: patient?.ident?.sexo || "",
+      medicacoes: todasMeds.join("\n"),
     }).then(blob => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -4161,7 +4109,7 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
 
   function isChecked(campo, item) {
     const atual = pl[campo] || "";
-    return atual.toLowerCase().includes(item.toLowerCase());
+    return atual.split("\n").map(l => l.trim()).some(l => l.toLowerCase() === item.toLowerCase());
   }
 
   const pend = consulta.pendencias || [];
