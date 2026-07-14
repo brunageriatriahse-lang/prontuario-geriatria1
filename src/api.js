@@ -48,8 +48,10 @@ export async function deletePatient(id, ambulatorio) {
   return true;
 }
 
-export async function purgePatient(id) {
-  const data = await callApiGet("purge", { id });
+export async function purgePatient(id, ambulatorio) {
+  const params = { id };
+  if (ambulatorio) params.ambulatorio = ambulatorio;
+  const data = await callApiGet("purge", params);
   if (!data.ok) throw new Error(data.error || "Erro ao excluir definitivamente");
   return true;
 }
