@@ -2024,7 +2024,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "antecedentes" && <AntecedentesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} sexoPaciente={patient.ident.sexo || ""} />}
       {activeTab === "prevencao" && <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} todasConsultas={patient?.consultas || []} />}
@@ -2537,11 +2537,204 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   );
 }
 
-function QueixasTab({ consulta, updateConsulta }) {
+function gerarHipotesesDiagnosticas(consulta, patient) {
+  const queixas = (consulta.queixas || "").toLowerCase();
+  const labs = (consulta.labsTexto || "").toLowerCase();
+  const meds = (consulta.medicacoesTexto || "").toLowerCase();
+  const prob = consulta.problemas || {};
+  const ef = consulta.exameFisico || {};
+  const aga = consulta.aga || {};
+  const idade = calcIdade(patient?.ident?.dn);
+  const sexo = patient?.ident?.sexo || "";
+  const F = sexo === "F";
+
+  const hipoteses = [];
+
+  function tem(...termos) {
+    return termos.some(t => queixas.includes(t) || labs.includes(t));
+  }
+  function temMed(...termos) { return termos.some(t => meds.includes(t)); }
+  function temProb(...termos) { return termos.some(t => prob[t]); }
+  function mPA() {
+    const m = (ef.paSentado || "").match(/(\d+)\s*[xX\/]\s*(\d+)/);
+    return m ? { sis: parseInt(m[1]), dia: parseInt(m[2]) } : null;
+  }
+
+  // Queixas cardiovasculares
+  if (tem("dispneia", "falta de ar", "cansaço", "cansado", "fadiga")) {
+    if (temProb("Insuficiência cardíaca", "IC")) hipoteses.push({ diag: "Descompensação de IC", prob: "Alta", cor: "danger", motivo: "Dispneia/fadiga + IC conhecida" });
+    if (temProb("DPOC", "Asma")) hipoteses.push({ diag: "Exacerbação de DPOC/Asma", prob: "Alta", cor: "danger", motivo: "Dispneia + doença pulmonar conhecida" });
+    hipoteses.push({ diag: "Anemia", prob: "Moderada", cor: "warning", motivo: "Fadiga/dispneia — verificar Hb nos labs" });
+    hipoteses.push({ diag: "Hipotireoidismo", prob: "Moderada", cor: "warning", motivo: "Fadiga frequente em idosos — verificar TSH" });
+    if (tem("peito", "precordial", "angina", "aperto")) hipoteses.push({ diag: "Síndrome coronariana aguda", prob: "Alta", cor: "danger", motivo: "Dor precordial + dispneia" });
+  }
+
+  if (tem("edema", "inchaço", "perna inchada")) {
+    if (temProb("Insuficiência cardíaca", "IC")) hipoteses.push({ diag: "Descompensação de IC (edema)", prob: "Alta", cor: "danger", motivo: "Edema + IC conhecida" });
+    hipoteses.push({ diag: "Insuficiência venosa crônica", prob: "Moderada", cor: "warning", motivo: "Edema em MMII — comum em idosos" });
+    hipoteses.push({ diag: "Hipoalbuminemia", prob: "Moderada", cor: "warning", motivo: "Edema — verificar albumina" });
+    hipoteses.push({ diag: "Hipotireoidismo (mixedema)", prob: "Baixa", cor: "info", motivo: "Edema generalizado — verificar TSH" });
+    if (tem("trombose", "tvp", "dor na perna", "calor na perna")) hipoteses.push({ diag: "TVP — Trombose venosa profunda", prob: "Alta", cor: "danger", motivo: "Edema unilateral + dor" });
+  }
+
+  if (tem("palpitação", "taquicardia", "coração acelerado", "coração batendo forte")) {
+    hipoteses.push({ diag: "Fibrilação atrial / Flutter", prob: "Moderada", cor: "warning", motivo: "Palpitações — ECG indicado" });
+    hipoteses.push({ diag: "Hipertireoidismo", prob: "Moderada", cor: "warning", motivo: "Palpitações + possível perda de peso — verificar TSH" });
+    hipoteses.push({ diag: "Anemia", prob: "Moderada", cor: "warning", motivo: "Palpitações — verificar Hb" });
+  }
+
+  // Neurológico / cognitivo
+  if (tem("tontura", "vertigem", "desequilíbrio")) {
+    hipoteses.push({ diag: "Vertigem posicional paroxística benigna (VPPB)", prob: "Alta", cor: "warning", motivo: "Tontura posicional — mais comum em idosos" });
+    hipoteses.push({ diag: "Hipotensão ortostática", prob: "Alta", cor: "warning", motivo: "Tontura ao levantar — verificar PA ortostática" });
+    hipoteses.push({ diag: "Efeito adverso de medicação", prob: "Moderada", cor: "warning", motivo: "Tontura — revisar anti-hipertensivos, BZD, diuréticos" });
+    if (tem("perda auditiva", "surdez", "ouvido")) hipoteses.push({ diag: "Síndrome de Ménière", prob: "Baixa", cor: "info", motivo: "Tontura + surdez + zumbido" });
+  }
+
+  if (tem("confusão", "delirium", "agitação", "desorientado", "desorientada")) {
+    hipoteses.push({ diag: "Delirium — buscar causa precipitante", prob: "Alta", cor: "danger", motivo: "Confusão aguda — investigar infecção, med, desidratação, constipação" });
+    hipoteses.push({ diag: "ITU (causa de delirium)", prob: "Alta", cor: "danger", motivo: "ITU é causa frequente de delirium em idosos — solicitar EAS/urocultura" });
+    hipoteses.push({ diag: "Encefalopatia metabólica", prob: "Moderada", cor: "warning", motivo: "Confusão — verificar sódio, glicemia, função renal, hepática" });
+  }
+
+  if (tem("memória", "esquecimento", "cognitivo", "demência", "confundindo")) {
+    if (tem("agudo", "súbito", "rápido")) {
+      hipoteses.push({ diag: "Delirium / Encefalopatia aguda", prob: "Alta", cor: "danger", motivo: "Declínio cognitivo agudo — investigar causa precipitante" });
+    } else {
+      hipoteses.push({ diag: "Comprometimento cognitivo leve (CCL)", prob: "Moderada", cor: "warning", motivo: "Queixa de memória — aplicar MoCA/MEEM" });
+      hipoteses.push({ diag: "Doença de Alzheimer", prob: "Moderada", cor: "warning", motivo: "Declínio cognitivo progressivo — padrão mais comum" });
+      hipoteses.push({ diag: "Demência vascular", prob: "Moderada", cor: "warning", motivo: "Especialmente se HAS, DM, AVC prévio" });
+      hipoteses.push({ diag: "Hipotireoidismo (causa reversível)", prob: "Moderada", cor: "warning", motivo: "Verificar TSH — causa tratável de declínio cognitivo" });
+      hipoteses.push({ diag: "Deficiência de B12", prob: "Moderada", cor: "warning", motivo: "Causa reversível de declínio cognitivo — verificar B12" });
+    }
+  }
+
+  if (tem("cefaleia", "dor de cabeça")) {
+    hipoteses.push({ diag: "Arterite de células gigantes (ACG)", prob: "Moderada", cor: "danger", motivo: "Cefaleia em idoso > 50 anos — risco de cegueira, verificar VHS/PCR" });
+    hipoteses.push({ diag: "Cefaleia tensional", prob: "Alta", cor: "info", motivo: "Causa mais comum de cefaleia" });
+    if (tem("visual", "visão", "olho")) hipoteses.push({ diag: "Arterite temporal / Glaucoma agudo", prob: "Alta", cor: "danger", motivo: "Cefaleia + alteração visual — urgência" });
+    const pa = mPA();
+    if (pa && pa.sis >= 180) hipoteses.push({ diag: "Cefaleia hipertensiva / Urgência hipertensiva", prob: "Alta", cor: "danger", motivo: `PA ${ef.paSentado} + cefaleia` });
+  }
+
+  // Gastrointestinal
+  if (tem("constipação", "intestino preso", "prisão de ventre")) {
+    hipoteses.push({ diag: "Constipação funcional", prob: "Alta", cor: "info", motivo: "Muito prevalente em idosos — revisar dieta, hidratação, exercício, medicações" });
+    hipoteses.push({ diag: "Hipotireoidismo", prob: "Moderada", cor: "warning", motivo: "Constipação + outros sintomas — verificar TSH" });
+    hipoteses.push({ diag: "Hipercalcemia", prob: "Baixa", cor: "info", motivo: "Constipação + cansaço + poliúria — verificar cálcio" });
+    if (temMed("opioide", "morfina", "codeína", "tramadol")) hipoteses.push({ diag: "Constipação induzida por opioides", prob: "Alta", cor: "warning", motivo: "Uso de opioide identificado nas medicações" });
+  }
+
+  if (tem("diarreia", "fezes líquidas", "dor abdominal") && !tem("constipação")) {
+    hipoteses.push({ diag: "Gastroenterite infecciosa", prob: "Alta", cor: "warning", motivo: "Diarreia aguda — considerar hidratação e cultura de fezes" });
+    if (temMed("antibiótico", "amoxicilina", "ciprofloxacino", "clindamicina")) hipoteses.push({ diag: "Infecção por C. difficile", prob: "Alta", cor: "danger", motivo: "Diarreia + uso recente de antibiótico — solicitar toxina C. diff" });
+  }
+
+  if (tem("náusea", "vômito") && !tem("tontura")) {
+    hipoteses.push({ diag: "Efeito adverso de medicação", prob: "Alta", cor: "warning", motivo: "Náusea — revisar metformina, digoxina, opioide, antibiótico" });
+    hipoteses.push({ diag: "Gastroparesia", prob: "Moderada", cor: "warning", motivo: "Especialmente em DM2 de longa data" });
+  }
+
+  // Musculoesquelético
+  if (tem("dor articular", "artralgia", "artrite", "dor nas juntas")) {
+    hipoteses.push({ diag: "Osteoartrite", prob: "Alta", cor: "info", motivo: "Causa mais comum de dor articular no idoso" });
+    hipoteses.push({ diag: "Gota / Pseudogota", prob: "Moderada", cor: "warning", motivo: "Artrite aguda monoarticular — verificar ácido úrico" });
+    if (tem("rigidez matinal", "rígido", "rigidez")) hipoteses.push({ diag: "Artrite reumatoide / Polimialgia reumática", prob: "Moderada", cor: "warning", motivo: "Rigidez matinal > 1h — verificar PCR/VHS/FR" });
+  }
+
+  if (tem("dor lombar", "lombalgia", "dor nas costas")) {
+    hipoteses.push({ diag: "Doença degenerativa lombar / Estenose de canal", prob: "Alta", cor: "info", motivo: "Causa mais comum em idosos" });
+    hipoteses.push({ diag: "Fratura vertebral por osteoporose", prob: "Moderada", cor: "warning", motivo: "Dor lombar aguda em idoso com osteoporose" });
+    hipoteses.push({ diag: "Mieloma múltiplo", prob: "Baixa", cor: "info", motivo: "Dor óssea persistente + anemia — verificar proteinograma se suspeita" });
+  }
+
+  // Urinário
+  if (tem("itu", "disúria", "ardência urinária", "urina turva", "urina com cheiro")) {
+    hipoteses.push({ diag: "Infecção do trato urinário (ITU)", prob: "Alta", cor: "warning", motivo: "Sintomas urinários — solicitar EAS e urocultura" });
+    hipoteses.push({ diag: "Bacteriúria assintomática", prob: "Moderada", cor: "info", motivo: "Comum em idosas — não tratar sem sintomas" });
+  }
+
+  if (tem("incontinência urinária", "perde urina", "urinar na roupa")) {
+    hipoteses.push({ diag: "Incontinência urinária de urgência (hiperatividade vesical)", prob: "Alta", cor: "info", motivo: "Causa mais comum em idosos" });
+    hipoteses.push({ diag: "Incontinência urinária de esforço", prob: "Moderada", cor: "info", motivo: f ? "Mais comum em mulheres" : "Menos comum em homens" });
+    if (!F) hipoteses.push({ diag: "Hiperplasia prostática benigna (HPB)", prob: "Alta", cor: "warning", motivo: "Sintomas urinários em homem idoso" });
+  }
+
+  // Endócrino/metabólico
+  if (tem("poliúria", "polidipsia", "sede excessiva", "urinar muito")) {
+    hipoteses.push({ diag: "Descompensação de DM2", prob: "Alta", cor: "danger", motivo: "Poliúria/polidipsia + DM conhecido — verificar glicemia e HbA1c" });
+    hipoteses.push({ diag: "Hipercalcemia", prob: "Moderada", cor: "warning", motivo: "Poliúria + constipação + fraqueza — verificar cálcio" });
+  }
+
+  if (tem("perda de peso", "emagrecimento")) {
+    hipoteses.push({ diag: "Investigar neoplasia oculta", prob: "Moderada", cor: "danger", motivo: "Perda de peso não intencional em idoso — rastreio oncológico" });
+    hipoteses.push({ diag: "Desnutrição / Sarcopenia", prob: "Alta", cor: "warning", motivo: "Avaliar MNA-SF, ingesta calórica e proteica" });
+    hipoteses.push({ diag: "Hipertireoidismo", prob: "Moderada", cor: "warning", motivo: "Perda de peso + taquicardia/palpitações — verificar TSH" });
+    hipoteses.push({ diag: "Depressão", prob: "Moderada", cor: "warning", motivo: "Perda de peso + anedonia/tristeza — aplicar GDS-15" });
+  }
+
+  // Dor
+  if (tem("dor nos ossos", "dor óssea", "dor difusa")) {
+    hipoteses.push({ diag: "Deficiência de vitamina D / Osteomalácia", prob: "Alta", cor: "warning", motivo: "Dor óssea difusa em idoso — verificar 25-OH vitamina D" });
+    hipoteses.push({ diag: "Mieloma múltiplo", prob: "Baixa", cor: "info", motivo: "Dor óssea + anemia + hipercalcemia" });
+    hipoteses.push({ diag: "Metástase óssea", prob: "Baixa", cor: "info", motivo: "Se neoplasia conhecida" });
+  }
+
+  if (tem("fraqueza", "fraqueza muscular", "cansaço muscular")) {
+    hipoteses.push({ diag: "Sarcopenia", prob: "Alta", cor: "warning", motivo: "Fraqueza muscular em idoso — avaliar força de preensão e SPPB" });
+    hipoteses.push({ diag: "Hipotireoidismo", prob: "Moderada", cor: "warning", motivo: "Fraqueza + fadiga — verificar TSH" });
+    hipoteses.push({ diag: "Hipocalemia", prob: "Moderada", cor: "warning", motivo: "Fraqueza muscular — verificar potássio" });
+    hipoteses.push({ diag: "Polimiosite / Polimialgia reumática", prob: "Baixa", cor: "info", motivo: "Fraqueza proximal + dor — verificar CPK, VHS" });
+  }
+
+  // Deduplicar por diagnóstico
+  const vistos = new Set();
+  return hipoteses.filter(h => {
+    if (vistos.has(h.diag)) return false;
+    vistos.add(h.diag);
+    return true;
+  });
+}
+
+function QueixasTab({ consulta, updateConsulta, patient }) {
+  const hipoteses = gerarHipotesesDiagnosticas(consulta, patient);
+  const [showHipoteses, setShowHipoteses] = useState(false);
+
   return (
-    <SectionCard title="Queixas" icon="ti-message">
-      <textarea rows={8} value={consulta.queixas} onChange={e => updateConsulta(p => ({ ...p, queixas: e.target.value }))} placeholder="Descreva a queixa principal e a história da doença atual..." />
-    </SectionCard>
+    <div>
+      <SectionCard title="Queixas" icon="ti-message">
+        <textarea rows={8} value={consulta.queixas} onChange={e => updateConsulta(p => ({ ...p, queixas: e.target.value }))} placeholder="Descreva a queixa principal e a história da doença atual..." />
+      </SectionCard>
+
+      {hipoteses.length > 0 && (
+        <SectionCard title={`Apoio diagnóstico (${hipoteses.length} hipóteses identificadas)`} icon="ti-bulb" defaultOpen={false}>
+          <Alert type="info">
+            ⚠ Sugestões automáticas baseadas nas queixas, labs e comorbidades registradas. <strong>Não substituem o raciocínio clínico.</strong> Sempre considere o contexto completo do paciente.
+          </Alert>
+          <div style={{ display: "grid", gap: "8px" }}>
+            {["Alta", "Moderada", "Baixa"].map(nivel => {
+              const grupo = hipoteses.filter(h => h.prob === nivel);
+              if (grupo.length === 0) return null;
+              return (
+                <div key={nivel}>
+                  <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-text-tertiary)", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Probabilidade {nivel}
+                  </div>
+                  {grupo.map((h, i) => (
+                    <div key={i} style={{ display: "flex", gap: "10px", alignItems: "flex-start", padding: "8px 12px", borderRadius: "8px", marginBottom: "4px", background: `var(--color-background-${h.cor})`, border: `0.5px solid var(--color-border-${h.cor})` }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: "13px", color: `var(--color-text-${h.cor})` }}>{h.diag}</div>
+                        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "2px" }}>{h.motivo}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+    </div>
   );
 }
 
