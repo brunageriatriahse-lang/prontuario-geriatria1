@@ -149,7 +149,7 @@ async function salvarNoDrive(blob, nomePaciente, nomeArquivo) {
 async function salvarReceitasNoDrive() { return { ok:false, error:"deprecated" }; }
 
 
-async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo }) {
+async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo, medicacoes }) {
   if (!window.JSZip) {
     await new Promise((res, rej) => {
       const s = document.createElement('script');
@@ -166,12 +166,13 @@ async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo })
   let xml = await zip.file('word/document.xml').async('string');
 
   const campos = {
-    BM_PACIENTE:   (nome || '').toUpperCase(),
-    BM_PRONTUARIO: String(prontuario || ''),
-    BM_MAE:        (maeNome || '').toUpperCase(),
-    BM_IDADE:      String(idade != null ? idade : ''),
-    BM_SEXO:       sexo || '',
-    BM_SETOR:      'GERIATRIA',
+    BM_PACIENTE:    (nome || '').toUpperCase(),
+    BM_PRONTUARIO:  String(prontuario || ''),
+    BM_MAE:         (maeNome || '').toUpperCase(),
+    BM_IDADE:       String(idade != null ? idade : ''),
+    BM_SEXO:        sexo || '',
+    BM_SETOR:       'GERIATRIA',
+    BM_MEDICACOES:  medicacoes || '',
   };
 
   Object.entries(campos).forEach(([alias, valor]) => {
@@ -189,12 +190,27 @@ async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo })
       const antes = parte.slice(0, sdtContentIdx + 14);
       const content = parte.slice(sdtContentIdx + 14, sdtEndIdx);
       const depois = parte.slice(sdtEndIdx);
-      // Substitui o primeiro <w:t...>...</w:t>
-      let first = true;
-      const novoContent = content.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, (m, attrs) => {
-        if (first) { first = false; return '<w:t' + attrs + '>' + esc + '</w:t>'; }
-        return '<w:t' + attrs + '></w:t>';
-      });
+
+      let novoContent;
+      if (alias === 'BM_MEDICACOES') {
+        // Campo multi-linha: cada linha da lista de medicações vira um w:t separado por w:br
+        const rPrMatch = content.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+        const rPr = rPrMatch ? rPrMatch[0] : '';
+        let linhas = valor.split('\n').map(l => l.trim()).filter(Boolean);
+        if (linhas.length === 0) linhas = ['.'];
+        novoContent = linhas.map((linha, idx) => {
+          const escLinha = linha.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const quebra = idx > 0 ? ('<w:r>' + rPr + '<w:br/></w:r>') : '';
+          return quebra + '<w:r>' + rPr + '<w:t xml:space="preserve">' + escLinha + '</w:t></w:r>';
+        }).join('');
+      } else {
+        // Substitui o primeiro <w:t...>...</w:t>
+        let first = true;
+        novoContent = content.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, (m, attrs) => {
+          if (first) { first = false; return '<w:t' + attrs + '>' + esc + '</w:t>'; }
+          return '<w:t' + attrs + '></w:t>';
+        });
+      }
       return '<w:sdt>' + antes + novoContent + depois;
     }).join('');
   });
@@ -1047,6 +1063,39 @@ export default function App() {
 
   const saveTimers = useRef({});
 
+  // Backup automático — exporta JSON periodicamente (a cada 24h, enquanto o app estiver aberto)
+  useEffect(() => {
+    if (!patients || patients.length === 0) return;
+
+    function executarBackupAutomatico() {
+      try {
+        const chaveData = 'ultimoBackupAutomatico_' + (ambulatorio || 'geral');
+        const ultimoBackup = localStorage.getItem(chaveData);
+        const agora = Date.now();
+        const VINTE_QUATRO_HORAS_MS = 24 * 60 * 60 * 1000;
+        if (ultimoBackup && (agora - parseInt(ultimoBackup, 10)) < VINTE_QUATRO_HORAS_MS) return;
+
+        const dados = { exportadoEm: new Date().toISOString(), automatico: true, totalPacientes: patients.length, pacientes: patients };
+        const blob = new Blob([JSON.stringify(dados, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `backup_automatico_prontuario_${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        localStorage.setItem(chaveData, String(agora));
+      } catch (e) {
+        console.error("Falha no backup automático", e);
+      }
+    }
+
+    executarBackupAutomatico();
+    const intervalo = setInterval(executarBackupAutomatico, 60 * 60 * 1000); // reverifica a cada 1h
+    return () => clearInterval(intervalo);
+  }, [patients, ambulatorio]);
+
   useEffect(() => {
     if (!autenticado || !ambulatorio) return;
     setPatients(null); // reset ao trocar ambulatório
@@ -1519,6 +1568,7 @@ export default function App() {
       maeNome: patient.ident.maeNome || '',
       idade: idade != null ? idade : '',
       sexo: patient.ident.sexo || '',
+      medicacoes: (activeConsulta && activeConsulta.medicacoesTexto) || '',
     }).then(async blob => {
       // Download local
       const url = URL.createObjectURL(blob);
@@ -4469,7 +4519,7 @@ function Dashboard({ patients }) {
       "Nome", "Prontuário", "CPF", "DN", "Idade", "Sexo", "Naturalidade", "Procedência",
       "Profissão", "Escolaridade", "Estado civil", "Mora com", "Telefone", "Acompanhante", "Cuidador",
       // Última consulta
-      "Data última consulta", "Nº consultas",
+      "Data última consulta", "Nº consultas", "Queixas",
       // Sinais vitais
       "PA sentado", "PA em pé", "FC", "FR", "SatO2", "Temp", "Peso", "HGT", "EVA (dor)",
       // AGA — funcionalidade
@@ -4548,7 +4598,7 @@ function Dashboard({ patients }) {
         i.profissao || "", i.escolaridade || "", i.estadoCivil || "", i.moraCom || "",
         i.telefone || "", i.acompanhante || "", i.cuidador || "",
         // Última consulta
-        ult.data ? fmtDate(ult.data) : "", consultas.length,
+        ult.data ? fmtDate(ult.data) : "", consultas.length, ult.queixas || "",
         // Sinais vitais
         ef.paSentado || "", ef.paEmPe || "", ef.fc || "", ef.fr || "",
         ef.sato2 || "", ef.temp || "", ef.peso || aga.peso || "", ef.hgt || "", ef.eva || "",
