@@ -1063,39 +1063,6 @@ export default function App() {
 
   const saveTimers = useRef({});
 
-  // Backup automático — exporta JSON periodicamente (a cada 24h, enquanto o app estiver aberto)
-  useEffect(() => {
-    if (!patients || patients.length === 0) return;
-
-    function executarBackupAutomatico() {
-      try {
-        const chaveData = 'ultimoBackupAutomatico_' + (ambulatorio || 'geral');
-        const ultimoBackup = localStorage.getItem(chaveData);
-        const agora = Date.now();
-        const VINTE_QUATRO_HORAS_MS = 24 * 60 * 60 * 1000;
-        if (ultimoBackup && (agora - parseInt(ultimoBackup, 10)) < VINTE_QUATRO_HORAS_MS) return;
-
-        const dados = { exportadoEm: new Date().toISOString(), automatico: true, totalPacientes: patients.length, pacientes: patients };
-        const blob = new Blob([JSON.stringify(dados, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `backup_automatico_prontuario_${new Date().toLocaleDateString("pt-BR").replace(/\//g, "-")}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        localStorage.setItem(chaveData, String(agora));
-      } catch (e) {
-        console.error("Falha no backup automático", e);
-      }
-    }
-
-    executarBackupAutomatico();
-    const intervalo = setInterval(executarBackupAutomatico, 60 * 60 * 1000); // reverifica a cada 1h
-    return () => clearInterval(intervalo);
-  }, [patients, ambulatorio]);
-
   useEffect(() => {
     if (!autenticado || !ambulatorio) return;
     setPatients(null); // reset ao trocar ambulatório
@@ -1537,7 +1504,7 @@ export default function App() {
   async function permanentlyDeletePatient(id) {
     setPatients(prev => prev.filter(p => p.id !== id));
     try {
-      await purgePatient(id);
+      await purgePatient(id, ambulatorio);
     } catch (e) {
       console.error("Erro ao excluir permanentemente:", e);
     }
@@ -2960,10 +2927,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
               })()}
             </SectionCard>
 
-            <Field label="GDS-15 (pontuação)" hint="Pontuação ≥6 sugere rastreio positivo para sintomas depressivos">
-              <input type="number" min="0" max="15" value={aga.gds15 || ""} onChange={e => set("gds15", e.target.value)} style={{ maxWidth: "100px" }} />
-            </Field>
-            {gdsPositive && <Alert type="warning">GDS-15 = {gdsNum}: rastreio positivo para sintomas depressivos. Considerar avaliação complementar.</Alert>}
+{gdsPositive && <Alert type="warning">GDS-15 = {gdsNum}: rastreio positivo para sintomas depressivos. Considerar avaliação complementar.</Alert>}
           </>
         )}
       </SectionCard>
