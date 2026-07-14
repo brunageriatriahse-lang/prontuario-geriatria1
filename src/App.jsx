@@ -4900,24 +4900,24 @@ function GraficoEvolucao({ patient }) {
 
   if (dadosPeso.length < 2 && dadosPA.length < 2) return null;
 
-  const SVGLine = ({ dados, key, cor, min, max, width = 400, height = 100 }) => {
+  const SVGLine = ({ dados, cor, minVal, maxVal, width = 400, height = 100 }) => {
     if (dados.length < 2) return null;
     const pad = 8;
     const w = width - pad * 2;
     const h = height - pad * 2;
-    const range = max - min || 1;
+    const range = maxVal - minVal || 1;
     const pts = dados.map((d, i) => {
-      const x = pad + (i / (dados.length - 1)) * w;
-      const y = pad + h - ((d - min) / range) * h;
-      return `${x},${y}`;
+      const px = pad + (i / (dados.length - 1)) * w;
+      const py = pad + h - ((d - minVal) / range) * h;
+      return `${px},${py}`;
     });
     return (
       <svg width={width} height={height} style={{ width: "100%", height: "auto" }}>
         <polyline points={pts.join(" ")} fill="none" stroke={cor} strokeWidth="2" />
         {dados.map((d, i) => {
-          const x = pad + (i / (dados.length - 1)) * w;
-          const y = pad + h - ((d - min) / range) * h;
-          return <circle key={i} cx={x} cy={y} r="4" fill={cor} />;
+          const px = pad + (i / (dados.length - 1)) * w;
+          const py = pad + h - ((d - minVal) / range) * h;
+          return <circle key={i} cx={px} cy={py} r="4" fill={cor} />;
         })}
       </svg>
     );
@@ -4934,8 +4934,8 @@ function GraficoEvolucao({ patient }) {
           <SVGLine
             dados={dadosPeso.map(d => d.valor)}
             cor="var(--color-border-info)"
-            min={Math.min(...dadosPeso.map(d => d.valor)) - 2}
-            max={Math.max(...dadosPeso.map(d => d.valor)) + 2}
+            minVal={Math.min(...dadosPeso.map(d => d.valor)) - 2}
+            maxVal={Math.max(...dadosPeso.map(d => d.valor)) + 2}
           />
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "8px" }}>
             {dadosPeso.map((d, i) => (
@@ -4962,14 +4962,14 @@ function GraficoEvolucao({ patient }) {
           <SVGLine
             dados={dadosPA.map(d => d.sis)}
             cor="var(--color-border-danger)"
-            min={Math.min(...dadosPA.map(d => d.dia)) - 10}
-            max={Math.max(...dadosPA.map(d => d.sis)) + 10}
+            minVal={Math.min(...dadosPA.map(d => d.dia)) - 10}
+            maxVal={Math.max(...dadosPA.map(d => d.sis)) + 10}
           />
           <SVGLine
             dados={dadosPA.map(d => d.dia)}
             cor="var(--color-border-warning)"
-            min={Math.min(...dadosPA.map(d => d.dia)) - 10}
-            max={Math.max(...dadosPA.map(d => d.sis)) + 10}
+            minVal={Math.min(...dadosPA.map(d => d.dia)) - 10}
+            maxVal={Math.max(...dadosPA.map(d => d.sis)) + 10}
           />
           <div style={{ display: "flex", gap: "6px", fontSize: "11px", marginTop: "4px" }}>
             <span style={{ color: "var(--color-text-danger)" }}>— Sistólica</span>
@@ -4989,7 +4989,7 @@ function GraficoEvolucao({ patient }) {
           {dadosMEEM.length >= 2 && (
             <>
               <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "4px" }}>MEEM (pontuação)</div>
-              <SVGLine dados={dadosMEEM.map(d => d.valor)} cor="var(--color-border-info)" min={Math.min(...dadosMEEM.map(d => d.valor)) - 2} max={30} />
+              <SVGLine dados={dadosMEEM.map(d => d.valor)} cor="var(--color-border-info)" minVal={Math.min(...dadosMEEM.map(d => d.valor)) - 2} maxVal={30} />
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "4px" }}>
                 {dadosMEEM.map((d, i) => (
                   <span key={i} style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
@@ -5006,7 +5006,7 @@ function GraficoEvolucao({ patient }) {
           {dadosMoCA.length >= 2 && (
             <>
               <div style={{ fontSize: "13px", fontWeight: 600, margin: "10px 0 4px" }}>MoCA (pontuação)</div>
-              <SVGLine dados={dadosMoCA.map(d => d.valor)} cor="var(--color-border-warning)" min={Math.min(...dadosMoCA.map(d => d.valor)) - 2} max={30} />
+              <SVGLine dados={dadosMoCA.map(d => d.valor)} cor="var(--color-border-warning)" minVal={Math.min(...dadosMoCA.map(d => d.valor)) - 2} maxVal={30} />
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "4px" }}>
                 {dadosMoCA.map((d, i) => (
                   <span key={i} style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
