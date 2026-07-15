@@ -2777,7 +2777,11 @@ function ProblemasTab({ consulta, updateConsulta, patient, onAbrirCartilha }) {
 
 function AntecedentesTab({ consulta, updateConsulta }) {
   const a = consulta.antecedentes || {};
-  const set = (k, v) => updateConsulta(p => ({ ...p, antecedentes: { ...p.antecedentes, [k]: v } }));
+  const set = (k, v) => updateConsulta(p => {
+    const novo = { ...(p.antecedentes || {}), [k]: v };
+    if (v === "" || v === null || v === undefined) delete novo[k];
+    return { ...p, antecedentes: novo };
+  });
   return (
     <SectionCard title="Antecedentes pessoais e familiares" icon="ti-history">
       <Field label="Tabagismo">
@@ -3394,7 +3398,11 @@ function QueixasTab({ consulta, updateConsulta, patient }) {
 
 function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
   const aga = consulta.aga || {};
-  const set = (k, v) => updateConsulta(p => ({ ...p, aga: { ...p.aga, [k]: v } }));
+  const set = (k, v) => updateConsulta(p => {
+    const novaAga = { ...(p.aga || {}), [k]: v };
+    if (v === "" || v === null || v === undefined) delete novaAga[k];
+    return { ...p, aga: novaAga };
+  });
 
   const AIVD_ITEMS = ["Telefone","Transporte","Compras","Preparar refeições","Tarefas domésticas","Trabalhos manuais","Lavar roupas","Medicações","Finanças"];
   const ABVD_ITEMS = ["Banho","Vestir-se","Higiene pessoal","Transferência","Continência","Alimentação"];
@@ -3749,7 +3757,19 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
                           {["sim", "nao"].map(opt => {
                             const sel = aga[q.key] === opt;
                             return (
-                              <label key={opt} onClick={e => { e.preventDefault(); set(q.key, sel ? "" : opt); }}
+                              <label key={opt} onClick={e => {
+                                e.preventDefault();
+                                if (sel) {
+                                  // Desmarcar: remove a chave do objeto aga
+                                  updateConsulta(p => {
+                                    const novaAga = { ...(p.aga || {}) };
+                                    delete novaAga[q.key];
+                                    return { ...p, aga: novaAga };
+                                  });
+                                } else {
+                                  set(q.key, opt);
+                                }
+                              }}
                                 style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", cursor: "pointer",
                                   padding: "3px 10px", borderRadius: "16px",
                                   background: sel ? "var(--color-background-info)" : "var(--color-background-secondary)",
