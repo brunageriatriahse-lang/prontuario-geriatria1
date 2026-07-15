@@ -4287,8 +4287,15 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
                 {examesUnicos.length} exame(s)/rastreio(s) específico(s) indicado(s) para: {ativos.join(", ")}. Exames já presentes no rastreio geral não são repetidos.
               </Alert>
               {examesUnicos.map(([item, comorbidades]) => {
-                const key = comorbidades[0] + "::" + item;
-                const registros = Array.isArray(re[key]) ? re[key] : [];
+                // Key estável baseada no nome do exame, não na comorbidade
+                // Mantém compatibilidade com chaves antigas (comorbidade::exame)
+                const keyNova = "exame::" + item;
+                const keyAntiga = comorbidades[0] + "::" + item;
+                // Usa dados da key antiga se existirem, senão usa a nova
+                const registros = Array.isArray(re[keyNova]) ? re[keyNova] :
+                                  Array.isArray(re[keyAntiga]) ? re[keyAntiga] : [];
+                const key = Array.isArray(re[keyNova]) ? keyNova :
+                            Array.isArray(re[keyAntiga]) ? keyAntiga : keyNova;
                 return (
                   <div key={item} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "8px 0" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
