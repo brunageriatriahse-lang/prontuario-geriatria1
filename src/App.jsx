@@ -1653,7 +1653,7 @@ export default function App() {
         setSaveStatus("error");
       }
     }, 700);
-  }, []);
+  }, [ambulatorio]);
 
   const activePatient = useMemo(() => (patients || []).find(p => p.id === activeId) || null, [patients, activeId]);
   const activeConsulta = useMemo(() => (activePatient?.consultas || []).find(c => c.id === activeConsultaId) || null, [activePatient, activeConsultaId]);
