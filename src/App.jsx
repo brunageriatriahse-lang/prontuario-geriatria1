@@ -1411,6 +1411,8 @@ export default function App() {
   const [showPrescricaoHeader, setShowPrescricaoHeader] = useState(false);
   const [medicacoesSelecionadasHeader, setMedicacoesSelecionadasHeader] = useState([]);
   const [medicacoesAdicionaisHeader, setMedicacoesAdicionaisHeader] = useState("");
+  const [cartilhaAberta, setCartilhaAberta] = useState(null);
+  const [showCartaPaciente, setShowCartaPaciente] = useState(false);
 
   const saveTimers = useRef({});
 
@@ -2086,7 +2088,7 @@ export default function App() {
                 display: "flex", alignItems: "center", gap: "6px"
               }}
             >
-              <i className="ti ti-file-word" aria-hidden="true"></i>Receita (Word)
+              <i className="ti ti-file-word" aria-hidden="true"></i>Gerar receita
             </button>
             <button
               onClick={() => baixarReceituarios(activePatient)}
@@ -2115,6 +2117,8 @@ export default function App() {
     </div>
 
       {printDoc && <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} ambulatorio={ambulatorio} />}
+      {cartilhaAberta && <CartilhaEducativa comorbidade={cartilhaAberta} onClose={() => setCartilhaAberta(null)} />}
+      {showCartaPaciente && activePatient && activeConsulta && <CartaAoPaciente patient={activePatient} consulta={activeConsulta} onClose={() => setShowCartaPaciente(false)} />}
 
       {showPrescricaoHeader && activePatient && (
         <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
@@ -2434,7 +2438,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       </div>
 
       {activeTab === "ident" && <IdentTab patient={patient} updatePatient={updatePatient} />}
-      {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
+      {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} onAbrirCartilha={setCartilhaAberta} />}
       {activeTab === "antecedentes" && <AntecedentesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
@@ -2449,6 +2453,9 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
           <i className="ti ti-device-floppy" aria-hidden="true"></i>Salvar agora
         </button>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <button onClick={() => setShowCartaPaciente(true)} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-success)", color: "var(--color-text-success)", border: "0.5px solid var(--color-border-success)" }}>
+            <i className="ti ti-user-heart" aria-hidden="true"></i>Carta ao paciente
+          </button>
           <button onClick={() => onPrint({ type: "sugestoesIA" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-info)", color: "var(--color-text-info)", border: "0.5px solid var(--color-border-info)" }}>
             <i className="ti ti-sparkles" aria-hidden="true"></i>Sugestões de conduta (IA)
           </button>
@@ -2550,7 +2557,7 @@ function ComorbidadeItem({ nome, checked, onToggle, nota, onNotaChange, onRemove
   );
 }
 
-function ProblemasTab({ consulta, updateConsulta, patient }) {
+function ProblemasTab({ consulta, updateConsulta, patient, onAbrirCartilha }) {
   const problemas = consulta.problemas || {};
   const notas = consulta.problemasNotas || {};
   const custom = consulta.problemasCustom || [];
@@ -2615,6 +2622,30 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
           <strong style={{ fontWeight: 500 }}>{comPrevencao.length}</strong> comorbidade(s) ativa(s) possuem itens de rastreio específico habilitados na aba Prevenção: {comPrevencao.join(", ")}.
         </Alert>
       )}
+
+      {/* CARTILHAS EDUCATIVAS */}
+      {onAbrirCartilha && (() => {
+        const comCartilha = ativos.filter(p => CARTILHAS[p]);
+        if (comCartilha.length === 0) return null;
+        return (
+          <div style={{ marginTop: "8px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "12px 14px" }}>
+            <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-book-2" style={{ color: "var(--color-text-info)" }} aria-hidden="true"></i>
+              Cartilhas educativas para o paciente
+            </div>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              {comCartilha.map(p => (
+                <button key={p} onClick={() => onAbrirCartilha(p)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px", padding: "4px 10px" }}>
+                  {CARTILHAS[p].emoji} {p}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+              Clique para abrir e imprimir a cartilha para entregar ao paciente
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ÍNDICE DE CHARLSON */}
       {(() => {
@@ -6480,6 +6511,412 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
         </div>
 
         <div style={{ display: "flex", gap: "8px", marginTop: "14px", justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ fontSize: "13px" }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================
+// CARTILHAS EDUCATIVAS POR COMORBIDADE
+// ============================================================
+const CARTILHAS = {
+  "HAS": {
+    titulo: "Entendendo a Pressão Alta",
+    emoji: "🩺",
+    cor: "danger",
+    topicos: [
+      { titulo: "O que é pressão alta?", texto: "A pressão alta (hipertensão) acontece quando o coração precisa trabalhar com mais força para bombear o sangue pelas artérias. Na maioria das vezes não dói nem causa sintomas, por isso é chamada de 'assassina silenciosa'." },
+      { titulo: "Por que tratar?", texto: "Pressão alta não controlada pode causar derrame, infarto, problemas nos rins e na visão. Com o tratamento certo, esses riscos diminuem muito." },
+      { titulo: "O que você pode fazer", texto: "• Tome os remédios todos os dias, mesmo sem sintomas\n• Reduza o sal: evite embutidos, enlatados e comida industrializada\n• Mexa-se: caminhe pelo menos 30 minutos por dia\n• Não fume e evite álcool\n• Controle o peso\n• Meça a pressão em casa ou na farmácia" },
+      { titulo: "Sinais de alerta — procure atendimento", texto: "Dor de cabeça intensa, visão embaralhada, fala diferente, fraqueza em um lado do corpo, dor no peito. Vá ao pronto-socorro." },
+      { titulo: "Meta de pressão", texto: "O seu médico vai dizer qual é a meta para você. Em geral: abaixo de 130×80 mmHg para a maioria dos adultos." },
+    ]
+  },
+  "DM2": {
+    titulo: "Vivendo Bem com Diabetes",
+    emoji: "🍎",
+    cor: "warning",
+    topicos: [
+      { titulo: "O que é diabetes tipo 2?", texto: "No diabetes tipo 2, o açúcar (glicose) fica alto no sangue porque o corpo não consegue usar a insulina direito. Com o tempo, isso pode prejudicar o coração, os rins, os olhos e os pés." },
+      { titulo: "Alimentação", texto: "• Prefira arroz e pão integrais, feijão, legumes e verduras\n• Evite doces, refrigerantes e sucos industrializados\n• Coma de 3 em 3 horas, sem pular refeições\n• Diminua a quantidade de carboidratos em cada refeição" },
+      { titulo: "Atividade física", texto: "Caminhar 30 minutos por dia ajuda o corpo a usar melhor o açúcar. Converse com seu médico antes de começar." },
+      { titulo: "Cuidados com os pés", texto: "Todo dia: examine os pés (com espelho se precisar), lave e seque bem entre os dedos, use meia e calçado adequado. Nunca corte calos em casa. Mostre qualquer ferida ao médico." },
+      { titulo: "Quando procurar atendimento", texto: "Muita sede, urina frequente, cansaço, visão borrada, febre com glicemia alta, ferida nos pés que não sara." },
+      { titulo: "Seus exames importantes", texto: "Hemoglobina glicada (HbA1c): mede o controle dos últimos 3 meses. Pergunte ao seu médico qual é a sua meta." },
+    ]
+  },
+  "Dislipidemia": {
+    titulo: "Colesterol e Triglicérides: Entenda e Controle",
+    emoji: "🫀",
+    cor: "warning",
+    topicos: [
+      { titulo: "O que é dislipidemia?", texto: "É quando o colesterol ou os triglicérides estão alterados no sangue. O colesterol 'ruim' (LDL) acumula nas artérias e pode causar infarto e derrame." },
+      { titulo: "Alimentação", texto: "• Reduza frituras, carnes gordas, embutidos, manteiga e biscoitos recheados\n• Prefira azeite de oliva em pequena quantidade\n• Coma peixes 2x por semana (sardinha, salmão, atum)\n• Aumente fibras: aveia, frutas com casca, leguminosas" },
+      { titulo: "Atividade física", texto: "Exercício regular aumenta o colesterol 'bom' (HDL). Tente caminhar pelo menos 5 dias por semana." },
+      { titulo: "Sobre o remédio", texto: "A estatina (como sinvastatina ou rosuvastatina) reduz o risco de infarto. Tome mesmo que se sinta bem. Avise o médico se tiver dor muscular." },
+    ]
+  },
+  "Osteoporose": {
+    titulo: "Ossos Fortes na Melhor Idade",
+    emoji: "🦴",
+    cor: "warning",
+    topicos: [
+      { titulo: "O que é osteoporose?", texto: "Os ossos ficam mais porosos e frágeis, aumentando o risco de fraturas — mesmo com quedas leves. Os ossos mais afetados são o quadril, a coluna e o punho." },
+      { titulo: "Como proteger seus ossos", texto: "• Tome o remédio (bisfosfonato) corretamente: em jejum, com copo cheio de água, fique em pé por 30 minutos depois\n• Consuma cálcio: leite, iogurte, queijo, sardinha, brócolis\n• Vitamina D: tome sol no início da manhã ou fim da tarde (10–15 min)\n• Faça exercícios de fortalecimento muscular" },
+      { titulo: "Prevenção de quedas", texto: "• Retire tapetes e fios soltos do chão\n• Use calçados com sola antiderrapante\n• Instale barras de apoio no banheiro\n• Ilumine bem os ambientes à noite\n• Use óculos se precisar" },
+      { titulo: "Quando procurar atendimento", texto: "Dor súbita nas costas ou quadril após queda ou esforço — pode ser fratura. Procure atendimento imediatamente." },
+    ]
+  },
+  "DAC": {
+    titulo: "Cuidando do Coração — Doença Arterial Coronariana",
+    emoji: "❤️",
+    cor: "danger",
+    topicos: [
+      { titulo: "O que é DAC?", texto: "As artérias que levam sangue ao coração ficam estreitadas por placas de gordura (aterosclerose). Isso pode causar angina (dor no peito) ou infarto." },
+      { titulo: "Seus remédios são essenciais", texto: "• AAS: evita coágulos nas artérias\n• Estatina: estabiliza as placas de gordura\n• Betabloqueador: protege o coração\n• IECA/BRA: protege o coração e os rins\nNunca pare sem falar com o médico." },
+      { titulo: "Sinais de alerta — ligue 192 (SAMU)", texto: "Dor ou aperto no peito, dor que vai para o braço esquerdo ou mandíbula, suor frio, falta de ar, náusea. Esses são sinais de infarto — não espere, ligue imediatamente." },
+      { titulo: "Estilo de vida", texto: "Não fumar é a medida mais importante. Controle a pressão, o colesterol e a glicemia. Pratique atividade física leve regularmente." },
+    ]
+  },
+  "AVC": {
+    titulo: "Após o Derrame — Prevenção e Cuidados",
+    emoji: "🧠",
+    cor: "danger",
+    topicos: [
+      { titulo: "O que aconteceu?", texto: "O derrame (AVC) acontece quando o sangue para de chegar a uma parte do cérebro, seja por entupimento (isquêmico) ou por sangramento (hemorrágico). O tratamento e a reabilitação podem ajudar muito na recuperação." },
+      { titulo: "Prevenção de novo AVC", texto: "• Tome todos os remédios prescritos (antiagregante ou anticoagulante)\n• Controle a pressão — é o principal fator de risco\n• Não fume\n• Controle colesterol e diabetes se tiver" },
+      { titulo: "SAMU — reconheça os sinais", texto: "Use o método FAST:\n👁 Face: um lado da face caído?\n💪 Arms: um braço fraco?\n🗣 Speech: fala embaralhada?\n⏰ Time: ligue 192 imediatamente!" },
+      { titulo: "Reabilitação", texto: "Fisioterapia, fonoaudiologia e terapia ocupacional são fundamentais após o AVC. Não desista — o cérebro tem capacidade de se reorganizar (neuroplasticidade)." },
+    ]
+  },
+  "IC": {
+    titulo: "Insuficiência Cardíaca — Vivendo Melhor",
+    emoji: "🫀",
+    cor: "warning",
+    topicos: [
+      { titulo: "O que é insuficiência cardíaca?", texto: "O coração não bombeia sangue com força suficiente. Isso causa cansaço, falta de ar e inchaço nas pernas. Com o tratamento certo, é possível ter boa qualidade de vida." },
+      { titulo: "Sinais de piora — vá ao médico", texto: "• Inchaço nas pernas que aumenta\n• Ganho de peso rápido (> 2 kg em 2 dias)\n• Falta de ar em repouso ou ao deitar\n• Cansaço muito maior que o habitual" },
+      { titulo: "Cuidados diários", texto: "• Pese-se toda manhã em jejum e anote\n• Limite sal e líquidos conforme orientação médica\n• Evite álcool\n• Tome os remédios nos horários certos — nunca pare sem orientação" },
+      { titulo: "Atividade física", texto: "Caminhadas leves são benéficas. Pare se sentir falta de ar ou tontura. Siga o que seu médico orientar." },
+    ]
+  },
+  "FA": {
+    titulo: "Fibrilação Atrial — Entenda sua Arritmia",
+    emoji: "💓",
+    cor: "warning",
+    topicos: [
+      { titulo: "O que é fibrilação atrial?", texto: "O coração bate de forma irregular e rápida. Isso pode causar palpitações, cansaço e aumenta o risco de derrame (AVC), pois o sangue pode formar coágulos no coração." },
+      { titulo: "Anticoagulação é fundamental", texto: "O remédio anticoagulante (como apixabana, rivaroxabana ou varfarina) reduz muito o risco de AVC. Nunca pare sem falar com o médico, mesmo que se sinta bem." },
+      { titulo: "Cuidados com anticoagulante", texto: "• Atenção a sangramentos incomuns (urina vermelha, fezes escuras, sangramento prolongado)\n• Evite quedas — use tapete antiderrapante no banheiro\n• Avise qualquer médico ou dentista que você usa anticoagulante" },
+      { titulo: "Sinais de alerta", texto: "Palpitações intensas, falta de ar, tontura, dor no peito ou sinais de AVC (FAST) — procure atendimento imediato." },
+    ]
+  },
+  "DPOC": {
+    titulo: "DPOC — Cuidando da Respiração",
+    emoji: "🫁",
+    cor: "warning",
+    topicos: [
+      { titulo: "O que é DPOC?", texto: "A doença pulmonar obstrutiva crônica (DPOC) causa dificuldade para respirar, tosse com catarro e chiado. Geralmente é causada pelo cigarro." },
+      { titulo: "A medida mais importante", texto: "PARAR DE FUMAR é o único tratamento que muda o curso da doença. Converse com seu médico sobre apoio para parar." },
+      { titulo: "Use os inaladores corretamente", texto: "Os inaladores (broncodilatadores) são o tratamento principal. Use na técnica certa — peça ao médico ou enfermeiro para demonstrar." },
+      { titulo: "Sinais de exacerbação", texto: "Piora da falta de ar, mais catarro ou catarro amarelo/verde — procure atendimento. Exacerbações graves podem precisar de internação." },
+      { titulo: "Vacinas obrigatórias", texto: "Influenza (anual), COVID-19 (reforço), Pneumocócica — vacinação reduz internações por pneumonia em quem tem DPOC." },
+    ]
+  },
+  "DRC": {
+    titulo: "Doença Renal Crônica — Cuidando dos Rins",
+    emoji: "🫘",
+    cor: "warning",
+    topicos: [
+      { titulo: "O que é DRC?", texto: "Os rins perdem progressivamente a capacidade de filtrar o sangue. Na maioria das vezes é causada por diabetes e pressão alta não controladas." },
+      { titulo: "Como proteger seus rins", texto: "• Controle rigoroso da pressão e da glicemia\n• Não tome anti-inflamatórios (ibuprofeno, diclofenaco) sem orientação médica\n• Evite contrastes sem avisar o médico sobre seus rins\n• Beba água adequadamente (conforme orientação)" },
+      { titulo: "Alimentação", texto: "Conforme o estágio da doença, pode ser necessário reduzir potássio (banana, laranja, tomate) e fósforo (laticínios em excesso). Siga a orientação da nutricionista." },
+      { titulo: "Consultas regulares", texto: "Exames de creatinina, TFG, potássio e proteinúria devem ser feitos regularmente. Siga o calendário de consultas." },
+    ]
+  },
+  "Hipotireoidismo": {
+    titulo: "Tireoide — Entendendo o Hipotireoidismo",
+    emoji: "🦋",
+    cor: "info",
+    topicos: [
+      { titulo: "O que é hipotireoidismo?", texto: "A tireoide produz poucos hormônios, deixando o metabolismo mais lento. Causa cansaço, ganho de peso, constipação, pele seca e pode piorar a memória." },
+      { titulo: "Sobre a levotiroxina", texto: "• Tome em jejum, 30–60 minutos antes do café\n• Não tome junto com cálcio, ferro ou antiácidos\n• Nunca mude a dose sem orientação\n• O efeito leva semanas para aparecer — seja paciente" },
+      { titulo: "Controle com exames", texto: "O TSH mostra se a dose está correta. Repita conforme orientação médica — geralmente a cada 6 meses quando estabilizado." },
+      { titulo: "Sintomas de dose errada", texto: "Dose baixa: cansaço, ganho de peso, frio, constipação. Dose alta: palpitações, nervosismo, insônia, perda de peso, osteoporose." },
+    ]
+  },
+  "Transtorno depressivo": {
+    titulo: "Depressão — Você Não Está Sozinho",
+    emoji: "💚",
+    cor: "info",
+    topicos: [
+      { titulo: "O que é depressão?", texto: "Depressão é uma doença — não é fraqueza nem falta de vontade. Causa tristeza persistente, perda de interesse nas coisas, cansaço e pode afetar o sono, o apetite e a memória." },
+      { titulo: "O tratamento funciona", texto: "A combinação de medicação e conversa com psicólogo ou psiquiatra é muito eficaz. Os remédios levam 2–4 semanas para fazer efeito — não desista." },
+      { titulo: "O que ajuda no dia a dia", texto: "• Manter rotina de horários\n• Atividade física regular (melhora o humor)\n• Manter contato com pessoas queridas\n• Evitar álcool\n• Não se isolar" },
+      { titulo: "Quando buscar ajuda imediata", texto: "Se você tiver pensamentos de se machucar, ligue para o CVV: 188 (24h, gratuito). Você pode ligar a qualquer hora." },
+    ]
+  },
+  "Demência": {
+    titulo: "Demência — Apoio ao Paciente e à Família",
+    emoji: "🧩",
+    cor: "info",
+    topicos: [
+      { titulo: "O que é demência?", texto: "A demência afeta a memória, o raciocínio e a capacidade de realizar tarefas do dia a dia. A causa mais comum é a Doença de Alzheimer. É progressiva, mas o tratamento ajuda a melhorar a qualidade de vida." },
+      { titulo: "Para o paciente", texto: "• Use agenda ou celular para lembrar compromissos\n• Mantenha rotina fixa\n• Faça atividades que gosta\n• Exercício físico ajuda o cérebro" },
+      { titulo: "Para o cuidador", texto: "• Cuide de você também — o cuidador precisa de descanso\n• Busque grupos de apoio para cuidadores de Alzheimer\n• Peça ajuda da família e dos serviços de saúde\n• Aprenda as fases da doença para antecipar necessidades" },
+      { titulo: "Segurança em casa", texto: "Retire objetos cortantes do alcance, tranche o fogão se não souber usar, identifique a roupa do paciente com nome e telefone, evite mudanças bruscas de ambiente." },
+    ]
+  },
+  "Doença de Alzheimer": {
+    titulo: "Alzheimer — Informações para Paciente e Família",
+    emoji: "🧩",
+    cor: "info",
+    topicos: [
+      { titulo: "O que é Alzheimer?", texto: "É a causa mais comum de demência. Afeta progressivamente a memória, a linguagem, o raciocínio e a capacidade de realizar atividades. Não tem cura, mas o tratamento retarda a progressão." },
+      { titulo: "Sobre os remédios", texto: "Os inibidores de colinesterase (donepezila, rivastigmina, galantamina) ou a memantina podem ajudar. Não espere melhora dramática — o objetivo é retardar a piora." },
+      { titulo: "Estimulação cognitiva", texto: "Palavras cruzadas, leitura, conversa, música, dança e atividades manuais ajudam a manter o cérebro ativo." },
+      { titulo: "Apoio da família", texto: "A família é essencial. Pacientes com Alzheimer se beneficiam de rotina, ambiente familiar e carinho. Evite confrontos quando houver confusão." },
+    ]
+  },
+  "Doença de Parkinson": {
+    titulo: "Parkinson — Vivendo com Qualidade",
+    emoji: "🤝",
+    cor: "info",
+    topicos: [
+      { titulo: "O que é Parkinson?", texto: "É uma doença que afeta os movimentos, causando tremor, lentidão, rigidez e instabilidade. Com tratamento adequado, é possível manter boa qualidade de vida por muitos anos." },
+      { titulo: "Sobre os remédios", texto: "A levodopa é o principal tratamento. Tome nos horários exatos — o efeito depende do horário. Nunca pare abruptamente. Avise o médico se sentir períodos 'bons' e 'ruins' ao longo do dia." },
+      { titulo: "Fisioterapia e exercício", texto: "Exercício físico é muito importante no Parkinson. Fisioterapia, fonoaudiologia e terapia ocupacional ajudam a manter a independência." },
+      { titulo: "Prevenção de quedas", texto: "Andar devagar, dar passos maiores, balançar os braços, olhar para frente (não para o chão). Evite pisos escorregadios e use calçado fechado com sola antiderrapante." },
+    ]
+  },
+  "DAOP": {
+    titulo: "Doença Arterial dos Membros Inferiores",
+    emoji: "🦵",
+    cor: "warning",
+    topicos: [
+      { titulo: "O que é DAOP?", texto: "As artérias das pernas ficam estreitadas por placas de gordura, reduzindo o fluxo de sangue. Causa dor nas pernas ao caminhar (claudicação intermitente) e pode evoluir para feridas que não curam." },
+      { titulo: "O mais importante", texto: "PARAR DE FUMAR é a medida mais eficaz. O cigarro acelera muito a progressão da doença." },
+      { titulo: "Cuidados com os pés", texto: "Examine os pés todo dia. Qualquer ferida, mancha escura ou dor em repouso deve ser avaliada imediatamente — pode ser urgência vascular." },
+      { titulo: "Remédios e estilo de vida", texto: "Antiagregante (AAS ou clopidogrel), estatina e controle da pressão são essenciais. Caminhada supervisionada melhora a distância percorrida." },
+    ]
+  },
+  "Glaucoma": {
+    titulo: "Glaucoma — Protegendo sua Visão",
+    emoji: "👁️",
+    cor: "info",
+    topicos: [
+      { titulo: "O que é glaucoma?", texto: "É uma doença do nervo óptico, geralmente causada por pressão alta dentro do olho. Pode causar perda irreversível da visão se não tratado." },
+      { titulo: "O tratamento é para sempre", texto: "Os colírios devem ser usados todos os dias, mesmo sem sintomas. Não pare por conta própria — a perda de visão pode ser silenciosa." },
+      { titulo: "Como usar o colírio corretamente", texto: "1. Lave as mãos\n2. Incline a cabeça para trás\n3. Puxe a pálpebra inferior\n4. Pingue sem tocar o olho\n5. Feche o olho por 2 minutos e pressione o canto interno\n6. Se usar mais de um colírio, espere 5 minutos entre eles" },
+      { titulo: "Consultas regulares", texto: "Campimetria e avaliação do nervo óptico anualmente. Não falte às consultas — o glaucoma pode progredir sem sintomas." },
+    ]
+  },
+  "Insônia": {
+    titulo: "Dormindo Melhor — Higiene do Sono",
+    emoji: "😴",
+    cor: "info",
+    topicos: [
+      { titulo: "Por que o sono importa?", texto: "Dormir bem é essencial para a memória, o humor, a imunidade e o controle do peso. A insônia crônica aumenta risco de depressão, hipertensão e quedas em idosos." },
+      { titulo: "Higiene do sono — faça sempre", texto: "• Durma e acorde no mesmo horário todos os dias (inclusive fins de semana)\n• Evite telas (celular, TV) 1 hora antes de dormir\n• O quarto deve ser escuro, silencioso e fresco\n• Não fique na cama acordado por mais de 20 minutos" },
+      { titulo: "O que evitar", texto: "• Café, chá preto e refrigerante após 14h\n• Álcool — melhora o início do sono mas piora a qualidade\n• Cochilos longos durante o dia (máximo 20 minutos, antes das 15h)\n• Exercícios intensos à noite" },
+      { titulo: "Sobre remédios para dormir", texto: "Benzodiazepínicos e zolpidem são perigosos para idosos — causam queda, confusão e dependência. Converse com o médico sobre alternativas mais seguras." },
+    ]
+  },
+  "Osteoartrose": {
+    titulo: "Artrose — Vivendo com Menos Dor",
+    emoji: "🦵",
+    cor: "info",
+    topicos: [
+      { titulo: "O que é artrose?", texto: "É o desgaste da cartilagem das articulações, causando dor, rigidez (especialmente pela manhã) e limitação de movimento. As mais afetadas são joelhos, quadris, coluna e mãos." },
+      { titulo: "O que alivia a dor", texto: "• Paracetamol é o analgésico mais seguro para idosos\n• Compressas quentes ou frias podem ajudar\n• Fisioterapia: fortalecimento muscular protege a articulação\n• Manter peso saudável reduz muito a dor no joelho" },
+      { titulo: "O que evitar", texto: "Anti-inflamatórios (ibuprofeno, diclofenaco) causam risco para o estômago, rins e coração — use só com orientação e pelo menor tempo possível." },
+      { titulo: "Quando operar?", texto: "A cirurgia (prótese) é indicada quando a dor não responde mais ao tratamento e limita muito a vida. Converse com ortopedia." },
+    ]
+  },
+};
+
+// ============================================================
+// COMPONENTE DE CARTILHA EDUCATIVA
+// ============================================================
+function CartilhaEducativa({ comorbidade, onClose }) {
+  const [printMode, setPrintMode] = useState(false);
+  const cartilha = CARTILHAS[comorbidade];
+  if (!cartilha) return null;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
+      <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "640px", padding: "24px" }}>
+        {!printMode && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <div style={{ fontWeight: 700, fontSize: "16px" }}>{cartilha.emoji} {cartilha.titulo}</div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={() => setPrintMode(true)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+                <i className="ti ti-printer" aria-hidden="true"></i>Imprimir
+              </button>
+              <button onClick={onClose}><i className="ti ti-x" aria-hidden="true"></i></button>
+            </div>
+          </div>
+        )}
+        <div id={`cartilha-${comorbidade}`}>
+          {printMode && (
+            <div style={{ textAlign: "center", marginBottom: "20px" }}>
+              <div style={{ fontWeight: 700, fontSize: "18px" }}>{cartilha.emoji} {cartilha.titulo}</div>
+              <div style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>Ambulatório de Geriatria — HSE-PE / CEMPRE</div>
+            </div>
+          )}
+          {cartilha.topicos.map((t, i) => (
+            <div key={i} style={{ marginBottom: "16px", borderLeft: `3px solid var(--color-border-${cartilha.cor})`, paddingLeft: "12px" }}>
+              <div style={{ fontWeight: 700, fontSize: "14px", color: `var(--color-text-${cartilha.cor})`, marginBottom: "6px" }}>{t.titulo}</div>
+              <div style={{ fontSize: "13px", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{t.texto}</div>
+            </div>
+          ))}
+          <div style={{ marginTop: "20px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+            ⚕️ Este material é informativo. Siga sempre as orientações do seu médico.
+          </div>
+        </div>
+        {printMode ? (
+          <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
+            <button onClick={() => { window.print(); }} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-printer" aria-hidden="true"></i>Imprimir agora
+            </button>
+            <button onClick={() => setPrintMode(false)} style={{ fontSize: "13px" }}>Voltar</button>
+            <button onClick={onClose} style={{ fontSize: "13px" }}>Fechar</button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
+            <button onClick={onClose} style={{ fontSize: "13px" }}>Fechar</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// CARTA AO PACIENTE
+// ============================================================
+function CartaAoPaciente({ patient, consulta, onClose }) {
+  const [printMode, setPrintMode] = useState(false);
+  const i = patient.ident;
+  const aga = consulta.aga || {};
+  const pl = consulta.plano || {};
+  const ef = consulta.exameFisico || {};
+  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+  const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
+  const todasComorbidades = [...ativos, ...customAtivos];
+  const meds = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim());
+  const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+  const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
+  const imc = calcIMC(aga.peso, aga.altura);
+  const hoje = new Date().toLocaleDateString("pt-BR");
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
+      <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "680px", padding: "24px" }}>
+        {!printMode && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <div style={{ fontWeight: 700, fontSize: "16px" }}>📋 Carta ao Paciente</div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={() => setPrintMode(true)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+                <i className="ti ti-printer" aria-hidden="true"></i>Imprimir
+              </button>
+              <button onClick={onClose}><i className="ti ti-x" aria-hidden="true"></i></button>
+            </div>
+          </div>
+        )}
+
+        <div id="carta-paciente" style={{ fontSize: "14px", lineHeight: 1.7 }}>
+          {/* Cabeçalho */}
+          <div style={{ textAlign: "center", marginBottom: "20px", borderBottom: "2px solid #eee", paddingBottom: "12px" }}>
+            <div style={{ fontWeight: 700, fontSize: "16px" }}>AMBULATÓRIO DE GERIATRIA</div>
+            <div style={{ fontSize: "13px", color: "#666" }}>HSE-PE / CEMPRE</div>
+          </div>
+
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "4px" }}>Olá, {i.nome?.split(" ")[0] || "paciente"}!</div>
+            <div>Aqui está um resumo da sua consulta de hoje, <strong>{hoje}</strong>, para você guardar e compartilhar com sua família.</div>
+          </div>
+
+          {/* Diagnósticos */}
+          {todasComorbidades.length > 0 && (
+            <div style={{ marginBottom: "16px", background: "#f8f9fa", borderRadius: "8px", padding: "12px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "6px" }}>🏥 Seus diagnósticos</div>
+              {todasComorbidades.map((d, idx) => <div key={idx}>• {d}</div>)}
+            </div>
+          )}
+
+          {/* Sinais vitais em linguagem simples */}
+          {(ef.paSentado || ef.peso || aga.peso) && (
+            <div style={{ marginBottom: "16px", background: "#f8f9fa", borderRadius: "8px", padding: "12px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "6px" }}>📊 Como você está hoje</div>
+              {ef.paSentado && <div>• Pressão arterial: <strong>{ef.paSentado} mmHg</strong></div>}
+              {(ef.peso || aga.peso) && <div>• Peso: <strong>{ef.peso || aga.peso} kg</strong></div>}
+              {imc && <div>• IMC: <strong>{imc} kg/m²</strong>{parseFloat(imc) <= 22 ? " — abaixo do ideal, precisamos melhorar a alimentação" : parseFloat(imc) >= 27 ? " — acima do ideal, controle alimentar importante" : " — dentro do normal para sua idade"}</div>}
+              {ef.fc && <div>• Batimentos do coração (frequência cardíaca): <strong>{ef.fc} bpm</strong></div>}
+            </div>
+          )}
+
+          {/* Medicações */}
+          {meds.length > 0 && (
+            <div style={{ marginBottom: "16px", background: "#f8f9fa", borderRadius: "8px", padding: "12px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "6px" }}>💊 Seus remédios</div>
+              <div style={{ marginBottom: "6px", fontSize: "13px", color: "#666" }}>Tome todos os dias, mesmo que se sinta bem:</div>
+              {meds.map((m, idx) => <div key={idx}>• {m}</div>)}
+            </div>
+          )}
+
+          {/* Plano em linguagem simples */}
+          {(pl.solicito || pl.orientacoes || pl.encaminhamentos) && (
+            <div style={{ marginBottom: "16px", background: "#f8f9fa", borderRadius: "8px", padding: "12px" }}>
+              <div style={{ fontWeight: 700, marginBottom: "6px" }}>📝 O que combinamos hoje</div>
+              {pl.solicito && <div><strong>Exames pedidos:</strong><br />{pl.solicito}</div>}
+              {pl.orientacoes && <div style={{ marginTop: "8px" }}><strong>Orientações:</strong><br />{pl.orientacoes}</div>}
+              {pl.encaminhamentos && <div style={{ marginTop: "8px" }}><strong>Encaminhamentos:</strong><br />{pl.encaminhamentos}</div>}
+            </div>
+          )}
+
+          {/* Retorno */}
+          {pl.retorno && (
+            <div style={{ marginBottom: "16px", background: "#fff3cd", borderRadius: "8px", padding: "12px", border: "1px solid #ffc107" }}>
+              <div style={{ fontWeight: 700 }}>📅 Sua próxima consulta</div>
+              <div style={{ fontSize: "15px", marginTop: "4px" }}><strong>{new Date(pl.retorno + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</strong></div>
+              <div style={{ fontSize: "12px", marginTop: "4px", color: "#666" }}>Anote na agenda e avise alguém da sua família.</div>
+            </div>
+          )}
+
+          {/* Sinais de alerta gerais */}
+          <div style={{ marginBottom: "16px", background: "#fff0f0", borderRadius: "8px", padding: "12px", border: "1px solid #ffcccc" }}>
+            <div style={{ fontWeight: 700, marginBottom: "6px" }}>⚠️ Quando procurar atendimento imediato</div>
+            <div>• Dor no peito, falta de ar intensa ou desmaio</div>
+            <div>• Fraqueza súbita em um lado do corpo, fala embaralhada ou boca torta</div>
+            <div>• Queda com dor intensa ou incapacidade de andar</div>
+            <div>• Febre alta com confusão mental</div>
+            <div style={{ marginTop: "6px", fontWeight: 700 }}>🚑 SAMU: 192 · Bombeiros: 193</div>
+          </div>
+
+          {/* Assinatura */}
+          <div style={{ marginTop: "24px", borderTop: "1px solid #eee", paddingTop: "12px", fontSize: "12px", color: "#888" }}>
+            <div>Equipe de Geriatria — CEMPRE / HSE-PE</div>
+            <div>Qualquer dúvida, retorne à unidade ou entre em contato.</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "8px", marginTop: "16px", justifyContent: "flex-end" }}>
+          {printMode ? (
+            <>
+              <button onClick={() => window.print()} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <i className="ti ti-printer" aria-hidden="true"></i>Imprimir agora
+              </button>
+              <button onClick={() => setPrintMode(false)} style={{ fontSize: "13px" }}>Voltar</button>
+            </>
+          ) : (
+            <button onClick={() => setPrintMode(true)} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-printer" aria-hidden="true"></i>Imprimir carta
+            </button>
+          )}
           <button onClick={onClose} style={{ fontSize: "13px" }}>Fechar</button>
         </div>
       </div>
