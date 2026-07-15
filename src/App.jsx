@@ -2453,9 +2453,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
           <i className="ti ti-device-floppy" aria-hidden="true"></i>Salvar agora
         </button>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button onClick={() => onAbrirCarta()} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-success)", color: "var(--color-text-success)", border: "0.5px solid var(--color-border-success)" }}>
-            <i className="ti ti-user-heart" aria-hidden="true"></i>Carta ao paciente
-          </button>
+
           <button onClick={() => onPrint({ type: "sugestoesIA" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-info)", color: "var(--color-text-info)", border: "0.5px solid var(--color-border-info)" }}>
             <i className="ti ti-sparkles" aria-hidden="true"></i>Sugestões de conduta (IA)
           </button>
@@ -5351,42 +5349,7 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
 
   return (
     <div>
-      {showPrescricao && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
-          <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "520px", padding: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <div style={{ fontWeight: 600, fontSize: "15px" }}>📋 Gerar receita</div>
-              <button onClick={() => setShowPrescricao(false)}><i className="ti ti-x" aria-hidden="true"></i></button>
-            </div>
-            {medsLista.length > 0 && (
-              <div style={{ marginBottom: "14px" }}>
-                <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>Medicações em uso — selecione as que entram na receita:</div>
-                {medsLista.map((med, i) => (
-                  <label key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "13px", marginBottom: "6px", cursor: "pointer" }}>
-                    <input type="checkbox" checked={medicacoesSelecionadas.includes(med)} onChange={() => toggleMed(med)} style={{ marginTop: "2px" }} />
-                    <span>{med}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-            <Field label="Medicações adicionais (opcional — uma por linha)">
-              <textarea rows={3} value={medicacoesAdicionais} onChange={e => setMedicacoesAdicionais(e.target.value)} placeholder="Ex: Dipirona 500mg - 1cp se dor ou febre..." />
-            </Field>
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "12px" }}>
-              <button onClick={() => setShowPrescricao(false)} style={{ fontSize: "13px" }}>Cancelar</button>
-              <button onClick={gerarPrescricaoWord} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <i className="ti ti-file-word" aria-hidden="true"></i>Gerar receita Word
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       <SectionCard title="Plano terapêutico" icon="ti-target-arrow">
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "10px" }}>
-          <button onClick={() => { setMedicacoesSelecionadas(medsLista); setShowPrescricao(true); }} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
-            <i className="ti ti-file-word" aria-hidden="true"></i>Gerar receita a partir das medicações
-          </button>
-        </div>
         <Field label="1. Ajuste medicamentoso"><textarea rows={4} value={pl.ajuste || ""} onChange={e => set("ajuste", e.target.value)} placeholder="Descreva os ajustes de medicações..." /></Field>
 
         <Field label="2. Solicito">
