@@ -225,37 +225,38 @@ async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo, m
 const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática","DRC","DAC","IC","FA","AVC","DPOC","Asma","HPB","Incontinência urinária","DRGE","Constipação crônica","Osteoporose","Osteoartrose","Hipotireoidismo","Transtorno depressivo","TAG","Insônia","Síndrome demencial","Doença de Parkinson","Neoplasia","DHC","Insuficiência venosa crônica","DAOP","Catarata","Glaucoma","Déficit auditivo A/E"];
 
 const PREVENCAO_ESPECIFICA = {
-  "HAS": ["MAPA 24h","ECG (anual)","ECOTT (se HVE ou IC; a cada 2 anos)","BNP (se suspeita de IC)","Polissonografia (se suspeita de SAOS)"],
-  "DM2": ["Fundoscopia (anual)","ECG (anual)","Exame dos pés (toda consulta)"],
-  "Dislipidemia": ["ECG (anual)"],
-  "Obesidade": ["USG de abdome total (anual)","Elastografia hepática (se FIB-4 ≥ 1,3)"],
-  "Esteatose hepática": ["USG de abdome total (anual)","Elastografia hepática (se FIB-4 ≥ 1,3)"],
+  "HAS": ["MAPA 24h","ECG","ECOTT (se HVE ou IC)","BNP (se suspeita de IC)","Polissonografia (se suspeita de SAOS)"],
+  "DM2": ["Fundoscopia (anual)","ECG","Exame dos pés (toda consulta)","Microalbuminúria / RAC urinária"],
+  "Dislipidemia": ["ECG"],
+  "Obesidade": ["USG de abdome total","Elastografia hepática (se FIB-4 ≥ 1,3)"],
+  "Esteatose hepática": ["USG de abdome total","Elastografia hepática (se FIB-4 ≥ 1,3)","FIB-4"],
   "DHC": ["USG de abdome total (6/6 meses)","AFP (6/6 meses)","Elastografia hepática","EDA"],
-  "DRC": ["USG de rins e vias urinárias com resíduo pós-miccional","PSA total e livre"],
-  "DAC": ["ECG (anual)","ECOTT (a cada 2 anos)","Teste ergométrico","Cintilografia miocárdica (repouso e estresse farmacológico)"],
-  "IC": ["ECG (anual)","ECOTT (a cada 2 anos)","RX de tórax PA e perfil"],
+  "DRC": ["USG de rins e vias urinárias com resíduo pós-miccional","Microalbuminúria / RAC urinária","PSA total e livre (se homem)"],
+  "DAC": ["ECG","ECOTT","Teste ergométrico (ou cintilografia miocárdica se incapacidade para esforço)"],
+  "IC": ["ECG","ECOTT","BNP / NT-proBNP","RX de tórax PA e perfil"],
   "FA": ["ECG","Holter 24h","ECOTT"],
-  "AVC": ["ECG","Holter 24h","ECOTT","USG Doppler de artérias carótidas e vertebrais","TC de crânio s/ contraste","RNM de crânio s/ contraste"],
-  "DPOC": ["Espirometria com prova broncodilatadora (anual)","RX de tórax PA e perfil","TC de tórax s/ contraste"],
-  "Asma": ["Espirometria com prova broncodilatadora (anual)","RX de tórax PA e perfil"],
-  "HPB": ["USG de rins e vias urinárias com resíduo pós-miccional","PSA total e livre"],
+  "AVC": ["ECG","Holter 24h","ECOTT","USG Doppler de artérias carótidas e vertebrais","TC ou RNM de crânio s/ contraste"],
+  "DPOC": ["Espirometria com prova broncodilatadora","RX de tórax PA e perfil","TC de tórax s/ contraste (se suspeita de enfisema ou neoplasia)"],
+  "Asma": ["Espirometria com prova broncodilatadora","RX de tórax PA e perfil"],
+  "HPB": ["USG de rins e vias urinárias com resíduo pós-miccional","PSA total e livre (se homem)","Urofluxometria"],
   "Incontinência urinária": ["USG de rins e vias urinárias com resíduo pós-miccional","Urocultura","Urofluxometria"],
   "DRGE": ["EDA (se sintomas de alarme ou > 5 anos de sintomas)"],
   "Constipação crônica": ["Colonoscopia (se > 45 anos sem rastreio prévio)"],
-  "Osteoporose": ["Densitometria mineral óssea (a cada 1-2 anos)","RX de coluna (se dor ou suspeita de fratura)"],
-  "Osteoartrose": ["RX das articulações acometidas","USG articular (se derrame)"],
-  "Hipotireoidismo": ["TSH, T4 livre (a cada 6-12 meses ou após ajuste de dose)","ECG (anual)"],
+  "Osteoporose": ["Densitometria mineral óssea (a cada 1–2 anos)","RX de coluna (se dor ou suspeita de fratura)"],
+  "Osteoartrose": ["RX das articulações acometidas","USG articular (se derrame articular)"],
+  "Hipotireoidismo": ["TSH e T4 livre (a cada 6–12 meses ou após ajuste de dose)","ECG"],
   "Transtorno depressivo": ["GDS-15 (toda consulta)"],
   "TAG": ["GDS-15 (toda consulta)"],
-  "Insônia": ["Polissonografia (se suspeita de SAOS ou síndrome das pernas inquietas)"],
-  "Síndrome demencial": ["MEEM / MoCA (toda consulta)","RNM de crânio s/ contraste","TC de crânio s/ contraste","Vitamina B12, ácido fólico, TSH, VDRL"],
+  "Insônia": ["Polissonografia (se suspeita de SAOS ou SPI)"],
+  "Síndrome demencial": ["MEEM e/ou MoCA (toda consulta)","RNM de crânio s/ contraste","Vitamina B12, ácido fólico, TSH, VDRL"],
+  "Doença de Alzheimer": ["MEEM e/ou MoCA (toda consulta)","RNM de crânio s/ contraste","Vitamina B12, ácido fólico, TSH, VDRL"],
   "Doença de Parkinson": ["RNM de crânio s/ contraste","Avaliação neuropsicológica"],
   "Neoplasia": ["Seguimento com oncologista"],
   "Insuficiência venosa crônica": ["USG Doppler venoso de MMII"],
-  "DAOP": ["USG Doppler arterial de MMII"],
+  "DAOP": ["USG Doppler arterial de MMII","ITB (índice tornozelo-braquial)","ECG"],
   "Catarata": ["Avaliação oftalmológica anual"],
   "Glaucoma": ["Avaliação oftalmológica anual"],
-  "Déficit auditivo A/E": ["Avaliação otorrinolaringológica"],
+  "Déficit auditivo A/E": ["Avaliação otorrinolaringológica anual"],
 };
 
 const VACINAS = [
@@ -584,6 +585,111 @@ const INTERACOES = [
     ],
     msg: "Hipoglicemiante + Corticoide: hiperglicemia induzida por corticoide — monitorar glicemia, ajustar dose"
   },
+  {
+    grupos: [
+      ["alendronato","risedronato","ibandronato"],
+      ["cálcio","carbonato de cálcio","citrato de cálcio"]
+    ],
+    msg: "Bisfosfonato + Cálcio oral: redução da absorção — tomar bisfosfonato em jejum, cálcio em outro horário (≥2h de intervalo)"
+  },
+  {
+    grupos: [
+      ["amiodarona"],
+      ["varfarina","warfarina","acenocumarol"]
+    ],
+    msg: "Amiodarona + Anticoagulante oral: potencialização do efeito anticoagulante — reduzir dose da varfarina em 30–50%, monitorar INR semanalmente"
+  },
+  {
+    grupos: [
+      ["fenitoína","carbamazepina","fenobarbital","primidona"],
+      ["varfarina","warfarina","acenocumarol","rivaroxabana","apixabana"]
+    ],
+    msg: "Antiepiléptico indutor + Anticoagulante: indução enzimática pode reduzir nível do anticoagulante — monitorar INR/nível plasmático"
+  },
+  {
+    grupos: [
+      ["carbonato de lítio","lítio"],
+      ["ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","cetorolaco","celecoxibe"]
+    ],
+    msg: "Lítio + AINE: aumento dos níveis séricos de lítio — risco de toxicidade (tremor, ataxia, confusão)"
+  },
+  {
+    grupos: [
+      ["carbonato de lítio","lítio"],
+      ["furosemida","hidroclorotiazida","indapamida","clortalidona"]
+    ],
+    msg: "Lítio + Diurético: redução da excreção renal de lítio — risco de toxicidade; monitorar litemias"
+  },
+  {
+    grupos: [
+      ["claritromicina","eritromicina"],
+      ["carbamazepina"]
+    ],
+    msg: "Macrolídeo + Carbamazepina: aumento dos níveis de carbamazepina — risco de toxicidade (diplopia, ataxia, confusão)"
+  },
+  {
+    grupos: [
+      ["varfarina","warfarina","acenocumarol"],
+      ["amoxicilina","ampicilina","ciprofloxacino","levofloxacino","metronidazol","sulfametoxazol","claritromicina","eritromicina"]
+    ],
+    msg: "Varfarina + Antibiótico: alteração da flora intestinal pode aumentar o efeito anticoagulante — monitorar INR após início"
+  },
+  {
+    grupos: [
+      ["insulina nph","insulina regular","insulina glargina","insulina degludeca","insulina detemir","insulina lispro","insulina asparte","insulina glulisina"],
+      ["propranolol","metoprolol","atenolol","carvedilol","bisoprolol"]
+    ],
+    msg: "Insulina + Betabloqueador: mascaramento dos sintomas adrenérgicos de hipoglicemia (taquicardia, tremor) — sudorese persiste como sinal"
+  },
+  {
+    grupos: [
+      ["rivaroxabana","apixabana","dabigatrana","edoxabana"],
+      ["claritromicina","eritromicina","amiodarona","verapamil","dronedarona"]
+    ],
+    msg: "DOAC + Inibidor de P-gp: aumento dos níveis do anticoagulante — monitorar sinais de sangramento; considerar redução de dose"
+  },
+  {
+    grupos: [
+      ["metoclopramida","domperidona"],
+      ["haloperidol","risperidona","clorpromazina","tioridazina","levomepromazina"]
+    ],
+    msg: "Metoclopramida/Domperidona + Antipsicótico: risco aumentado de efeitos extrapiramidais e prolongamento do QT"
+  },
+  {
+    grupos: [
+      ["tamsulosina","silodosina","alfuzosina","doxazosina","terazosina"],
+      ["sildenafila","tadalafila","vardenafila","avanafila"]
+    ],
+    msg: "Alfa-bloqueador + iPDE5: hipotensão grave — especialmente com doxazosina; preferir tadalafila com cautela e iniciar em dose baixa"
+  },
+  {
+    grupos: [
+      ["sulfametoxazol","trimetoprima"],
+      ["varfarina","warfarina","acenocumarol"]
+    ],
+    msg: "SMX-TMP + Varfarina: potente inibidor do CYP2C9 — aumento significativo do INR; reduzir dose de varfarina em 25–50%"
+  },
+  {
+    grupos: [
+      ["sulfametoxazol","trimetoprima"],
+      ["captopril","enalapril","lisinopril","ramipril","losartana","valsartana","irbesartana","espironolactona"]
+    ],
+    msg: "SMX-TMP + IECA/BRA/Espironolactona: risco de hipercalemia — SMX-TMP bloqueia excreção renal de potássio"
+  },
+  {
+    grupos: [
+      ["alopurinol"],
+      ["azatioprina","mercaptopurina"]
+    ],
+    msg: "Alopurinol + Azatioprina/Mercaptopurina: inibição do metabolismo → toxicidade grave — reduzir dose da azatioprina em 75%"
+  },
+  {
+    grupos: [
+      ["colchicina"],
+      ["claritromicina","eritromicina","cetoconazol","itraconazol","fluconazol"]
+    ],
+    msg: "Colchicina + Inibidor CYP3A4/P-gp: aumento dos níveis de colchicina → risco de miopatia e toxicidade grave — evitar combinação"
+  },
 ];
 
 function checkBeers(nomeMedicacao) {
@@ -725,6 +831,43 @@ function checkAlertasEspeciaisComContexto(texto, problemas) {
   // Chama versão simplificada — problemas já passados via param
   return checkAlertasEspeciais(texto);
 }
+
+// RadioToggle — permite clicar novamente para desmarcar
+function RadioToggle({ value, onChange, options }) {
+  return (
+    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+      {options.map(opt => {
+        const val = typeof opt === "string" ? opt : opt.value;
+        const label = typeof opt === "string" ? opt : opt.label;
+        const selecionado = value === val;
+        return (
+          <label
+            key={val}
+            onClick={() => onChange(selecionado ? "" : val)}
+            style={{
+              display: "flex", alignItems: "center", gap: "6px",
+              cursor: "pointer", fontSize: "13px",
+              padding: "4px 10px", borderRadius: "20px",
+              background: selecionado ? "var(--color-background-info)" : "var(--color-background-secondary)",
+              border: `1px solid ${selecionado ? "var(--color-border-info)" : "var(--color-border-tertiary)"}`,
+              color: selecionado ? "var(--color-text-info)" : "var(--color-text-primary)",
+              userSelect: "none",
+            }}
+          >
+            <span style={{
+              width: "14px", height: "14px", borderRadius: "50%",
+              border: `2px solid ${selecionado ? "var(--color-border-info)" : "var(--color-border-secondary)"}`,
+              background: selecionado ? "var(--color-border-info)" : "transparent",
+              flexShrink: 0, display: "inline-block",
+            }} />
+            {label}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 
 function calcIMC(peso, altura) {
   const p = parseFloat(peso);
@@ -1027,12 +1170,33 @@ function Alert({ type, children }) {
 
 function RadioGroup({ value, onChange, options, name }) {
   return (
-    <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
-      {options.map(opt => (
-        <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px" }}>
-          <input type="radio" name={name} checked={value === opt.value} onChange={() => onChange(opt.value)} />{opt.label}
-        </label>
-      ))}
+    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+      {options.map(opt => {
+        const selecionado = value === opt.value;
+        return (
+          <label
+            key={opt.value}
+            onClick={e => { e.preventDefault(); onChange(selecionado ? "" : opt.value); }}
+            style={{
+              display: "flex", alignItems: "center", gap: "6px",
+              fontSize: "14px", cursor: "pointer",
+              padding: "4px 12px", borderRadius: "20px",
+              background: selecionado ? "var(--color-background-info)" : "var(--color-background-secondary)",
+              border: `1px solid ${selecionado ? "var(--color-border-info)" : "var(--color-border-tertiary)"}`,
+              color: selecionado ? "var(--color-text-info)" : "var(--color-text-primary)",
+              userSelect: "none", transition: "all 0.15s",
+            }}
+          >
+            <span style={{
+              width: "14px", height: "14px", borderRadius: "50%", flexShrink: 0,
+              border: `2px solid ${selecionado ? "var(--color-border-info)" : "var(--color-border-secondary)"}`,
+              background: selecionado ? "var(--color-border-info)" : "transparent",
+              display: "inline-block",
+            }} />
+            {opt.label}
+          </label>
+        );
+      })}
     </div>
   );
 }
@@ -1244,6 +1408,9 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [printDoc, setPrintDoc] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [showPrescricaoHeader, setShowPrescricaoHeader] = useState(false);
+  const [medicacoesSelecionadasHeader, setMedicacoesSelecionadasHeader] = useState([]);
+  const [medicacoesAdicionaisHeader, setMedicacoesAdicionaisHeader] = useState("");
 
   const saveTimers = useRef({});
 
@@ -1906,6 +2073,22 @@ export default function App() {
               <i className="ti ti-clipboard-text" aria-hidden="true"></i>Prontuário completo
             </button>
             <button
+              onClick={() => {
+                const medsLista = (activeConsulta?.medicacoesTexto || "").split("\n").filter(l => l.trim());
+                setMedicacoesSelecionadasHeader(medsLista);
+                setShowPrescricaoHeader(true);
+              }}
+              style={{
+                padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
+                border: "0.5px solid var(--color-border-tertiary)",
+                background: "transparent",
+                color: "var(--color-text-primary)",
+                display: "flex", alignItems: "center", gap: "6px"
+              }}
+            >
+              <i className="ti ti-file-word" aria-hidden="true"></i>Receita (Word)
+            </button>
+            <button
               onClick={() => baixarReceituarios(activePatient)}
               style={{
                 padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
@@ -1932,6 +2115,64 @@ export default function App() {
     </div>
 
       {printDoc && <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} ambulatorio={ambulatorio} />}
+
+      {showPrescricaoHeader && activePatient && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
+          <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "520px", padding: "24px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <div style={{ fontWeight: 600, fontSize: "15px" }}>📋 Gerar receita (Word)</div>
+              <button onClick={() => { setShowPrescricaoHeader(false); setMedicacoesAdicionaisHeader(""); }}><i className="ti ti-x" aria-hidden="true"></i></button>
+            </div>
+            {medicacoesSelecionadasHeader.length > 0 && (
+              <div style={{ marginBottom: "14px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>Medicações em uso — selecione as que entram na receita:</div>
+                {medicacoesSelecionadasHeader.map((med, i) => {
+                  const [selecionadas, setSelecionadas] = [medicacoesSelecionadasHeader, setMedicacoesSelecionadasHeader];
+                  const marcada = selecionadas.includes(med);
+                  return (
+                    <label key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "13px", marginBottom: "6px", cursor: "pointer" }}>
+                      <input type="checkbox" defaultChecked onChange={e => {
+                        setMedicacoesSelecionadasHeader(prev =>
+                          e.target.checked ? [...prev, med] : prev.filter(m => m !== med)
+                        );
+                      }} style={{ marginTop: "2px" }} />
+                      <span>{med}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <Field label="Medicações adicionais (opcional — uma por linha)">
+              <textarea rows={3} value={medicacoesAdicionaisHeader} onChange={e => setMedicacoesAdicionaisHeader(e.target.value)} placeholder="Ex: Dipirona 500mg - 1cp se dor ou febre..." />
+            </Field>
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "12px" }}>
+              <button onClick={() => { setShowPrescricaoHeader(false); setMedicacoesAdicionaisHeader(""); }} style={{ fontSize: "13px" }}>Cancelar</button>
+              <button onClick={() => {
+                const todasMeds = [...medicacoesSelecionadasHeader, ...medicacoesAdicionaisHeader.split("\n").filter(l => l.trim())];
+                if (todasMeds.length === 0) { alert("Selecione ao menos uma medicação."); return; }
+                const i = activePatient.ident;
+                const idade = calcIdade(i.dn);
+                const nomeArq = "RECEITA - " + (i.nome || "paciente").replace(/[^a-zA-ZÀ-ÿ0-9 ]/g,"").trim().replace(/ +/g,"_") + "_" + new Date().toLocaleDateString("pt-BR").replace(/\//g,"-") + ".docx";
+                preencherReceitasDocx({
+                  nome: i.nome || "", prontuario: i.prontuario || "",
+                  maeNome: i.maeNome || "", idade: idade != null ? idade : "",
+                  sexo: i.sexo || "", medicacoes: todasMeds.join("\n"),
+                }).then(blob => {
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url; a.download = nomeArq;
+                  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  setShowPrescricaoHeader(false);
+                  setMedicacoesAdicionaisHeader("");
+                }).catch(e => alert("Erro ao gerar receita: " + e.message));
+              }} style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <i className="ti ti-file-word" aria-hidden="true"></i>Baixar receita Word
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -2509,13 +2750,8 @@ function AntecedentesTab({ consulta, updateConsulta }) {
   return (
     <SectionCard title="Antecedentes pessoais e familiares" icon="ti-history">
       <Field label="Tabagismo">
-        <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
-          {["Nunca fumou", "Ex-tabagista", "Tabagista atual"].map(opt => (
-            <label key={opt} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px" }}>
-              <input type="radio" name="tabagismo" checked={a.tabagismo === opt} onChange={() => set("tabagismo", opt)} />{opt}
-            </label>
-          ))}
-        </div>
+        <RadioGroup name="tabagismo" value={a.tabagismo || ""} onChange={v => set("tabagismo", v)}
+          options={["Nunca fumou","Ex-tabagista","Tabagista atual"].map(o => ({ value: o, label: o }))} />
       </Field>
       {a.tabagismo && a.tabagismo !== "Nunca fumou" && (
         <Row cols="repeat(4, 1fr)">
@@ -2526,13 +2762,8 @@ function AntecedentesTab({ consulta, updateConsulta }) {
         </Row>
       )}
       <Field label="Etilismo">
-        <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
-          {["Nega", "Social", "Abuso/dependência", "Etilista inativo"].map(opt => (
-            <label key={opt} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px" }}>
-              <input type="radio" name="etilismo" checked={a.etilismo === opt} onChange={() => set("etilismo", opt)} />{opt}
-            </label>
-          ))}
-        </div>
+        <RadioGroup name="etilismo" value={a.etilismo || ""} onChange={v => set("etilismo", v)}
+          options={["Nega","Social","Abuso/dependência","Etilista inativo"].map(o => ({ value: o, label: o }))} />
       </Field>
       {a.etilismo && a.etilismo !== "Nega" && (
         <Row cols="repeat(4, 1fr)">
@@ -2621,6 +2852,72 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   if (temMedComorb("nitroglicerina","isossorbida","mononitrato","dinitrato") && temMedComorb("sildenafila","tadalafila","vardenafila","avanafila")) {
     alertasComorbidade.push({ tipo: "danger", msg: "⚠ NITRATO + iPDE5: hipotensão grave potencialmente fatal — contraindicação absoluta" });
   }
+
+  // AINE em HAS
+  if (prob["HAS"] && temMedComorb("ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","cetorolaco","celecoxibe")) {
+    alertasComorbidade.push({ tipo: "warning", msg: "⚠ AINE em HAS: eleva PA, reduz efeito de anti-hipertensivos e aumenta risco renal — preferir paracetamol" });
+  }
+
+  // Fluorquinolona em tendão (idoso + corticoide)
+  if (temMedComorb("ciprofloxacino","levofloxacino","moxifloxacino") && temMedComorb("prednisona","prednisolona","dexametasona","metilprednisolona")) {
+    alertasComorbidade.push({ tipo: "warning", msg: "⚠ Fluorquinolona + Corticoide: risco aumentado de ruptura de tendão (especialmente tendão de Aquiles) — monitorar dor em tendões" });
+  }
+
+  // Antidepressivo tricíclico em glaucoma
+  if ((consulta.problemasCustom || []).filter(c => c.checked).some(c => /glaucoma/i.test(c.nome)) || prob["Glaucoma"]) {
+    if (temMedComorb("amitriptilina","nortriptilina","imipramina","doxepina","clomipramina")) {
+      alertasComorbidade.push({ tipo: "danger", msg: "⚠ Antidepressivo tricíclico em Glaucoma de ângulo fechado: risco de crise glaucomatosa aguda — contraindicado; usar ISRS" });
+    }
+  }
+
+  // IECA/BRA em estenose bilateral de artéria renal
+  const temEstenoserenal = (consulta.problemasCustom || []).filter(c => c.checked).some(c => /estenose.*renal|artéria renal/i.test(c.nome));
+  if (temEstenoserenal && temMedComorb("captopril","enalapril","lisinopril","ramipril","losartana","valsartana","irbesartana","olmesartana")) {
+    alertasComorbidade.push({ tipo: "danger", msg: "⚠ IECA/BRA em estenose bilateral de artéria renal: risco de IRA grave — contraindicado; monitorar creatinina" });
+  }
+
+  // Metformina em contraste (já planejado)
+  const temContraste = (consulta.plano?.solicito || "").toLowerCase().includes("contraste") || (consulta.labsTexto || "").toLowerCase().includes("contraste");
+  if (temContraste && temMedComorb("metformina")) {
+    alertasComorbidade.push({ tipo: "warning", msg: "⚠ Metformina + Contraste iodado planejado: suspender 48h antes e 48h após o exame — risco de acidose lática" });
+  }
+
+  // Antipsicótico em demência sem justificativa
+  if ((prob["Demência"] || prob["Doença de Alzheimer"] || prob["Síndrome demencial"]) &&
+      temMedComorb("haloperidol","risperidona","olanzapina","quetiapina","aripiprazol","ziprasidona")) {
+    alertasComorbidade.push({ tipo: "warning", msg: "⚠ Antipsicótico em Demência: aumenta risco de AVC e mortalidade — reavaliar a cada 3 meses; esgotar medidas não farmacológicas" });
+  }
+
+  // Estatina em miopatia/rabdomiólise
+  const temMiopatia = (consulta.problemasCustom || []).filter(c => c.checked).some(c => /miopatia|miosite|dermatomiosite|polimiosite/i.test(c.nome));
+  if (temMiopatia && temMedComorb("sinvastatina","atorvastatina","rosuvastatina","pravastatina","lovastatina")) {
+    alertasComorbidade.push({ tipo: "warning", msg: "⚠ Estatina em miopatia: risco de rabdomiólise — monitorar CPK, suspender se CPK > 10x LSN ou sintomas musculares" });
+  }
+
+  // Bifosfonato em hipocalcemia
+  const mCa = labs.match(/(?:ca|cálcio)[^\d]*(\d+[,.]\d+|\d+)/i);
+  const caVal = mCa ? parseFloat(mCa[1].replace(",",".")) : null;
+  if (caVal && caVal < 8.5 && temMedComorb("alendronato","risedronato","ibandronato","zoledronato","ácido zoledrônico")) {
+    alertasComorbidade.push({ tipo: "danger", msg: `⚠ Bisfosfonato em hipocalcemia (Ca ${caVal} mg/dL): contraindicado — corrigir cálcio e vitamina D antes de iniciar` });
+  }
+
+  // Sulfonilureia em idoso frágil
+  const frailScore2 = Object.values((consulta.aga || {}).frail || {}).filter(Boolean).length;
+  if (frailScore2 >= 3 && temMedComorb("glibenclamida","gliburida","glipizida","clorpropamida","glimepirida")) {
+    alertasComorbidade.push({ tipo: "danger", msg: "⚠ Sulfonilureia em idoso FRÁGIL: alto risco de hipoglicemia grave e prolongada — substituir por linagliptina, sitagliptina ou insulina basal de baixa dose" });
+  }
+
+  // Anticolinérgico em demência
+  if ((prob["Demência"] || prob["Doença de Alzheimer"] || prob["Síndrome demencial"]) &&
+      temMedComorb("oxibutinina","solifenacina","tolterodina","darifenacina","fesoterodina","flavoxato","trospio","difenidramina","hidroxizina","amitriptilina","nortriptilina","biperideno","triexifenidil")) {
+    alertasComorbidade.push({ tipo: "danger", msg: "⚠ Anticolinérgico em Demência: piora cognitiva, delirium e risco de queda — contraindicado; usar mirabegrom para bexiga hiperativa" });
+  }
+
+  // Opioides sem laxante
+  if (temMedComorb("morfina","codeína","tramadol","oxicodona","fentanil","buprenorfina","metadona") &&
+      !temMedComorb("lactulose","macrogol","bisacodil","sena","picossulfato","polietilenoglicol","psyllium","docusato")) {
+    alertasComorbidade.push({ tipo: "warning", msg: "⚠ Opioide sem laxante: constipação em 90% dos casos — prescrecer laxante profilático (macrogol, bisacodil ou sena)" });
+  }
   const numMeds = linhas.length;
   const polifarmacia = numMeds >= 5;
   const polimedicacao = numMeds >= 10;
@@ -2644,6 +2941,15 @@ function MedicacoesTab({ consulta, updateConsulta }) {
     { drug: ["nifedipina"], msg: "Nifedipina de ação curta: associada a hipotensão e risco cardiovascular — substituir por anlodipino ou outro BCC de longa ação." },
     { drug: ["amiodarona"], msg: "Amiodarona: múltiplos efeitos adversos em idosos (tireóide, pulmão, fígado) — reavaliar indicação e alternativas." },
     { drug: ["digoxina"], msg: "Digoxina: janela terapêutica estreita em idosos, risco de toxicidade — considerar suspensão se FC controlada com betabloqueador." },
+    { drug: ["tramadol"], msg: "Tramadol: risco de convulsões, hiponatremia e síndrome serotonérgica em idosos — preferir paracetamol ou opioide de baixa dose se dor intensa." },
+    { drug: ["indometacina","cetorolaco"], msg: "Indometacina/Cetorolaco: AINEs de maior risco renal, GI e cardiovascular — substituir por paracetamol ou AINE mais seletivo em menor dose." },
+    { drug: ["oxibutinina"], msg: "Oxibutinina: alta atividade anticolinérgica — substituir por mirabegrom (não anticolinérgico) ou solifenacina de baixa dose se necessário." },
+    { drug: ["doxazosina","alfuzosina","terazosina","prazosina"], msg: "Alfa-bloqueador: hipotensão ortostática grave em idosos — evitar para HAS; pode manter para HPB se benefício." },
+    { drug: ["clonidina"], msg: "Clonidina: hipotensão, bradicardia e efeito rebote na suspensão — substituir por outro anti-hipertensivo." },
+    { drug: ["fenobarbital","primidona"], msg: "Fenobarbital/Primidona: sedação, quedas, interações — tentar substituição por antiepiléptico mais seguro (lamotrigina, levetiracetam)." },
+    { drug: ["haloperidol","clorpromazina","levomepromazina"], msg: "Antipsicótico típico: maior risco de EPS e mortalidade em idosos — se necessário, preferir quetiapina ou aripiprazol." },
+    { drug: ["meperidina","petidina"], msg: "Meperidina: acúmulo de metabólito neurotóxico (normeperidina) — risco de convulsões; contraindicada em idosos. Substituir por morfina ou tramadol." },
+    { drug: ["prometazina","difenidramina","dexclorfeniramina","clorfeniramina"], msg: "Anti-histamínico 1ª geração: alta atividade anticolinérgica — risco de confusão e queda. Substituir por cetirizina ou loratadina se necessário." },
   ];
 
   const sugestoesDepresc = DEPRESC.filter(d =>
@@ -2923,6 +3229,71 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
     hipoteses.push({ diag: "Desnutrição / Sarcopenia", prob: "Alta", cor: "warning", motivo: "Avaliar MNA-SF, ingesta calórica e proteica" });
     hipoteses.push({ diag: "Hipertireoidismo", prob: "Moderada", cor: "warning", motivo: "Perda de peso + taquicardia/palpitações — verificar TSH" });
     hipoteses.push({ diag: "Depressão", prob: "Moderada", cor: "warning", motivo: "Perda de peso + anedonia/tristeza — aplicar GDS-15" });
+  }
+
+  // Respiratório
+  if (tem("tosse", "tosse crônica", "tosse seca")) {
+    if (temMed("captopril","enalapril","lisinopril","ramipril","perindopril")) hipoteses.push({ diag: "Tosse por IECA", prob: "Alta", cor: "warning", motivo: "Tosse seca em uso de IECA — trocar por BRA" });
+    hipoteses.push({ diag: "Doença do refluxo gastroesofágico (DRGE)", prob: "Moderada", cor: "warning", motivo: "Tosse crônica — causa frequente" });
+    hipoteses.push({ diag: "Síndrome de gotejamento pós-nasal", prob: "Moderada", cor: "info", motivo: "Tosse com sensação de muco na garganta" });
+    if (temProb("DPOC","Asma")) hipoteses.push({ diag: "Exacerbação de DPOC/Asma", prob: "Alta", cor: "danger", motivo: "Tosse + doença pulmonar conhecida" });
+  }
+
+  if (tem("dispneia aos esforços", "cansaço ao caminhar", "intolerância ao esforço")) {
+    hipoteses.push({ diag: "Insuficiência cardíaca com FE preservada (ICFEp)", prob: "Alta", cor: "warning", motivo: "Dispneia aos esforços em idoso — especialmente se HAS, FA, DM2" });
+    hipoteses.push({ diag: "DPOC não diagnosticada", prob: "Moderada", cor: "warning", motivo: "Considerar espirometria em tabagistas ou ex-tabagistas" });
+    hipoteses.push({ diag: "Descondicionamento físico / Sarcopenia", prob: "Alta", cor: "info", motivo: "Muito frequente em idosos sedentários" });
+  }
+
+  // Reumatológico
+  if (tem("dor no ombro", "dor bilateral ombro", "dor na cintura pélvica", "dor no quadril bilateral")) {
+    hipoteses.push({ diag: "Polimialgia reumática", prob: "Alta", cor: "warning", motivo: "Dor bilateral em cintura escapular/pélvica em idoso > 50 anos — verificar VHS/PCR" });
+    hipoteses.push({ diag: "Osteoartrite glenoumeral", prob: "Moderada", cor: "info", motivo: "Causa degenerativa comum" });
+  }
+
+  if (tem("mão inchada", "mão edemaciada", "punho", "dedos inchados")) {
+    hipoteses.push({ diag: "Artrite reumatoide", prob: "Moderada", cor: "warning", motivo: "Artrite simétrica de pequenas articulações — verificar FR, anti-CCP" });
+    hipoteses.push({ diag: "Pseudogota (condrocalcinose)", prob: "Moderada", cor: "info", motivo: "Artrite cristalina em idoso" });
+  }
+
+  // Neurológico avançado
+  if (tem("tremor", "mão tremendo", "tremor em repouso")) {
+    hipoteses.push({ diag: "Tremor essencial", prob: "Alta", cor: "info", motivo: "Causa mais comum de tremor em idosos — piora com ação, melhora com álcool" });
+    hipoteses.push({ diag: "Doença de Parkinson", prob: "Moderada", cor: "warning", motivo: "Tremor em repouso + bradicinesia + rigidez" });
+    if (temMed("amiodarona","lítio","valproato","metoclopramida","haloperidol","risperidona")) hipoteses.push({ diag: "Tremor induzido por medicação", prob: "Alta", cor: "warning", motivo: "Fármaco tremorigênico detectado" });
+  }
+
+  if (tem("síncope", "desmaio", "perda de consciência", "apagou")) {
+    hipoteses.push({ diag: "Síncope vasovagal", prob: "Alta", cor: "info", motivo: "Causa mais comum — precipitada por dor, calor, ortostase" });
+    hipoteses.push({ diag: "Hipotensão ortostática", prob: "Alta", cor: "warning", motivo: "Muito prevalente em idosos — verificar PA ortostática" });
+    hipoteses.push({ diag: "Arritmia cardíaca (FA, bloqueio AV)", prob: "Moderada", cor: "danger", motivo: "ECG urgente" });
+    hipoteses.push({ diag: "Estenose aórtica grave", prob: "Moderada", cor: "danger", motivo: "Síncope de esforço em idoso — ecocardiograma" });
+  }
+
+  // Endócrino avançado
+  if (tem("calor", "calor excessivo", "intolerância ao calor", "suor excessivo")) {
+    hipoteses.push({ diag: "Hipertireoidismo", prob: "Moderada", cor: "warning", motivo: "Intolerância ao calor + palpitações + perda de peso — verificar TSH" });
+    hipoteses.push({ diag: "Síndrome menopáusica / Ondas de calor", prob: "Alta", cor: "info", motivo: "Em mulheres na pós-menopausa" });
+  }
+
+  if (tem("frio", "intolerância ao frio", "frieira", "pele seca", "cabelo caindo")) {
+    hipoteses.push({ diag: "Hipotireoidismo", prob: "Alta", cor: "warning", motivo: "Intolerância ao frio + pele seca + constipação — verificar TSH" });
+  }
+
+  // Hematológico
+  if (tem("sangramento", "hematoma", "roxo", "equimose fácil")) {
+    if (temMed("varfarina","warfarina","rivaroxabana","apixabana","dabigatrana","aas","clopidogrel")) {
+      hipoteses.push({ diag: "Sangramento por anticoagulante/antiplaquetário", prob: "Alta", cor: "danger", motivo: "Fármaco anticoagulante ou antiplaquetário detectado" });
+    }
+    hipoteses.push({ diag: "Púrpura senil", prob: "Alta", cor: "info", motivo: "Muito comum em idosos — fragilidade capilar cutânea" });
+    hipoteses.push({ diag: "Plaquetopenia", prob: "Moderada", cor: "warning", motivo: "Verificar plaquetas nos labs" });
+  }
+
+  // Psiquiátrico
+  if (tem("ansiedade", "preocupação excessiva", "nervoso", "agitado")) {
+    hipoteses.push({ diag: "Transtorno de ansiedade generalizada", prob: "Alta", cor: "warning", motivo: "Preocupação persistente e excessiva — GDS-15 pode identificar componente depressivo" });
+    hipoteses.push({ diag: "Ansiedade secundária a medicação", prob: "Moderada", cor: "warning", motivo: "Verificar: corticoide, broncodilatador, levotiroxina em dose excessiva, cafeína" });
+    hipoteses.push({ diag: "Ansiedade por dor crônica", prob: "Moderada", cor: "info", motivo: "Dor não controlada é causa frequente de ansiedade em idosos" });
   }
 
   // Dor
@@ -3344,12 +3715,19 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
                       <div key={q.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", gap: "8px", padding: "6px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
                         <span style={{ fontSize: "13px", flex: 1 }}>{q.texto}</span>
                         <div style={{ display: "flex", gap: "8px" }}>
-                          {["sim", "nao"].map(opt => (
-                            <label key={opt} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", cursor: "pointer" }}>
-                              <input type="radio" name={q.key} value={opt} checked={aga[q.key] === opt} onChange={() => set(q.key, opt)} />
-                              {opt === "sim" ? "Sim" : "Não"}
-                            </label>
-                          ))}
+                          {["sim", "nao"].map(opt => {
+                            const sel = aga[q.key] === opt;
+                            return (
+                              <label key={opt} onClick={e => { e.preventDefault(); set(q.key, sel ? "" : opt); }}
+                                style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", cursor: "pointer",
+                                  padding: "3px 10px", borderRadius: "16px",
+                                  background: sel ? "var(--color-background-info)" : "var(--color-background-secondary)",
+                                  border: `1px solid ${sel ? "var(--color-border-info)" : "var(--color-border-tertiary)"}`,
+                                  color: sel ? "var(--color-text-info)" : "var(--color-text-primary)", userSelect: "none" }}>
+                                {opt === "sim" ? "Sim" : "Não"}
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -3824,26 +4202,46 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
         {ativos.length === 0 && <p style={{ fontSize: "13px", color: "var(--color-text-secondary)" }}>Nenhuma comorbidade com rastreio específico foi marcada na aba Lista de problemas.</p>}
         {ativos.length > 0 && (() => {
           // Monta lista única de exames sem repetição e sem duplicar do rastreio geral
-          const nomesRastreioGeral = new Set(RASTREIO_GERAL.map(r => r.nome.toLowerCase().trim()));
-          const examesVistos = new Set();
-          // Mapeia exame → lista de comorbidades que o indicam
+          const nomesRastreioGeral = RASTREIO_GERAL.map(r => r.nome.toLowerCase().replace(/\(.*?\)/g,"").trim());
+
+          // Normaliza nome do exame para comparação — pega as 2 primeiras palavras significativas
+          function normalizar(nome) {
+            return nome.toLowerCase()
+              .replace(/\(.*?\)/g, "")   // remove parênteses
+              .replace(/,.*$/, "")        // remove após vírgula
+              .replace(/\s+(anual|bianual|a cada|toda|se |com |sem |de |do |da |dos |das |e\/ou|e |ou )\S*/g, "") // remove qualificadores
+              .trim()
+              .split(/\s+/).slice(0, 3).join(" "); // pega primeiras 3 palavras
+          }
+
           const exameParaComorbidades = {};
+          const normalizadosVistos = new Set();
+
+          // Primeiro adiciona os do rastreio geral como já vistos
+          nomesRastreioGeral.forEach(n => normalizadosVistos.add(normalizar(n)));
+
           ativos.forEach(comorbidade => {
             (PREVENCAO_ESPECIFICA[comorbidade] || []).forEach(item => {
-              const norm = item.toLowerCase().trim();
-              // Remove sufixo de frequência tipo "(anual)", "(a cada 2 anos)" para comparação
-              const normSemFreq = norm.replace(/\(.*?\)/g, "").trim();
-              // Verifica se já está no rastreio geral por comparação flexível
-              const jaNoGeral = Array.from(nomesRastreioGeral).some(g => {
-                const gSemFreq = g.replace(/\(.*?\)/g, "").trim();
-                return normSemFreq.includes(gSemFreq) || gSemFreq.includes(normSemFreq) ||
-                  normSemFreq.split(" ").slice(0,2).join(" ") === gSemFreq.split(" ").slice(0,2).join(" ");
+              const normItem = normalizar(item);
+              // Verifica se é duplicata de rastreio geral
+              const jaNoGeral = Array.from(normalizadosVistos).some(g => {
+                return normItem.startsWith(g) || g.startsWith(normItem) ||
+                  normItem === g ||
+                  (normItem.length >= 3 && g.includes(normItem.slice(0,4)));
               });
-              if (jaNoGeral) return;
-              // Deduplicar por nome normalizado
+              if (jaNoGeral && !exameParaComorbidades[item]) return;
+
               if (!exameParaComorbidades[item]) {
+                // Verifica se já existe um exame similar na lista
+                const jaExiste = Object.keys(exameParaComorbidades).find(k => normalizar(k) === normItem);
+                if (jaExiste) {
+                  // Adiciona comorbidade ao exame já existente
+                  if (!exameParaComorbidades[jaExiste].includes(comorbidade))
+                    exameParaComorbidades[jaExiste].push(comorbidade);
+                  return;
+                }
                 exameParaComorbidades[item] = [];
-                examesVistos.add(normSemFreq);
+                normalizadosVistos.add(normItem);
               }
               if (!exameParaComorbidades[item].includes(comorbidade))
                 exameParaComorbidades[item].push(comorbidade);
@@ -4427,6 +4825,67 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
 
     if (tfg < 30 && /gabapentina|pregabalina/i.test(meds)) {
       alertas.push({ tipo: "warning", msg: `⚠ Gabapentina/Pregabalina: TFG ${tfg} < 30 — reduzir dose em 50-75%, risco de sedação excessiva e quedas.` });
+    }
+
+    // Ajustes adicionais por TFG
+    if (tfg < 30 && /alopurinol/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Alopurinol: TFG ${tfg} < 30 — reduzir dose para 50–100 mg/dia (max); dose habitual causa toxicidade acumulada.` });
+    }
+
+    if (tfg < 30 && /atenolol/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Atenolol: TFG ${tfg} < 30 — excreção renal; reduzir frequência (1x/2 dias). Considerar metoprolol ou bisoprolol.` });
+    }
+
+    if (tfg < 45 && /metformina/i.test(meds) && tfg >= 30) {
+      // já coberto acima
+    }
+
+    if (tfg < 30 && /digoxina/i.test(meds)) {
+      alertas.push({ tipo: "danger", msg: `⚠ Digoxina: TFG ${tfg} < 30 — redução drástica da excreção renal; risco alto de toxicidade. Monitorar nível sérico e sinais de toxicidade (náusea, bradicardia, visão amarelada).` });
+    }
+
+    if (tfg < 30 && /lisinopril|enalapril|ramipril|perindopril/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ IECA: TFG ${tfg} < 30 — usar com cautela; risco de hipercalemia e piora da função renal. Monitorar creatinina e K após início/ajuste.` });
+    }
+
+    if (tfg < 30 && /ciprofloxacino|levofloxacino/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Fluorquinolona: TFG ${tfg} < 30 — reduzir dose em 50% e aumentar intervalo. Risco de toxicidade no SNC (confusão, convulsões) em idosos.` });
+    }
+
+    if (tfg < 45 && /trimetoprima|sulfametoxazol/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ SMX-TMP: TFG ${tfg} < 45 — bloqueia secreção tubular de creatinina (eleva creatinina sem reduzir TFG real) e causa hipercalemia. Monitorar K+.` });
+    }
+
+    if (tfg < 30 && /morfina/i.test(meds)) {
+      alertas.push({ tipo: "danger", msg: `⚠ Morfina: TFG ${tfg} < 30 — acúmulo de metabólito ativo (M6G); risco de depressão respiratória prolongada. Preferir hidromorfona ou fentanil.` });
+    }
+
+    if (tfg < 30 && /clopidogrel/i.test(meds)) {
+      alertas.push({ tipo: "info", msg: `ℹ Clopidogrel: TFG ${tfg} < 30 — usar com cautela; dados limitados em DRC grave. Manter se indicação cardiovascular forte.` });
+    }
+
+    if (tfg < 30 && /varfarina|warfarina|acenocumarol/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Anticoagulante oral: TFG ${tfg} < 30 — risco hemorrágico aumentado; INR mais lábil. Monitorar com maior frequência. Considerar apixabana em dose reduzida.` });
+    }
+
+    if (tfg < 25 && /rivaroxabana/i.test(meds)) {
+      alertas.push({ tipo: "danger", msg: `⚠ Rivaroxabana: TFG ${tfg} < 25 — contraindicada em DRC grave. Substituir por apixabana 2,5mg 2x/dia.` });
+    }
+
+    if (tfg < 15 && /apixabana/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Apixabana: TFG ${tfg} < 15 — dados limitados; usar 2,5mg 2x/dia se FA com benefício cardiovascular claro.` });
+    }
+
+    if (tfg < 30 && /dabigatrana/i.test(meds)) {
+      alertas.push({ tipo: "danger", msg: `⚠ Dabigatrana: TFG ${tfg} < 30 — contraindicada. Substituir por apixabana.` });
+    }
+
+    if (tfg < 30 && /amoxicilina|amoxicilina.*clavulanato|ampicilina/i.test(meds)) {
+      alertas.push({ tipo: "info", msg: `ℹ Amoxicilina: TFG ${tfg} < 30 — aumentar intervalo para 12–24h ou reduzir dose.` });
+    }
+
+    if (tfg < 10 && /aciclovir|valaciclovir/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Aciclovir/Valaciclovir: TFG ${tfg} < 10 — reduzir dose significativamente; risco de toxicidade neurológica (confusão, mioclonias).` });
     }
 
     return alertas;
@@ -5926,6 +6385,59 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   const mLDL = labs.match(/(?:ldl|ld)[^\d]*(\d+)/i);
   const ldl = mLDL ? parseInt(mLDL[1]) : null;
   if (temDislipidemia && ldl !== null && ldl > 70) sugestoes.push({ cat: "Dislipidemia", items: [`LDL ${ldl} mg/dL — verificar meta conforme risco cardiovascular`, "Confirmar uso de estatina e adesão"] });
+
+  // Vitamina D
+  const mVitD2 = labs.match(/(?:vit(?:amina)?\s*d|25-oh|calcidiol)[^\d]*(\d+)/i);
+  const vitD2 = mVitD2 ? parseInt(mVitD2[1]) : null;
+  if (vitD2 !== null && vitD2 < 30) sugestoes.push({ cat: "Vitamina D", items: [
+    `25-OH vitamina D ${vitD2} ng/mL — ${vitD2 < 20 ? "deficiência" : "insuficiência"}`,
+    vitD2 < 20 ? "Repor: colecalciferol 50.000 UI/semana por 8 semanas" : "Repor: colecalciferol 10.000–14.000 UI/semana",
+    "Manter manutenção: 10.000 UI/semana após correção",
+    "Associar cálcio dietético ou suplementar se ingesta < 1000 mg/dia",
+  ]});
+
+  // Anemia
+  const mHb2 = labs.match(/(?:hb|hemoglobina|hgb)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)(?!\s*a1c|\s*glicada)/i);
+  const hb2 = mHb2 ? parseFloat(mHb2[1].replace(",",".")) : null;
+  const sexoPac2 = patient?.ident?.sexo || "";
+  if (hb2 && hb2 < (sexoPac2 === "F" ? 12 : 13)) sugestoes.push({ cat: "Anemia", items: [
+    `Hb ${hb2} g/dL — anemia ${hb2 < 8 ? "grave" : hb2 < 10 ? "moderada" : "leve"}`,
+    "Solicitar: ferritina, ferro sérico, TIBC, reticulócitos, B12, folato",
+    hb2 < 10 ? "Investigar sangramento oculto (PSO, EDA, colonoscopia)" : "Monitorar evolução",
+    "Tratar causa base — não transfundir sem critério (Hb < 7–8 g/dL em estável)",
+  ]});
+
+  // Hiponatremia
+  const mNa2 = labs.match(/(?:na|s[oó]dio|na\+)(?:\s*[:=]?\s*)(\d+)/i);
+  const na2 = mNa2 ? parseInt(mNa2[1]) : null;
+  if (na2 && na2 < 135) sugestoes.push({ cat: "Hiponatremia", items: [
+    `Sódio ${na2} mEq/L — ${na2 < 125 ? "grave" : na2 < 130 ? "moderada" : "leve"}`,
+    "Investigar: osmolalidade sérica e urinária, sódio urinário, TSH, função adrenal",
+    "Revisar diuréticos tiazídicos, ISRS, desmopressina",
+    na2 < 125 ? "⚠ Urgência — corrigir lentamente (máx 8-10 mEq/L/24h)" : "Corrigir causa base, restringir água livre se hiponatremia hiposmolar",
+  ]});
+
+  // Osteoporose sem tratamento
+  if (ativos.includes("Osteoporose") && !meds.toLowerCase().match(/alendronato|risedronato|ibandronato|zoledronato|denosumabe|teriparatida|romosozumabe/)) {
+    sugestoes.push({ cat: "Osteoporose sem tratamento antirreabsortivo", items: [
+      "Nenhum bisfosfonato ou outro antirreabsortivo identificado nas medicações",
+      "Avaliar indicação de alendronato 70mg/semana (1ª linha) ou risedronato",
+      "Associar cálcio 1000-1200 mg/dia + vitamina D 800-2000 UI/dia",
+      "Verificar FRAX na aba Prevenção",
+    ]});
+  }
+
+  // Hipertireoidismo não tratado
+  const mTSH2 = labs.match(/(?:tsh)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
+  const tsh2 = mTSH2 ? parseFloat(mTSH2[1].replace(",",".")) : null;
+  if (tsh2 !== null && tsh2 < 0.1 && !meds.toLowerCase().match(/metimazol|propiltiouracil|tireoidectomia/)) {
+    sugestoes.push({ cat: "Hipertireoidismo — avaliar tratamento", items: [
+      `TSH ${tsh2} — suprimido`,
+      "Dosar T3 e T4 livre para confirmar hipertireoidismo",
+      "Encaminhar endocrinologia",
+      "Avaliar beta-bloqueador para controle dos sintomas enquanto aguarda tratamento",
+    ]});
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
