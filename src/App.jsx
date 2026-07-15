@@ -2110,7 +2110,7 @@ export default function App() {
           </div>
 
           {mode === "prontuario" && (
-            <RecordView patient={activePatient} updatePatient={updateActivePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeTab={activeTab} setActiveTab={setActiveTab} onPrint={setPrintDoc} onSave={() => activePatient && persistPatient(activePatient)} />
+            <RecordView patient={activePatient} updatePatient={updateActivePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeTab={activeTab} setActiveTab={setActiveTab} onPrint={setPrintDoc} onSave={() => activePatient && persistPatient(activePatient)} onAbrirCartilha={setCartilhaAberta} onAbrirCarta={() => setShowCartaPaciente(true)} />
           )}
         </div>
       )}
@@ -2420,7 +2420,7 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
   );
 }
 
-function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint, onSave }) {
+function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint, onSave, onAbrirCartilha, onAbrirCarta }) {
   return (
     <div>
       <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
@@ -2438,7 +2438,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       </div>
 
       {activeTab === "ident" && <IdentTab patient={patient} updatePatient={updatePatient} />}
-      {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} onAbrirCartilha={setCartilhaAberta} />}
+      {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} onAbrirCartilha={onAbrirCartilha} />}
       {activeTab === "antecedentes" && <AntecedentesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
@@ -2453,7 +2453,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
           <i className="ti ti-device-floppy" aria-hidden="true"></i>Salvar agora
         </button>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button onClick={() => setShowCartaPaciente(true)} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-success)", color: "var(--color-text-success)", border: "0.5px solid var(--color-border-success)" }}>
+          <button onClick={() => onAbrirCarta()} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-success)", color: "var(--color-text-success)", border: "0.5px solid var(--color-border-success)" }}>
             <i className="ti ti-user-heart" aria-hidden="true"></i>Carta ao paciente
           </button>
           <button onClick={() => onPrint({ type: "sugestoesIA" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-info)", color: "var(--color-text-info)", border: "0.5px solid var(--color-border-info)" }}>
