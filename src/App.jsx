@@ -2777,9 +2777,10 @@ function ProblemasTab({ consulta, updateConsulta, patient, onAbrirCartilha }) {
 
 function AntecedentesTab({ consulta, updateConsulta }) {
   const a = consulta.antecedentes || {};
+  const CAMPOS_RADIO_ANT = new Set(["tabagismo","etilismo"]);
   const set = (k, v) => updateConsulta(p => {
     const novo = { ...(p.antecedentes || {}), [k]: v };
-    if (v === "" || v === null || v === undefined) delete novo[k];
+    if ((v === "" || v === null || v === undefined) && CAMPOS_RADIO_ANT.has(k)) delete novo[k];
     return { ...p, antecedentes: novo };
   });
   return (
@@ -3398,9 +3399,26 @@ function QueixasTab({ consulta, updateConsulta, patient }) {
 
 function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
   const aga = consulta.aga || {};
+  // Campos que são radio/toggle e devem ser deletados quando desmarcados
+  const CAMPOS_RADIO_AGA = new Set([
+    "marcha","dispositivo","quedas","fraturas","tce","visao","visaoLentes",
+    "audicao","audicaoAparelho","incontinenciaUrinaria","incontinenciaFecal",
+    "constipacao","perdaPeso","problemasDentarios","proteseDentaria",
+    "apetite","disfagia","semQueixasCognitivas","semQueixasHumor","semQueixasSono",
+    "tabagismo","etilismo","atividadeFisica","minicogRelogio","cdrGlobal",
+    "npiImpactoCuidador","sarcfForca","sarcfCaminhada","sarcfLevantarCadeira",
+    "sarcfEscadas","sarcfQuedas","mnaPerdaApetite","mnaPerdaPeso","mnaMobilidade",
+    "mnaEstresse","mnaCognicao",
+    // FRAIL
+    "fatigue","resistance","ambulation","illness","loss",
+  ]);
+
   const set = (k, v) => updateConsulta(p => {
     const novaAga = { ...(p.aga || {}), [k]: v };
-    if (v === "" || v === null || v === undefined) delete novaAga[k];
+    // Só deleta a chave se for campo de radio/toggle E valor vazio
+    if ((v === "" || v === null || v === undefined) && CAMPOS_RADIO_AGA.has(k)) {
+      delete novaAga[k];
+    }
     return { ...p, aga: novaAga };
   });
 
