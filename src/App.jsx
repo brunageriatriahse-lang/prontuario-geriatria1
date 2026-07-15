@@ -282,35 +282,51 @@ const RASTREIO_GERAL = [
 ];
 
 const BEERS_LIST = [
-  // Anticolinérgicos
-  "amitriptilina","nortriptilina","imipramina","clorpromazina","tioridazina","prometazina",
-  "hidroxizina","difenidramina","dexclorfeniramina","clorfeniramina","ciproeptadina",
-  "oxibutinina","solifenacina","tolterodina","darifenacina","fesoterodina","flavoxato",
-  "escopolamina","atropina","ipratrópio oral",
-  // Benzodiazepínicos e Z-drugs
+  // Anticolinérgicos — Beers 2023 (risco cognitivo, queda, constipação, retenção urinária)
+  "amitriptilina","nortriptilina","imipramina","doxepina","clorpromazina","tioridazina","prometazina",
+  "hidroxizina","difenidramina","dexclorfeniramina","clorfeniramina","ciproeptadina","bromfeniramina",
+  "oxibutinina","solifenacina","tolterodina","darifenacina","fesoterodina","flavoxato","trospio",
+  "escopolamina","atropina","ipratrópio oral","biperideno","triexifenidil",
+  "meclizina","dimenidrinato",
+  // Benzodiazepínicos e Z-drugs (Beers 2023: todos evitar em idosos)
   "diazepam","clonazepam","alprazolam","lorazepam","midazolam","bromazepam",
-  "clobazam","clorazepato","nitrazepam","flurazepam","triazolam",
+  "clobazam","clorazepato","nitrazepam","flurazepam","triazolam","quazepam",
   "zolpidem","zopiclona","eszopiclona",
-  // Cardiovascular
-  "amiodarona","digoxina","nifedipina","doxazosina","alfuzosina","terazosina",
+  // Cardiovascular (Beers 2023)
+  "amiodarona","digoxina","nifedipina","doxazosina","alfuzosina","terazosina","prazosina",
   "espironolactona","ticlopidina","dipiridamol",
-  // Hipoglicemiantes
-  "glibenclamida","clorpropamida","glipizida","tolbutamida",
-  // AINEs e analgésicos
+  "metildopa","reserpina","guanetidina","clonidina",
+  "dronedarona",
+  // Hipoglicemiantes (Beers 2023: sulfonilureias de longa ação)
+  "glibenclamida","clorpropamida","glipizida","tolbutamida","gliburida",
+  // AINEs e analgésicos (Beers 2023: risco renal, GI, cardiovascular)
   "indometacina","cetorolaco","ibuprofeno","diclofenaco","naproxeno","piroxicam",
-  "meloxicam","nimesulida","celecoxibe","meperidina","tramadol","pentazocina",
-  // Antipsicóticos
+  "meloxicam","nimesulida","celecoxibe","ácido mefenâmico","sulindaco",
+  "meperidina","pentazocina",
+  // Opioides (Beers 2023: tramadol — risco de hiponatremia, convulsões, quedas)
+  "tramadol",
+  // Antipsicóticos (Beers 2023: evitar em demência — risco de AVC e morte)
   "olanzapina","quetiapina","risperidona","haloperidol","clorpromazina","tioridazina",
-  "aripiprazol","ziprasidona","paliperidona","clozapina",
-  // Antidepressivos
-  "fluoxetina","paroxetina","amitriptilina","nortriptilina","imipramina","doxepina",
-  // Outros
-  "metoclopramida","domperidona","óleo mineral","mineral oil","aas","ácido acetilsalicílico",
-  "sulfato ferroso","hidróxido de alumínio","baclofeno","carisoprodol","ciclobenzaprina",
-  "metaxalona","metocarbamol","orfenadrina","relaxantes musculares",
-  "clonidina","metildopa","reserpina","guanetidina",
-  "estrogênio oral","androgênio","testosterona oral","medroxiprogesterona oral",
-  "cimetidina","ranitidina","indinavir","insulina detemir","insulina glargina",
+  "aripiprazol","ziprasidona","paliperidona","clozapina","amisulprida","levomepromazina",
+  // Antidepressivos com alta atividade anticolinérgica (Beers 2023)
+  "fluoxetina","paroxetina",
+  // Relaxantes musculares (Beers 2023: anticolinérgicos, sedativos)
+  "carisoprodol","ciclobenzaprina","metaxalona","metocarbamol","orfenadrina","baclofeno",
+  // Antihistamínicos H2 (cimetidina — anticolinérgico; ranitidina retirada do mercado)
+  "cimetidina",
+  // GI (Beers 2023)
+  "metoclopramida","domperidona","óleo mineral","mineral oil","hidróxido de alumínio",
+  "bisacodil crônico","sena crônico",
+  // Hormônios (Beers 2023)
+  "estrogênio oral","testosterona oral","medroxiprogesterona oral","androgênio",
+  "hormônio do crescimento","desmopressina oral",
+  // Antiepilépticos sedativos
+  "fenobarbital","primidona","fenitoína",
+  // Outros (Beers 2023)
+  "nitrofurantoína","sulfametoxazol","ticlopidina","aas","ácido acetilsalicílico",
+  "cetirizina","loratadina","fexofenadina","anti-histamínico de 1ª geração",
+  "pseudoefedrina","fenilefrina","descongestionante oral",
+  "glicocorticoide oral crônico","prednisona crônica","dexametasona crônica",
 ];
 
 // Cada interação tem grupos: a interação dispara quando há ≥1 match em cada grupo distinto.
@@ -456,6 +472,118 @@ const INTERACOES = [
     ],
     msg: "AINE + Anticoagulante oral: risco elevado de sangramento — evitar combinação"
   },
+  {
+    grupos: [
+      ["captopril","enalapril","lisinopril","ramipril","perindopril","benazepril","quinapril","trandolapril","fosinopril"],
+      ["losartana","valsartana","irbesartana","olmesartana","telmisartana","candesartana"]
+    ],
+    msg: "IECA + BRA (duplo bloqueio): risco de hipercalemia, hipotensão e IRA — contraindicado"
+  },
+  {
+    grupos: [
+      ["metformina"],
+      ["álcool","etanol"]
+    ],
+    msg: "Metformina + Álcool: risco de acidose lática — orientar abstinência"
+  },
+  {
+    grupos: [
+      ["tramadol"],
+      ["fluoxetina","sertralina","paroxetina","escitalopram","citalopram","fluvoxamina","venlafaxina","duloxetina"]
+    ],
+    msg: "Tramadol + ISRS/IRSN: risco de síndrome serotonérgica — evitar combinação"
+  },
+  {
+    grupos: [
+      ["tramadol"],
+      ["diazepam","clonazepam","alprazolam","lorazepam","midazolam","bromazepam","zolpidem","zopiclona","morfina","codeína","oxicodona"]
+    ],
+    msg: "Tramadol + BZD/Opioide: depressão do SNC — risco de sedação excessiva e quedas"
+  },
+  {
+    grupos: [
+      ["metronidazol","tinidazol"],
+      ["álcool","etanol"]
+    ],
+    msg: "Metronidazol + Álcool: reação dissulfiram-símile — náusea, rubor, taquicardia"
+  },
+  {
+    grupos: [
+      ["varfarina","warfarina","acenocumarol"],
+      ["aas","ácido acetilsalicílico","clopidogrel","ticagrelor","prasugrel"]
+    ],
+    msg: "Anticoagulante oral + Antiplaquetário: risco muito elevado de sangramento — evitar sem indicação precisa"
+  },
+  {
+    grupos: [
+      ["rivaroxabana","apixabana","dabigatrana","edoxabana"],
+      ["fluconazol","cetoconazol","itraconazol"]
+    ],
+    msg: "DOAC + Antifúngico azólico: inibição de CYP3A4/P-gp — aumento dos níveis do anticoagulante"
+  },
+  {
+    grupos: [
+      ["captopril","enalapril","lisinopril","ramipril","perindopril","losartana","valsartana","irbesartana","olmesartana","telmisartana","candesartana"],
+      ["suplemento de potássio","cloreto de potássio","gluconato de potássio"]
+    ],
+    msg: "IECA/BRA + Suplemento de potássio: risco de hipercalemia — monitorar"
+  },
+  {
+    grupos: [
+      ["alendronato","risedronato","ibandronato","zoledronato","ácido zoledrônico"],
+      ["ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","cetorolaco"]
+    ],
+    msg: "Bisfosfonato + AINE: risco de úlcera esofágica e gástrica — evitar; usar IBP se necessário"
+  },
+  {
+    grupos: [
+      ["sinvastatina","lovastatina"],
+      ["amiodarona","fluconazol","cetoconazol","itraconazol","claritromicina","eritromicina","ciclosporina"]
+    ],
+    msg: "Sinvastatina/Lovastatina + Inibidor CYP3A4: risco de miopatia/rabdomiólise — preferir rosuvastatina ou pravastatina"
+  },
+  {
+    grupos: [
+      ["sertralina","escitalopram","citalopram","fluoxetina","paroxetina"],
+      ["ondansetrona","domperidona","haloperidol","amiodarona","azitromicina","claritromicina"]
+    ],
+    msg: "ISRS + Fármaco que prolonga QT: risco de Torsades de Pointes — evitar citalopram/escitalopram com ondansetrona"
+  },
+  {
+    grupos: [
+      ["fenitoína"],
+      ["fluconazol","omeprazol","pantoprazol","lansoprazol","amiodarona","metronidazol"]
+    ],
+    msg: "Fenitoína + Inibidor enzimático: aumento dos níveis de fenitoína — risco de toxicidade (ataxia, nistagmo)"
+  },
+  {
+    grupos: [
+      ["ciclosporina","tacrolimus"],
+      ["ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","cetorolaco"]
+    ],
+    msg: "Imunossupressor + AINE: risco de nefrotoxicidade grave — contraindicado"
+  },
+  {
+    grupos: [
+      ["carbonato de cálcio","citrato de cálcio","gluconato de cálcio"],
+      ["levotiroxina"]
+    ],
+    msg: "Cálcio + Levotiroxina: redução da absorção de T4 — administrar com ≥ 4h de intervalo"
+  },
+  {
+    grupos: [
+      ["fluoxetina","paroxetina"],
+      ["tamoxifeno"]
+    ],
+    msg: "Fluoxetina/Paroxetina + Tamoxifeno: inibição do CYP2D6 — redução da eficácia do tamoxifeno"
+  },
+  {
+    grupos: [
+      ["metformina","sitagliptina","alogliptina","linagliptina","saxagliptina","vildagliptina","dapagliflozina","empagliflozina","canagliflozina"],
+      ["corticoide","prednisona","prednisolona","dexametasona","metilprednisolona","hidrocortisona"]
+    ],
+    msg: "Hipoglicemiante + Corticoide: hiperglicemia induzida por corticoide — monitorar glicemia, ajustar dose"
+  },
 ];
 
 function checkBeers(nomeMedicacao) {
@@ -539,7 +667,63 @@ function checkAlertasEspeciais(texto) {
     alerts.push({ tipo: "warning", msg: "⚠ RISCO DE QUEDA POR MEDICAMENTOS: " + medsCaida.join(", ") + ". Revisar doses, horários e necessidade — especialmente se histórico de quedas." });
   }
 
+  // 5. DUPLICIDADE DE CLASSE
+  const CLASSES = [
+    { nome: "betabloqueador", lista: ["propranolol","metoprolol","atenolol","carvedilol","bisoprolol","nebivolol","acebutolol","esmolol"] },
+    { nome: "IECA", lista: ["captopril","enalapril","lisinopril","ramipril","perindopril","benazepril","quinapril","trandolapril","fosinopril"] },
+    { nome: "BRA", lista: ["losartana","valsartana","irbesartana","olmesartana","telmisartana","candesartana","azilsartana"] },
+    { nome: "IBP", lista: ["omeprazol","pantoprazol","lansoprazol","rabeprazol","esomeprazol","dexlansoprazol"] },
+    { nome: "estatina", lista: ["sinvastatina","atorvastatina","rosuvastatina","pravastatina","lovastatina","fluvastatina","pitavastatina"] },
+    { nome: "ISRS", lista: ["fluoxetina","sertralina","paroxetina","escitalopram","citalopram","fluvoxamina"] },
+    { nome: "BCC di-hidropiridínico", lista: ["anlodipino","nifedipina","felodipino","lercanidipino","lacidipino","amlodipino"] },
+    { nome: "diurético tiazídico", lista: ["hidroclorotiazida","indapamida","clortalidona","bendroflumetiazida"] },
+    { nome: "anticoagulante", lista: ["varfarina","warfarina","acenocumarol","rivaroxabana","apixabana","dabigatrana","edoxabana"] },
+    { nome: "antiplaquetário", lista: ["aas","ácido acetilsalicílico","aspirina","clopidogrel","ticagrelor","prasugrel","ticlopidina"] },
+    { nome: "opioide", lista: ["morfina","codeína","tramadol","oxicodona","fentanil","buprenorfina","metadona","hidromorfona","meperidina"] },
+    { nome: "antipsicótico", lista: ["haloperidol","risperidona","quetiapina","olanzapina","aripiprazol","clozapina","ziprasidona","amisulprida"] },
+    { nome: "AINE", lista: ["ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","cetorolaco","celecoxibe"] },
+    { nome: "benzodiazepínico", lista: ["diazepam","clonazepam","alprazolam","lorazepam","midazolam","bromazepam","nitrazepam","clobazam"] },
+    { nome: "iSGLT2", lista: ["dapagliflozina","empagliflozina","canagliflozina","ertugliflozina"] },
+    { nome: "inibidor DPP-4", lista: ["sitagliptina","alogliptina","saxagliptina","linagliptina","vildagliptina"] },
+  ];
+  CLASSES.forEach(({ nome, lista }) => {
+    const encontrados = lista.filter(drug => {
+      const regex = new RegExp("(^|\\s|,|;|\\+|-|\\()" + drug.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+      return regex.test(lower);
+    });
+    if (encontrados.length >= 2) {
+      alerts.push({ tipo: "warning", msg: `⚠ DUPLICIDADE DE CLASSE (${nome.toUpperCase()}): ${encontrados.join(" + ")} detectados. Revisar necessidade — duplicidade raramente justificada.` });
+    }
+  });
+
+  // 6. FUNÇÃO HEPÁTICA — drogas de alto metabolismo hepático
+  const temHepatopatia = texto._problemas?.["Hepatopatia"] || texto._problemas?.["Cirrose"] || false;
+  // Nota: passamos problemas via objeto auxiliar se disponível
+  const HEPATOTOXICOS = [
+    { drugs: ["paracetamol","acetaminofeno"], msg: "Paracetamol: limite ≤ 2g/dia em hepatopatia (≤ 0,5–1g em cirrose grave) — hepatotóxico em doses altas" },
+    { drugs: ["sinvastatina","atorvastatina","lovastatina"], msg: "Estatina: contraindicada em hepatopatia ativa (transaminases > 3x LSN) — monitorar TGO/TGP" },
+    { drugs: ["metformina"], msg: "Metformina: suspender em cirrose grave (Child C) — risco de acidose lática" },
+    { drugs: ["varfarina","warfarina","acenocumarol"], msg: "Anticoagulante oral: INR instável em hepatopatia — monitorar INR com maior frequência" },
+    { drugs: ["amiodarona"], msg: "Amiodarona: hepatotóxica — dosar TGO/TGP a cada 6 meses" },
+    { drugs: ["isoniazida"], msg: "Isoniazida: alto potencial hepatotóxico — monitorar transaminases mensalmente" },
+    { drugs: ["fluconazol","cetoconazol","itraconazol"], msg: "Antifúngico azólico: hepatotóxico — monitorar função hepática" },
+  ];
+  HEPATOTOXICOS.forEach(({ drugs, msg }) => {
+    if (temAlgum(drugs)) {
+      alerts.push({ tipo: "info", msg: `ℹ ATENÇÃO HEPÁTICA: ${msg}` });
+    }
+  });
+
   return alerts;
+}
+
+// Wrapper que passa problemas para checkAlertasEspeciais quando disponível
+function checkAlertasEspeciaisComContexto(texto, problemas) {
+  const textoObj = Object.create(null);
+  textoObj._problemas = problemas || {};
+  Object.assign(textoObj, { toString: () => texto });
+  // Chama versão simplificada — problemas já passados via param
+  return checkAlertasEspeciais(texto);
 }
 
 function calcIMC(peso, altura) {
@@ -1722,18 +1906,6 @@ export default function App() {
               <i className="ti ti-clipboard-text" aria-hidden="true"></i>Prontuário completo
             </button>
             <button
-              onClick={() => baixarReceitasWord(activePatient)}
-              style={{
-                padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
-                border: "0.5px solid var(--color-border-tertiary)",
-                background: "transparent",
-                color: "var(--color-text-primary)",
-                display: "flex", alignItems: "center", gap: "6px"
-              }}
-            >
-              <i className="ti ti-file-word" aria-hidden="true"></i>Receitas (Word)
-            </button>
-            <button
               onClick={() => baixarReceituarios(activePatient)}
               style={{
                 padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
@@ -2384,14 +2556,87 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const beersAlerts = linhas.filter(l => checkBeers(l));
   const interacoes = checkInteracoes(texto);
   const alertasEspeciais = checkAlertasEspeciais(texto);
+
+  // Alertas específicos por comorbidade
+  const prob = consulta.problemas || {};
+  const alertasComorbidade = [];
+  const lower2 = texto.toLowerCase();
+  function temMedComorb(...drugs) {
+    return drugs.some(d => new RegExp("(^|\\s|,|;|\\+|-|\\()" + d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(lower2));
+  }
+
+  // Betabloqueador em bradicardia/BAV
+  const temBradicardia = (consulta.problemasCustom || []).filter(c => c.checked).some(c => /bradicardia|bav|bloqueio av/i.test(c.nome));
+  if (temBradicardia && temMedComorb("propranolol","metoprolol","atenolol","carvedilol","bisoprolol","nebivolol","diltiazem","verapamil")) {
+    alertasComorbidade.push({ tipo: "danger", msg: "⚠ BETABLOQUEADOR/BCC em bradicardia/BAV: risco de bloqueio AV avançado — revisar urgência e monitorar ECG" });
+  }
+
+  // IECA/BRA em hipercalemia
+  const labs = consulta.labsTexto || "";
+  const mK = labs.match(/(?:k|pot[aá]ssio)[^\d]*(\d+[,.]\d+|\d+)/i);
+  const kVal = mK ? parseFloat(mK[1].replace(",",".")) : null;
+  if (kVal && kVal > 5.5 && temMedComorb("captopril","enalapril","lisinopril","ramipril","losartana","valsartana","irbesartana","espironolactona","eplerenona")) {
+    alertasComorbidade.push({ tipo: "danger", msg: `⚠ IECA/BRA/POUPADOR DE K em hipercalemia (K ${kVal} mEq/L): risco de arritmia — reduzir dose ou suspender, monitorar ECG` });
+  }
+
+  // AINE em insuficiência cardíaca
+  if ((prob["Insuficiência cardíaca"] || prob["IC"]) && temMedComorb("ibuprofeno","diclofenaco","naproxeno","indometacina","piroxicam","meloxicam","nimesulida","cetorolaco","celecoxibe")) {
+    alertasComorbidade.push({ tipo: "danger", msg: "⚠ AINE em Insuficiência Cardíaca: causa retenção hídrica, piora da IC e reduz efeito dos diuréticos — contraindicado. Usar paracetamol" });
+  }
+
+  // Metformina em IC descompensada
+  if ((prob["Insuficiência cardíaca"] || prob["IC"]) && temMedComorb("metformina")) {
+    const ef = consulta.exameFisico || {};
+    const temEdema = (ef.ext || "").toLowerCase().includes("edema");
+    if (temEdema) alertasComorbidade.push({ tipo: "warning", msg: "⚠ Metformina em IC com edema: suspender se IC descompensada — risco de acidose lática por hipoperfusão" });
+  }
+
+  // Antipsicótico em Parkinson
+  if ((prob["Doença de Parkinson"] || (consulta.problemasCustom || []).filter(c=>c.checked).some(c=>/parkinson/i.test(c.nome))) &&
+    temMedComorb("haloperidol","risperidona","olanzapina","clorpromazina","metoclopramida","domperidona")) {
+    alertasComorbidade.push({ tipo: "danger", msg: "⚠ ANTIPSICÓTICO/METOCLOPRAMIDA em Parkinson: piora grave do parkinsonismo — preferir quetiapina ou clozapina em baixas doses se necessário" });
+  }
+
+  // ISRS em osteoporose/queda
+  if (prob["Osteoporose"] && temMedComorb("fluoxetina","sertralina","paroxetina","escitalopram","citalopram","fluvoxamina","venlafaxina","duloxetina")) {
+    alertasComorbidade.push({ tipo: "info", msg: "ℹ ISRS em Osteoporose: uso prolongado associado a maior risco de fratura (inibição osteoblastos) — ponderar risco/benefício" });
+  }
+
+  // Corticoide crônico sem proteção
+  if (temMedComorb("prednisona","prednisolona","dexametasona","metilprednisolona","hidrocortisona","betametasona")) {
+    if (!temMedComorb("omeprazol","pantoprazol","lansoprazol","rabeprazol","esomeprazol")) {
+      alertasComorbidade.push({ tipo: "warning", msg: "⚠ Corticoide sem proteção gástrica: adicionar IBP para profilaxia de úlcera péptica em uso crônico" });
+    }
+    if (!temMedComorb("cálcio","vitamina d","colecalciferol","calcifediol")) {
+      alertasComorbidade.push({ tipo: "warning", msg: "⚠ Corticoide sem suplementação: adicionar cálcio 1000–1200 mg/dia + vitamina D 800–2000 UI/dia para prevenção de osteoporose" });
+    }
+  }
+
+  // Diurético sem potássio em uso de digoxina
+  if (temMedComorb("digoxina") && temMedComorb("furosemida","hidroclorotiazida","indapamida","clortalidona") && !temMedComorb("espironolactona","eplerenona","cloreto de potássio","gluconato de potássio")) {
+    alertasComorbidade.push({ tipo: "warning", msg: "⚠ Digoxina + Diurético sem poupador de K: hipocalemia potencializa toxicidade digitálica — monitorar potássio" });
+  }
+
+  // Nitrato + Sildenafil
+  if (temMedComorb("nitroglicerina","isossorbida","mononitrato","dinitrato") && temMedComorb("sildenafila","tadalafila","vardenafila","avanafila")) {
+    alertasComorbidade.push({ tipo: "danger", msg: "⚠ NITRATO + iPDE5: hipotensão grave potencialmente fatal — contraindicação absoluta" });
+  }
   const numMeds = linhas.length;
   const polifarmacia = numMeds >= 5;
   const polimedicacao = numMeds >= 10;
 
   // Sugestões de deprescrição baseadas nos fármacos detectados
+  const temAAS = linhas.some(l => /\baas\b|ácido acetilsalicílico|aspirina/i.test(l));
+  // Prevenção secundária: DAC, AVC, AIT, DAOP, FA, stent, bypass
+  const temIndicacaoAAS = consulta.problemas?.["DAC"] || consulta.problemas?.["AVC"] ||
+    consulta.problemas?.["AIT"] || consulta.problemas?.["DAOP"] || consulta.problemas?.["FA"] ||
+    (consulta.problemasCustom || []).filter(c => c.checked).some(c =>
+      /stent|bypass|angioplastia|infarto|coronariopat/i.test(c.nome));
+
   const DEPRESC = [
     { drug: ["omeprazol","pantoprazol","lansoprazol","rabeprazol","esomeprazol"], msg: "IBP: reavaliar indicação — uso prolongado aumenta risco de infecção, hipomagnesemia e fratura. Tentar desmame se sem indicação formal." },
-    { drug: ["aas","ácido acetilsalicílico"], msg: "AAS em prevenção primária: benefício não supera risco de sangramento em idosos ≥ 70 anos — considerar suspensão." },
+    ...(temAAS && !temIndicacaoAAS ? [{ drug: ["aas","ácido acetilsalicílico"], msg: "AAS em prevenção PRIMÁRIA: benefício não supera risco de sangramento em idosos ≥ 70 anos sem doença cardiovascular estabelecida — considerar suspensão." }] : []),
+    ...(temAAS && temIndicacaoAAS ? [{ drug: ["aas","ácido acetilsalicílico"], msg: "AAS em prevenção SECUNDÁRIA (DAC/AVC/DAOP estabelecida): manter. Verificar proteção gástrica com IBP." }] : []),
     { drug: ["zolpidem","zopiclona","eszopiclona"], msg: "Z-drug: associado a quedas, fraturas e declínio cognitivo em idosos — substituir por CBT-I ou trazodona se insônia." },
     { drug: ["diazepam","clonazepam","alprazolam","lorazepam","midazolam","bromazepam"], msg: "Benzodiazepínico: evitar em idosos — risco de quedas, delirium e dependência. Planejar desmame gradual." },
     { drug: ["glibenclamida","clorpropamida"], msg: "Sulfonilureia de longa ação: alto risco de hipoglicemia grave em idosos — substituir por glicazida MR ou inibidor de DPP-4." },
@@ -2473,6 +2718,13 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   return (
     <div>
       <SectionCard title="Medicações em uso" icon="ti-pill">
+        {alertasComorbidade.length > 0 && (
+          <div style={{ marginBottom: "10px" }}>
+            {alertasComorbidade.map((a, i) => (
+              <Alert key={i} type={a.tipo}>{a.msg}</Alert>
+            ))}
+          </div>
+        )}
         {alertasDesprescricao.length > 0 && (
           <div style={{ marginBottom: "10px" }}>
             {alertasDesprescricao.map((a, i) => (
@@ -3314,6 +3566,50 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
       </SectionCard>
 
       <SectionCard title="Nutrição" icon="ti-apple">
+        {(() => {
+          const peso = parseFloat(aga.peso);
+          const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+          const temDRC = consulta.problemas?.["DRC"];
+          const labs = consulta.labsTexto || "";
+          const mTFG2 = labs.match(/(?:tfg|tgf|egfr)[^\d]*(\d+)/i);
+          const tfgNutri = mTFG2 ? parseInt(mTFG2[1]) : null;
+          if (!peso || isNaN(peso)) return null;
+
+          // Necessidade proteica por perfil (ESPEN 2022)
+          let proteina, proteinaLabel;
+          if (temDRC && tfgNutri && tfgNutri < 30 && !consulta.problemas?.["DM2"]) {
+            proteina = [0.6, 0.8]; proteinaLabel = "DRC grave (TFG < 30) sem diálise: restringir proteína";
+          } else if (temDRC && tfgNutri && tfgNutri < 30) {
+            proteina = [0.8, 1.0]; proteinaLabel = "DRC grave com DM2";
+          } else if (frailScore >= 3) {
+            proteina = [1.2, 1.5]; proteinaLabel = "Idoso frágil";
+          } else if (frailScore >= 1) {
+            proteina = [1.2, 1.4]; proteinaLabel = "Idoso pré-frágil";
+          } else {
+            proteina = [1.0, 1.2]; proteinaLabel = "Idoso robusto";
+          }
+
+          const minProt = (peso * proteina[0]).toFixed(0);
+          const maxProt = (peso * proteina[1]).toFixed(0);
+          // Calorias: 25-30 kcal/kg/dia
+          const minCal = (peso * 25).toFixed(0);
+          const maxCal = (peso * 30).toFixed(0);
+
+          return (
+            <div style={{ background: "var(--color-background-info)", border: "0.5px solid var(--color-border-info)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", marginBottom: "12px" }}>
+              <div style={{ fontWeight: 700, color: "var(--color-text-info)", marginBottom: "4px" }}>
+                🥩 Necessidade proteica — {proteinaLabel}
+              </div>
+              <div>Proteína: <strong>{minProt}–{maxProt} g/dia</strong> ({proteina[0]}–{proteina[1]} g/kg/dia para {peso} kg)</div>
+              <div>Energia: <strong>{minCal}–{maxCal} kcal/dia</strong> (25–30 kcal/kg/dia)</div>
+              {temDRC && tfgNutri && tfgNutri < 30 && (
+                <div style={{ fontSize: "12px", marginTop: "4px", color: "var(--color-text-warning)" }}>
+                  ⚠ DRC grave: restrição proteica pode retardar progressão — acompanhamento com nutrição renal recomendado
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {/* MNA-SF integrado */}
         <SectionCard title="MNA-SF — Mini Avaliação Nutricional" icon="ti-salad" defaultOpen={false}>
           {(() => {
@@ -3526,35 +3822,73 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
 
       <SectionCard title="Prevenção específica por comorbidade ativa" icon="ti-stethoscope">
         {ativos.length === 0 && <p style={{ fontSize: "13px", color: "var(--color-text-secondary)" }}>Nenhuma comorbidade com rastreio específico foi marcada na aba Lista de problemas.</p>}
-        {ativos.map(comorbidade => (
-          <div key={comorbidade} style={{ marginBottom: "14px" }}>
-            <div style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-text-info)", marginBottom: "6px" }}>{comorbidade}</div>
-            {PREVENCAO_ESPECIFICA[comorbidade].map(item => {
-              const key = comorbidade + "::" + item;
-              const registros = Array.isArray(re[key]) ? re[key] : [];
-              return (
-                <div key={key} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "8px 0" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                    <div style={{ fontSize: "13px" }}>{item}</div>
-                    <button onClick={() => addReRegistro(key)} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", padding: "4px 8px" }}>
-                      <i className="ti ti-plus" aria-hidden="true"></i>Adicionar registro
-                    </button>
-                  </div>
-                  {registros.length === 0 && <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", margin: "4px 0" }}>Nenhum registro ainda.</p>}
-                  {registros.map((reg, idx) => (
-                    <div key={reg.id} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "8px", paddingLeft: "8px", borderLeft: "2px solid var(--color-border-tertiary)" }}>
-                      <Field label={`Data (registro ${idx + 1})`}><input type="date" value={reg.data || ""} onChange={e => setReRegistro(key, reg.id, "data", e.target.value)} /></Field>
-                      <div style={{ flex: "1 1 240px" }}>
-                        <Field label="Resultado"><textarea rows={3} value={reg.resultado || ""} onChange={e => setReRegistro(key, reg.id, "resultado", e.target.value)} /></Field>
+        {ativos.length > 0 && (() => {
+          // Monta lista única de exames sem repetição e sem duplicar do rastreio geral
+          const nomesRastreioGeral = new Set(RASTREIO_GERAL.map(r => r.nome.toLowerCase().trim()));
+          const examesVistos = new Set();
+          // Mapeia exame → lista de comorbidades que o indicam
+          const exameParaComorbidades = {};
+          ativos.forEach(comorbidade => {
+            (PREVENCAO_ESPECIFICA[comorbidade] || []).forEach(item => {
+              const norm = item.toLowerCase().trim();
+              // Remove sufixo de frequência tipo "(anual)", "(a cada 2 anos)" para comparação
+              const normSemFreq = norm.replace(/\(.*?\)/g, "").trim();
+              // Verifica se já está no rastreio geral por comparação flexível
+              const jaNoGeral = Array.from(nomesRastreioGeral).some(g => {
+                const gSemFreq = g.replace(/\(.*?\)/g, "").trim();
+                return normSemFreq.includes(gSemFreq) || gSemFreq.includes(normSemFreq) ||
+                  normSemFreq.split(" ").slice(0,2).join(" ") === gSemFreq.split(" ").slice(0,2).join(" ");
+              });
+              if (jaNoGeral) return;
+              // Deduplicar por nome normalizado
+              if (!exameParaComorbidades[item]) {
+                exameParaComorbidades[item] = [];
+                examesVistos.add(normSemFreq);
+              }
+              if (!exameParaComorbidades[item].includes(comorbidade))
+                exameParaComorbidades[item].push(comorbidade);
+            });
+          });
+
+          const examesUnicos = Object.entries(exameParaComorbidades);
+
+          return (
+            <div>
+              <Alert type="info" style={{ marginBottom: "10px" }}>
+                {examesUnicos.length} exame(s)/rastreio(s) específico(s) indicado(s) para: {ativos.join(", ")}. Exames já presentes no rastreio geral não são repetidos.
+              </Alert>
+              {examesUnicos.map(([item, comorbidades]) => {
+                const key = comorbidades[0] + "::" + item;
+                const registros = Array.isArray(re[key]) ? re[key] : [];
+                return (
+                  <div key={item} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "8px 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: 500 }}>{item}</div>
+                        <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+                          Indicado por: {comorbidades.join(", ")}
+                        </div>
                       </div>
-                      <button onClick={() => removeReRegistro(key, reg.id)} aria-label="Remover registro" style={{ marginTop: "20px" }}><i className="ti ti-trash" aria-hidden="true"></i></button>
+                      <button onClick={() => addReRegistro(key)} style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", padding: "4px 8px" }}>
+                        <i className="ti ti-plus" aria-hidden="true"></i>Registrar
+                      </button>
                     </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        ))}
+                    {registros.length === 0 && <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", margin: "4px 0" }}>Nenhum registro ainda.</p>}
+                    {registros.map((reg, idx) => (
+                      <div key={reg.id} style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-start", marginBottom: "8px", paddingLeft: "8px", borderLeft: "2px solid var(--color-border-tertiary)" }}>
+                        <Field label={`Data (registro ${idx + 1})`}><input type="date" value={reg.data || ""} onChange={e => setReRegistro(key, reg.id, "data", e.target.value)} /></Field>
+                        <div style={{ flex: "1 1 240px" }}>
+                          <Field label="Resultado"><textarea rows={3} value={reg.resultado || ""} onChange={e => setReRegistro(key, reg.id, "resultado", e.target.value)} /></Field>
+                        </div>
+                        <button onClick={() => removeReRegistro(key, reg.id)} aria-label="Remover registro" style={{ marginTop: "20px" }}><i className="ti ti-trash" aria-hidden="true"></i></button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </SectionCard>
       <SectionCard title="Situação vacinal" icon="ti-vaccine">
         <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Campos de data conforme o esquema completo de cada vacina (calendário de vacinação do idoso). Ao preencher uma dose, a próxima data é sugerida automaticamente — você pode ajustar livremente.</p>
@@ -3653,11 +3987,17 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
   const ehMultimorbido = nComorbidades >= 3;
   const idade = calcIdade(patient?.ident?.dn);
   const idade80 = idade != null && idade >= 80;
+  const temDAC = consulta.problemas?.["DAC"];
+  const temHASLocal = consulta.problemas?.["HAS"];
 
-  // Meta de PA
-  let metaPA, perfilPA;
+  // Meta de PA — prioridade: DAC > HAS > geral; sempre mostra meta frágil e robusta
+  let metaPA, perfilPA, metaPAFragil, metaPARobusto;
+  metaPAFragil = "< 150/90 mmHg";
+  metaPARobusto = temDAC ? "< 130/80 mmHg (DAC: reduz eventos)" : idade80 ? "< 140/90 mmHg" : "< 130/80 mmHg";
   if (ehFragil) {
-    metaPA = "< 150/90 mmHg"; perfilPA = "Idoso frágil";
+    metaPA = metaPAFragil; perfilPA = "Idoso frágil";
+  } else if (temDAC) {
+    metaPA = "< 130/80 mmHg"; perfilPA = "DAC estabelecida";
   } else if (idade80) {
     metaPA = "< 140/90 mmHg"; perfilPA = "Idoso ≥ 80 anos";
   } else {
@@ -3685,6 +4025,35 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
       }
     }
   }
+
+  // H2FPEF Score — probabilidade de ICFEp
+  const icfepScore = (() => {
+    const prob = consulta.problemas || {};
+    const custom = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome.toLowerCase());
+    const temIC = prob["Insuficiência cardíaca"] || prob["IC"] || custom.some(c => /insufici.ncia card/.test(c));
+    if (!temIC) return null;
+    const idade = calcIdade(patient?.ident?.dn);
+    const aga = consulta.aga || {};
+    const peso = parseFloat(aga.peso || e.peso || 0);
+    const altura = parseFloat(aga.altura || 0);
+    const imc = peso && altura ? peso / (altura * altura) : null;
+    const meds = (consulta.medicacoesTexto || "").toLowerCase();
+    const temFA = prob["FA"] || prob["Flutter atrial"];
+    const temHAS = prob["HAS"];
+    const numAntihiper = (meds.match(/losartana|enalapril|captopril|ramipril|valsartana|anlodipino|hidroclorotiazida|furosemida|indapamida|metoprolol|atenolol|carvedilol|bisoprolol|amlodipino/g) || []).length;
+    const mPA2 = paValor.match(/(\d+)/);
+    const PAS = mPA2 ? parseInt(mPA2[1]) : null;
+    let score = 0; const fatores = [];
+    if (imc && imc >= 30) { score += 2; fatores.push(`IMC ≥ 30 (${imc.toFixed(1)}): +2`); }
+    if (temHAS && numAntihiper >= 2) { score += 1; fatores.push(`≥ 2 anti-HAS: +1`); }
+    if (temFA) { score += 3; fatores.push("FA: +3"); }
+    if (idade && idade > 60) { score += 1; fatores.push(`Idade > 60a: +1`); }
+    if (PAS && PAS >= 140) { score += 1; fatores.push(`PA elevada: +1`); }
+    if (prob["DM2"]) { score += 1; fatores.push("DM2: +1"); }
+    const probICFEp = score <= 1 ? "Baixa (<10%)" : score <= 5 ? "Intermediária (10–90%)" : "Alta (>90%)";
+    const cor = score <= 1 ? "success" : score <= 5 ? "warning" : "danger";
+    return { score, probICFEp, cor, fatores };
+  })();
 
   const geralPadrao = F
     ? "EG bom, consciente, orientada, eupneica, corada, hidratada, anictérica, acianótica, afebril ao toque."
@@ -3714,10 +4083,25 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
   return (
     <div>
       <SectionCard title="Sinais vitais" icon="ti-heartbeat">
-        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px", padding: "6px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
-          🎯 <strong>Meta de PA ({perfilPA}):</strong> {metaPA}
+        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px", padding: "8px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
+          🎯 <strong>Meta de PA — {perfilPA}:</strong> {metaPA}
+          {!ehFragil && (
+            <span style={{ marginLeft: "8px", color: "var(--color-text-tertiary)" }}>· Se frágil: {metaPAFragil}</span>
+          )}
+          {ehFragil && (
+            <span style={{ marginLeft: "8px", color: "var(--color-text-tertiary)" }}>· Se robusto: {metaPARobusto}</span>
+          )}
         </div>
         {alertaPA && <Alert type="warning">{alertaPA}</Alert>}
+        {icfepScore && (
+          <div style={{ background: `var(--color-background-${icfepScore.cor})`, border: `0.5px solid var(--color-border-${icfepScore.cor})`, borderRadius: "8px", padding: "10px 14px", fontSize: "13px", marginBottom: "8px" }}>
+            <div style={{ fontWeight: 700, color: `var(--color-text-${icfepScore.cor})`, marginBottom: "4px" }}>
+              🫀 H2FPEF Score: {icfepScore.score} — Probabilidade de ICFEp: {icfepScore.probICFEp}
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>{icfepScore.fatores.join(" · ")}</div>
+            <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>Reddy et al., JACC 2018 · Confirmar com ecocardiograma (E/e', PSAP, volume atrial)</div>
+          </div>
+        )}
         {alertaHASSecundaria && (
           <div style={{ background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "8px", padding: "12px 14px", fontSize: "13px", marginBottom: "10px" }}>
             <div style={{ fontWeight: 700, color: "var(--color-text-warning)", marginBottom: "8px" }}>
@@ -3940,6 +4324,114 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
     }
   }
 
+  // Meta glicêmica personalizada completa
+  const metaGlicemica = temDM2 ? (() => {
+    if (ehFragil) return { jejum: "90–150 mg/dL", posPrandial: "< 180 mg/dL", hba1c: "< 8%", perfil: "Frágil/alto risco de hipoglicemia" };
+    if (ehMultimorbido) return { jejum: "80–130 mg/dL", posPrandial: "< 180 mg/dL", hba1c: "< 7,5–8%", perfil: "Multimórbido" };
+    return { jejum: "80–130 mg/dL", posPrandial: "< 180 mg/dL", hba1c: "< 7–7,5%", perfil: "Robusto" };
+  })() : null;
+
+  // Calculadora de insulina (simplificada)
+  const calcInsulina = temDM2 ? (() => {
+    const peso = parseFloat((consulta.aga || {}).peso || 0);
+    if (!peso) return null;
+    const dose_total = ehFragil ? peso * 0.3 : peso * 0.5; // U/dia
+    const basal = Math.round(dose_total * 0.5);
+    const bolusRefeicao = Math.round((dose_total * 0.5) / 3);
+    let ajusteTFG = "";
+    if (tfg && tfg < 30) ajusteTFG = "⚠ TFG < 30: reduzir dose em 25-50%, risco aumentado de hipoglicemia";
+    else if (tfg && tfg < 60) ajusteTFG = "Atenção: TFG 30-60, monitorar hipoglicemia";
+    return { basal, bolusRefeicao, dose_total: Math.round(dose_total), ajusteTFG, peso };
+  })() : null;
+
+  // Alertas de medicações contraindicadas/ajuste por TFG
+  const alertasTFGMeds = (() => {
+    if (!tfg) return [];
+    const meds = (consulta.medicacoesTexto || "").toLowerCase();
+    const alertas = [];
+
+    if (tfg < 30 && meds.includes("metformina")) {
+      alertas.push({ tipo: "danger", msg: "⚠ METFORMINA CONTRAINDICADA: TFG < 30 mL/min — risco de acidose lática. Suspender imediatamente." });
+    } else if (tfg < 45 && meds.includes("metformina")) {
+      alertas.push({ tipo: "warning", msg: `⚠ Metformina: TFG ${tfg} mL/min (30–45) — usar com cautela, reduzir dose pela metade. Suspender se doença aguda ou contraste.` });
+    }
+
+    const temAINE = /ibuprofeno|diclofenaco|naproxeno|indometacina|meloxicam|nimesulida|celecoxibe/i.test(meds);
+    if (temAINE && tfg < 60) {
+      alertas.push({ tipo: "danger", msg: `⚠ AINEs CONTRAINDICADOS: TFG ${tfg} mL/min < 60 — risco de IRA e progressão da DRC. Substituir por paracetamol.` });
+    }
+
+    if (tfg < 30 && /espironolactona/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Espironolactona: TFG ${tfg} < 30 — risco de hipercalemia grave. Monitorar potássio.` });
+    }
+
+    if (tfg < 45 && /nitrofurantoína/i.test(meds)) {
+      alertas.push({ tipo: "danger", msg: `⚠ Nitrofurantoína CONTRAINDICADA: TFG < 45 — sem eficácia e acúmulo tóxico.` });
+    }
+
+    if (tfg < 30 && /sitagliptina|alogliptina|saxagliptina/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Inibidor de DPP-4: TFG ${tfg} < 30 — reduzir dose para metade (exceto linagliptina, que é segura).` });
+    }
+
+    // iSGLT2 — alertas específicos por droga e TFG (guidelines 2023–2024)
+    const temDapa = /dapagliflozina/i.test(meds);
+    const temEmpa = /empagliflozina/i.test(meds);
+    const temCana = /canagliflozina/i.test(meds);
+    const temErtugliflozina = /ertugliflozina/i.test(meds);
+    const temDRC = consulta.problemas?.["DRC"];
+    const temIC = consulta.problemas?.["Insuficiência cardíaca"] || consulta.problemas?.["IC"];
+
+    if (temDapa) {
+      // Dapagliflozina: indicada em DRC (DAPA-CKD) até TFG ≥ 25; sem efeito glicêmico < 45
+      if (tfg < 25) {
+        alertas.push({ tipo: "warning", msg: `⚠ Dapagliflozina: TFG ${tfg} < 25 mL/min — abaixo do limiar de eficácia nefroprotetora. Avaliar suspensão (benefício incerto e risco de DKA).` });
+      } else if (tfg >= 25 && tfg < 45) {
+        alertas.push({ tipo: "info", msg: `ℹ Dapagliflozina: TFG ${tfg} (25–45) — sem efeito hipoglicemiante, mas indicada para nefroproteção em DRC (DAPA-CKD) e proteção cardiovascular em IC. Manter se essas indicações presentes.` });
+      }
+    }
+
+    if (temEmpa) {
+      // Empagliflozina: EMPA-KIDNEY mostrou benefício até TFG ≥ 20
+      if (tfg < 20) {
+        alertas.push({ tipo: "warning", msg: `⚠ Empagliflozina: TFG ${tfg} < 20 mL/min — abaixo do limiar estudado (EMPA-KIDNEY: TFG ≥ 20). Avaliar risco-benefício.` });
+      } else if (tfg >= 20 && tfg < 45) {
+        alertas.push({ tipo: "info", msg: `ℹ Empagliflozina: TFG ${tfg} (20–45) — sem efeito hipoglicemiante, mas indicada para nefroproteção (EMPA-KIDNEY) e IC (EMPEROR-Reduced/Preserved). Manter se DRC ou IC presentes.` });
+      }
+    }
+
+    if (temCana) {
+      // Canagliflozina: CREDENCE até TFG ≥ 30 (nefropatia diabética)
+      if (tfg < 30) {
+        alertas.push({ tipo: "warning", msg: `⚠ Canagliflozina: TFG ${tfg} < 30 mL/min — sem evidência de benefício e risco aumentado de amputação e fraturas. Considerar substituição por dapagliflozina ou empagliflozina se indicação renal.` });
+      } else if (tfg >= 30 && tfg < 45) {
+        alertas.push({ tipo: "info", msg: `ℹ Canagliflozina: TFG ${tfg} (30–45) — sem efeito hipoglicemiante. Indicada em nefropatia diabética (CREDENCE). Manter se proteinúria + DM2.` });
+      }
+    }
+
+    if (temErtugliflozina && tfg < 45) {
+      alertas.push({ tipo: "warning", msg: `⚠ Ertugliflozina: TFG ${tfg} < 45 — contraindicada. Sem dados de nefroproteção. Substituir por dapa ou empa se indicação cardiorrenal.` });
+    }
+
+    // Alerta geral se nenhum iSGLT2 em uso mas DRC + proteinúria identificada
+    if (!temDapa && !temEmpa && !temCana && temDRC) {
+      const mLabs = (consulta.labsTexto || "").toLowerCase();
+      const temProteinuria = /proteín|albumin.*urin|rac|microalbumin/i.test(mLabs);
+      if (temProteinuria && tfg >= 20) {
+        alertas.push({ tipo: "info", msg: `ℹ DRC com proteinúria: considerar iSGLT2 (dapagliflozina ou empagliflozina) para nefroproteção — evidência de grau A para TFG ≥ 20–25 mL/min.` });
+      }
+    }
+
+    if (tfg < 60 && /colchicina/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Colchicina: TFG ${tfg} < 60 — reduzir dose, risco de toxicidade neuromuscular.` });
+    }
+
+    if (tfg < 30 && /gabapentina|pregabalina/i.test(meds)) {
+      alertas.push({ tipo: "warning", msg: `⚠ Gabapentina/Pregabalina: TFG ${tfg} < 30 — reduzir dose em 50-75%, risco de sedação excessiva e quedas.` });
+    }
+
+    return alertas;
+  })();
+
   // ============================================================
   // ALERTAS DE LABORATORIAIS ADICIONAIS
   // ============================================================
@@ -4120,13 +4612,43 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
           </div>
         )}
         {temDM2 && (
-          <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px", padding: "6px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
-            🎯 <strong>Meta de HbA1c ({perfilHbA1c}):</strong> {metaHbA1c}
+          <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px", padding: "8px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
+            🎯 <strong>Meta de HbA1c — {perfilHbA1c}:</strong> {metaHbA1c}
+            {perfilHbA1c !== "Idoso robusto" && (
+              <span style={{ marginLeft: "8px", color: "var(--color-text-tertiary)" }}>· Se robusto: &lt; 7–7,5%</span>
+            )}
+            {perfilHbA1c === "Idoso robusto" && (
+              <span style={{ marginLeft: "8px", color: "var(--color-text-tertiary)" }}>· Se frágil/multimórbido: &lt; 8%</span>
+            )}
           </div>
         )}
         {alertaHbA1c && (
           <Alert type={alertaHbA1c.startsWith('✓') ? "success" : "warning"}>{alertaHbA1c}</Alert>
         )}
+        {metaGlicemica && (
+          <div style={{ background: "var(--color-background-info)", border: "0.5px solid var(--color-border-info)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", marginBottom: "10px" }}>
+            <div style={{ fontWeight: 700, color: "var(--color-text-info)", marginBottom: "4px" }}>
+              🎯 Metas glicêmicas — {metaGlicemica.perfil}
+            </div>
+            <div>HbA1c: <strong>{metaGlicemica.hba1c}</strong> · Jejum: <strong>{metaGlicemica.jejum}</strong> · Pós-prandial 2h: <strong>{metaGlicemica.posPrandial}</strong></div>
+            {ehFragil && <div style={{ fontSize: "12px", marginTop: "4px", color: "var(--color-text-warning)" }}>⚠ Evitar hipoglicemia em paciente frágil — alvo menos rigoroso é preferível</div>}
+          </div>
+        )}
+        {calcInsulina && (
+          <div style={{ background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "10px 14px", fontSize: "13px", marginBottom: "10px" }}>
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>
+              💉 Estimativa de dose de insulina — {calcInsulina.peso} kg
+            </div>
+            <div>Dose total diária: <strong>~{calcInsulina.dose_total} U</strong> ({ehFragil ? "0,3" : "0,5"} U/kg · {ehFragil ? "frágil" : "robusto"})</div>
+            <div>Basal (NPH ou análogo): <strong>~{calcInsulina.basal} U/noite</strong></div>
+            <div>Bolus por refeição: <strong>~{calcInsulina.bolusRefeicao} U</strong> (antes das 3 principais refeições)</div>
+            {calcInsulina.ajusteTFG && <div style={{ marginTop: "6px", color: "var(--color-text-warning)", fontSize: "12px" }}>{calcInsulina.ajusteTFG}</div>}
+            <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>Estimativa inicial — ajustar conforme automonitorização glicêmica. Não substitui prescrição individualizada.</div>
+          </div>
+        )}
+        {alertasTFGMeds.length > 0 && alertasTFGMeds.map((a, i) => (
+          <Alert key={i} type={a.tipo}>{a.msg}</Alert>
+        ))}
         {tfg && !mTFG && (() => {
           const estadio = tfg >= 90 ? null : tfg >= 60 ? "G2 (leve)" : tfg >= 45 ? "G3a (moderada leve)" : tfg >= 30 ? "G3b (moderada grave)" : tfg >= 15 ? "G4 (grave)" : "G5 (falência renal)";
           if (!estadio) return null;
@@ -4781,12 +5303,44 @@ function Dashboard({ patients }) {
     const imc = calcIMC((ult.aga || {}).peso, (ult.aga || {}).altura);
     const forcaNum = parseFloat((ult.aga || {}).testeForca);
     const circNum = parseFloat((ult.aga || {}).circPanturrilha);
-    const sarcopenia = (sexo === "M" ? forcaNum < 27 : forcaNum < 16) || circNum < 31;
+    const sarcopenia = (!isNaN(forcaNum) && (sexo === "M" ? forcaNum < 27 : forcaNum < 16)) || (!isNaN(circNum) && circNum < 31);
+    const sarcopeniaForca = !isNaN(forcaNum) && (sexo === "M" ? forcaNum < 27 : forcaNum < 16);
+    const sarcopeniaCirc = !isNaN(circNum) && circNum < 31;
     const numComorbidades = Object.values(problemas).filter(Boolean).length + custom.length;
     const dataUltConsulta = ult.data || null;
     const retorno = (ult.plano || {}).retorno || null;
     const retornoVencido = retorno && new Date(retorno) < new Date();
-    return { problemas, custom, meds, frail, idade, sexo, imc, sarcopenia, numComorbidades, dataUltConsulta, retornoVencido, nome: p.ident.nome, id: p.id };
+    const labs = (ult.labsTexto || "").toLowerCase();
+    // Extrai HbA1c
+    const mHbA1c = labs.match(/(?:hba1c|glicada|hemoglobina glicada)[^\d]*(\d+[,.]\d+|\d+)/i);
+    const hba1c = mHbA1c ? parseFloat(mHbA1c[1].replace(",", ".")) : null;
+    // Extrai PA sistólica
+    const ef = ult.exameFisico || {};
+    const mPA = (ef.paSentado || "").match(/(\d+)\s*[xX\/]\s*(\d+)/);
+    const pas = mPA ? parseInt(mPA[1]) : null;
+    const pad = mPA ? parseInt(mPA[2]) : null;
+    // Extrai TFG (calculada ou nos labs)
+    const mTFG = labs.match(/(?:tfg|tgf|egfr|taxa de filtra)[^\d]*(\d+)/i);
+    let tfgVal = mTFG ? parseInt(mTFG[1]) : null;
+    if (!tfgVal && idade) {
+      const mCr = labs.match(/(?:cr(?:eatinina)?)[^\d]*(\d+[,.]\d+|\d+)/i);
+      if (mCr) {
+        const cr = parseFloat(mCr[1].replace(",", "."));
+        if (cr > 0 && cr < 20) {
+          const kappa = sexo === "F" ? 0.7 : 0.9;
+          const alpha = sexo === "F" ? -0.241 : -0.302;
+          const crK = cr / kappa;
+          tfgVal = Math.round(142 * Math.pow(Math.min(crK,1), alpha) * Math.pow(Math.max(crK,1), -1.2) * Math.pow(0.9938, idade) * (sexo === "F" ? 1.012 : 1));
+        }
+      }
+    }
+    // Data de criação do paciente para curva de crescimento
+    const dataCriacao = p.createdAt ? new Date(p.createdAt) : null;
+    return {
+      problemas, custom, meds, frail, idade, sexo, imc, sarcopenia, sarcopeniaForca, sarcopeniaCirc,
+      numComorbidades, dataUltConsulta, retornoVencido, nome: p.ident.nome, id: p.id,
+      hba1c, pas, pad, tfgVal, dataCriacao,
+    };
   });
 
   // Fragilidade
@@ -4794,6 +5348,42 @@ function Dashboard({ patients }) {
   const prefragil = dados.filter(d => d.frail >= 1 && d.frail <= 2).length;
   const fragil    = dados.filter(d => d.frail >= 3).length;
   const semDadosFrail = total - robusto - prefragil - fragil;
+
+  // Médias clínicas por subgrupo
+  const dm2 = dados.filter(d => d.problemas["DM2"]);
+  const hba1cs = dm2.filter(d => d.hba1c !== null && d.hba1c > 3 && d.hba1c < 15).map(d => d.hba1c);
+  const mediaHbA1c = hba1cs.length > 0 ? (hba1cs.reduce((a,b) => a+b, 0) / hba1cs.length).toFixed(1) : null;
+
+  const has = dados.filter(d => d.problemas["HAS"]);
+  const pasValores = has.filter(d => d.pas !== null).map(d => d.pas);
+  const mediaPA = pasValores.length > 0 ? Math.round(pasValores.reduce((a,b) => a+b, 0) / pasValores.length) : null;
+  const padValores = has.filter(d => d.pad !== null).map(d => d.pad);
+  const mediaPAD = padValores.length > 0 ? Math.round(padValores.reduce((a,b) => a+b, 0) / padValores.length) : null;
+
+  const drc = dados.filter(d => d.problemas["DRC"]);
+  const tfgs = drc.filter(d => d.tfgVal !== null && d.tfgVal > 0).map(d => d.tfgVal);
+  const mediaTFG = tfgs.length > 0 ? Math.round(tfgs.reduce((a,b) => a+b, 0) / tfgs.length) : null;
+
+  // Sarcopenia
+  const comSarcopenia = dados.filter(d => d.sarcopenia).length;
+  const comSarcopeniaForca = dados.filter(d => d.sarcopeniaForca).length;
+  const comSarcopeniaCirc = dados.filter(d => d.sarcopeniaCirc).length;
+  const semDadosSarcopenia = dados.filter(d => isNaN(parseFloat(d.sarcopeniaForca)) && isNaN(parseFloat(d.sarcopeniaCirc))).length;
+
+  // Crescimento mensal — últimos 12 meses
+  const agora = new Date();
+  const mesesLabels = [];
+  const mesesCounts = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+    const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+    mesesLabels.push(label);
+    const count = dados.filter(p => {
+      if (!p.dataCriacao) return false;
+      return p.dataCriacao.getFullYear() === d.getFullYear() && p.dataCriacao.getMonth() === d.getMonth();
+    }).length;
+    mesesCounts.push(count);
+  }
 
   // Medicamentos
   const totalMeds = dados.reduce((a, d) => a + d.meds, 0);
@@ -4828,9 +5418,6 @@ function Dashboard({ patients }) {
   const imcNormal  = dados.filter(d => d.imc && parseFloat(d.imc) > 22 && parseFloat(d.imc) < 27).length;
   const imcSobrepeso = dados.filter(d => d.imc && parseFloat(d.imc) >= 27).length;
   const semIMC     = total - imcBaixo - imcNormal - imcSobrepeso;
-
-  // Sarcopenia
-  const comSarcopenia = dados.filter(d => d.sarcopenia).length;
 
   // Retorno vencido
   const retornoVencido = dados.filter(d => d.retornoVencido);
@@ -4965,6 +5552,81 @@ function Dashboard({ patients }) {
         ))}
       </SectionCard>
 
+      {/* Médias clínicas por subgrupo */}
+      <SectionCard title="Médias clínicas por subgrupo" icon="ti-chart-line" defaultOpen={true}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>
+          {[
+            {
+              label: "HbA1c média — DM2",
+              valor: mediaHbA1c ? `${mediaHbA1c}%` : "—",
+              sub: `${hba1cs.length}/${dm2.length} com dados`,
+              cor: mediaHbA1c && parseFloat(mediaHbA1c) > 8 ? "danger" : mediaHbA1c && parseFloat(mediaHbA1c) > 7.5 ? "warning" : "success",
+              meta: "Meta: < 7,5% (robusto) · < 8% (frágil)",
+            },
+            {
+              label: "PA sistólica média — HAS",
+              valor: mediaPA && mediaPAD ? `${mediaPA}/${mediaPAD} mmHg` : "—",
+              sub: `${pasValores.length}/${has.length} com dados`,
+              cor: mediaPA && mediaPA >= 140 ? "warning" : "success",
+              meta: "Meta: < 130–140 mmHg",
+            },
+            {
+              label: "TFG média — DRC",
+              valor: mediaTFG ? `${mediaTFG} mL/min` : "—",
+              sub: `${tfgs.length}/${drc.length} com dados`,
+              cor: mediaTFG && mediaTFG < 30 ? "danger" : mediaTFG && mediaTFG < 60 ? "warning" : "success",
+              meta: "Estadio: G3 < 60 · G4 < 30",
+            },
+          ].map(({ label, valor, sub, cor, meta }) => (
+            <div key={label} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "10px", padding: "14px", background: "var(--color-background-primary)" }}>
+              <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "4px" }}>{label}</div>
+              <div style={{ fontSize: "22px", fontWeight: 700, color: `var(--color-text-${cor})` }}>{valor}</div>
+              <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>{sub}</div>
+              <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)" }}>{meta}</div>
+            </div>
+          ))}
+        </div>
+      </SectionCard>
+
+      {/* Sarcopenia detalhada */}
+      <SectionCard title="Sarcopenia provável" icon="ti-run" defaultOpen={false}>
+        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px" }}>
+          Critérios: força de preensão {'<'} 27 kgf (H) / {'<'} 16 kgf (M) ou circunferência de panturrilha {'<'} 31 cm
+        </div>
+        <StatRow label="Sarcopenia provável (qualquer critério)" n={comSarcopenia} cor="var(--color-border-warning)" />
+        <StatRow label="↳ Por força de preensão reduzida" n={comSarcopeniaForca} cor="var(--color-border-warning)" />
+        <StatRow label="↳ Por panturrilha < 31 cm" n={comSarcopeniaCirc} cor="var(--color-border-info)" />
+        {semDadosSarcopenia > 0 && (
+          <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+            {semDadosSarcopenia} paciente(s) sem dados de força ou panturrilha registrados
+          </div>
+        )}
+      </SectionCard>
+
+      {/* Crescimento mensal */}
+      <SectionCard title="Novos pacientes por mês (últimos 12 meses)" icon="ti-chart-bar" defaultOpen={false}>
+        {mesesCounts.every(c => c === 0) ? (
+          <div style={{ fontSize: "13px", color: "var(--color-text-secondary)" }}>Sem dados de cadastro disponíveis.</div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", height: "80px", paddingTop: "8px" }}>
+            {mesesLabels.map((label, i) => {
+              const maxCount = Math.max(...mesesCounts, 1);
+              const h = mesesCounts[i] > 0 ? Math.max(8, Math.round((mesesCounts[i] / maxCount) * 70)) : 0;
+              return (
+                <div key={label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+                  {mesesCounts[i] > 0 && <div style={{ fontSize: "10px", fontWeight: 600 }}>{mesesCounts[i]}</div>}
+                  <div style={{ width: "100%", height: `${h}px`, background: mesesCounts[i] > 0 ? "var(--color-border-info)" : "var(--color-background-secondary)", borderRadius: "3px 3px 0 0" }} />
+                  <div style={{ fontSize: "9px", color: "var(--color-text-tertiary)", textAlign: "center", lineHeight: 1.2 }}>{label}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+          Total no período: {mesesCounts.reduce((a, b) => a + b, 0)} novos pacientes
+        </div>
+      </SectionCard>
+
       <div style={{ display: "flex", gap: "10px", marginTop: "8px", flexWrap: "wrap" }}>
         <button onClick={exportarExcel} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
           <i className="ti ti-file-spreadsheet" aria-hidden="true"></i>Exportar lista (CSV/Excel)
@@ -4986,6 +5648,16 @@ function GraficoEvolucao({ patient }) {
     .map(c => ({ data: c.data, valor: parseFloat((c.aga || {}).peso || (c.exameFisico || {}).peso) }))
     .filter(d => !isNaN(d.valor) && d.valor > 0);
 
+  // Dados de IMC (requer peso e altura)
+  const dadosIMC = consultas
+    .map(c => {
+      const peso = parseFloat((c.aga || {}).peso || (c.exameFisico || {}).peso);
+      const altura = parseFloat((c.aga || {}).altura);
+      if (!peso || !altura || isNaN(peso) || isNaN(altura)) return null;
+      return { data: c.data, valor: parseFloat((peso / (altura * altura)).toFixed(1)) };
+    })
+    .filter(Boolean);
+
   const dadosPA = consultas
     .map(c => {
       const pa = ((c.exameFisico || {}).paSentado || "");
@@ -5003,7 +5675,7 @@ function GraficoEvolucao({ patient }) {
     .map(c => ({ data: c.data, valor: parseInt((c.aga || {}).moca) }))
     .filter(d => !isNaN(d.valor) && d.valor > 0);
 
-  if (dadosPeso.length < 2 && dadosPA.length < 2) return null;
+  if (dadosPeso.length < 2 && dadosPA.length < 2 && dadosMEEM.length < 2 && dadosMoCA.length < 2) return null;
 
   const SVGLine = ({ dados, cor, minVal, maxVal, width = 400, height = 100 }) => {
     if (dados.length < 2) return null;
@@ -5056,6 +5728,35 @@ function GraficoEvolucao({ patient }) {
               {diff > 0 ? "+" : ""}{diff.toFixed(1)} kg desde a primeira consulta
             </div>;
           })()}
+        </SectionCard>
+      )}
+      {dadosIMC.length >= 2 && (
+        <SectionCard title="Evolução do IMC (kg/m²)" icon="ti-chart-line" defaultOpen={true}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "4px" }}>
+            <span>{fmtDate(dadosIMC[0].data)}</span>
+            <span>{fmtDate(dadosIMC[dadosIMC.length-1].data)}</span>
+          </div>
+          <SVGLine
+            dados={dadosIMC.map(d => d.valor)}
+            cor="var(--color-border-warning)"
+            minVal={Math.max(0, Math.min(...dadosIMC.map(d => d.valor)) - 2)}
+            maxVal={Math.max(...dadosIMC.map(d => d.valor)) + 2}
+          />
+          {/* Linhas de referência para idoso */}
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "8px" }}>
+            {dadosIMC.map((d, i) => {
+              const classif = d.valor <= 22 ? "Baixo peso" : d.valor < 27 ? "Eutrofia" : "Sobrepeso";
+              const cor = d.valor <= 22 ? "danger" : d.valor < 27 ? "success" : "warning";
+              return (
+                <span key={i} style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+                  {fmtDate(d.data)}: <strong style={{ color: `var(--color-text-${cor})` }}>{d.valor} ({classif})</strong>
+                </span>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>
+            Referência para idosos: ≤ 22 baixo peso · 22–27 eutrofia · ≥ 27 sobrepeso
+          </div>
         </SectionCard>
       )}
       {dadosPA.length >= 2 && (
@@ -5611,8 +6312,144 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       {aga.fraturas === "sim" && <div>Fraturas: Sim{aga.fraturasDescricao ? ` — ${aga.fraturasDescricao}` : ""}</div>}
       {aga.tce === "sim" && <div>TCE: Sim{aga.tceDescricao ? ` — ${aga.tceDescricao}` : ""}</div>}
       <div>FRAIL: {Object.values(aga.frail || {}).filter(Boolean).length}/5 critérios — {Object.values(aga.frail || {}).filter(Boolean).length === 0 ? "Robusto" : Object.values(aga.frail || {}).filter(Boolean).length <= 2 ? "Pré-frágil" : "Frágil"}</div>
-      <div>Cognição: {aga.semQueixasCognitivas ? "Sem queixas cognitivas" : `Mini-Cog: ${aga.minicog || "—"} · MEEM: ${aga.meem || "—"} · MoCA: ${aga.moca || "—"}${aga.queixasCognitivasDescricao ? " — " + aga.queixasCognitivasDescricao : ""}`}</div>
-      <div>Humor: {aga.semQueixasHumor ? "Sem queixas de humor" : `GDS-15: ${aga.gds15 || "—"}${aga.queixasHumorDescricao ? " — " + aga.queixasHumorDescricao : ""}`}</div>
+
+      {/* COGNIÇÃO — MEEM, MoCA, Mini-Cog detalhados */}
+      <div>Cognição: {aga.semQueixasCognitivas ? "Sem queixas cognitivas" : aga.queixasCognitivasDescricao || "Queixa cognitiva referida"}</div>
+      {!aga.semQueixasCognitivas && (() => {
+        const meemItens = [
+          { key: "meemOrientacaoTempo", label: "Orientação tempo", max: 5 },
+          { key: "meemOrientacaoEspaco", label: "Orientação espaço", max: 5 },
+          { key: "meemRegistro", label: "Registro", max: 3 },
+          { key: "meemAtencao", label: "Atenção/cálculo", max: 5 },
+          { key: "meemEvocacao", label: "Evocação", max: 3 },
+          { key: "meemLinguagemNomeacao", label: "Nomeação", max: 2 },
+          { key: "meemLinguagemRepetir", label: "Repetição", max: 1 },
+          { key: "meemLinguagemComando", label: "Comando", max: 3 },
+          { key: "meemLinguagemLer", label: "Leitura", max: 1 },
+          { key: "meemLinguagemEscrever", label: "Escrita", max: 1 },
+          { key: "meemCopia", label: "Cópia do pentágono", max: 1 },
+        ];
+        const meemTotal = meemItens.reduce((s, it) => s + (parseInt(aga[it.key]) || 0), 0);
+        const temMEEM = meemItens.some(it => aga[it.key] !== undefined && aga[it.key] !== "");
+
+        const mocaItens = [
+          { key: "mocaVisuoespacial", label: "Visuoespacial/Executivo", max: 5 },
+          { key: "mocaNomeacao", label: "Nomeação", max: 3 },
+          { key: "mocaMemoria", label: "Memória", max: 5 },
+          { key: "mocaAtencao", label: "Atenção", max: 6 },
+          { key: "mocaLinguagem", label: "Linguagem", max: 3 },
+          { key: "mocaAbstracao", label: "Abstração", max: 2 },
+          { key: "mocaEvocacao", label: "Evocação tardia", max: 5 },
+          { key: "mocaOrientacao", label: "Orientação", max: 6 },
+        ];
+        const mocaTotal = mocaItens.reduce((s, it) => s + (parseInt(aga[it.key]) || 0), 0);
+        const temMoCA = mocaItens.some(it => aga[it.key] !== undefined && aga[it.key] !== "");
+
+        const temMiniCog = aga.minicogEvocacao !== undefined || aga.minicogRelogio !== undefined;
+        const minicogResult = (() => {
+          const ev = parseInt(aga.minicogEvocacao); const rel = parseInt(aga.minicogRelogio);
+          if (isNaN(ev)) return null;
+          if (ev === 3) return "Normal";
+          if (ev === 0) return "Alterado";
+          return rel === 1 ? "Normal" : "Alterado";
+        })();
+
+        return (
+          <div style={{ marginLeft: "16px", marginTop: "4px", fontSize: "12px" }}>
+            {temMiniCog && (
+              <div style={{ marginBottom: "4px" }}>
+                <strong>Mini-Cog:</strong> Evocação {aga.minicogEvocacao ?? "—"}/3 · Relógio {aga.minicogRelogio === "1" ? "Normal" : aga.minicogRelogio === "0" ? "Anormal" : "—"} → <strong>{minicogResult || aga.minicog || "—"}</strong>
+              </div>
+            )}
+            {temMEEM && (
+              <div style={{ marginBottom: "4px" }}>
+                <strong>MEEM: {meemTotal}/30</strong>
+                <span style={{ marginLeft: "8px", color: "#666" }}>
+                  ({meemItens.filter(it => aga[it.key] !== undefined && aga[it.key] !== "").map(it => `${it.label}: ${aga[it.key]}/${it.max}`).join(" · ")})
+                </span>
+              </div>
+            )}
+            {!temMEEM && aga.meem && <div><strong>MEEM:</strong> {aga.meem}/30</div>}
+            {temMoCA && (
+              <div style={{ marginBottom: "4px" }}>
+                <strong>MoCA: {mocaTotal}/30</strong>
+                <span style={{ marginLeft: "8px", color: "#666" }}>
+                  ({mocaItens.filter(it => aga[it.key] !== undefined && aga[it.key] !== "").map(it => `${it.label}: ${aga[it.key]}/${it.max}`).join(" · ")})
+                </span>
+              </div>
+            )}
+            {!temMoCA && aga.moca && <div><strong>MoCA:</strong> {aga.moca}/30</div>}
+            {/* CDR */}
+            {aga.cdrGlobal && (
+              <div><strong>CDR Global:</strong> {aga.cdrGlobal} — {aga.cdrGlobal === "0" ? "Sem demência" : aga.cdrGlobal === "0.5" ? "CCL/Questionável" : aga.cdrGlobal === "1" ? "Demência leve" : aga.cdrGlobal === "2" ? "Demência moderada" : "Demência grave"}</div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* HUMOR — GDS-15 detalhado */}
+      <div>Humor: {aga.semQueixasHumor ? "Sem queixas de humor" : aga.queixasHumorDescricao || "Queixa de humor referida"}</div>
+      {!aga.semQueixasHumor && (() => {
+        const GDS_QUESTOES = [
+          { key: "gdsQ1",  texto: "1. Satisfeito com a vida?", depressivo: "nao" },
+          { key: "gdsQ2",  texto: "2. Abandonou atividades?", depressivo: "sim" },
+          { key: "gdsQ3",  texto: "3. Vida vazia?", depressivo: "sim" },
+          { key: "gdsQ4",  texto: "4. Aborrecido frequentemente?", depressivo: "sim" },
+          { key: "gdsQ5",  texto: "5. Bom humor na maior parte?", depressivo: "nao" },
+          { key: "gdsQ6",  texto: "6. Medo de algo ruim?", depressivo: "sim" },
+          { key: "gdsQ7",  texto: "7. Feliz na maior parte?", depressivo: "nao" },
+          { key: "gdsQ8",  texto: "8. Desamparado?", depressivo: "sim" },
+          { key: "gdsQ9",  texto: "9. Prefere ficar em casa?", depressivo: "sim" },
+          { key: "gdsQ10", texto: "10. Mais problemas de memória?", depressivo: "sim" },
+          { key: "gdsQ11", texto: "11. Maravilhoso estar vivo?", depressivo: "nao" },
+          { key: "gdsQ12", texto: "12. Sente-se inútil?", depressivo: "sim" },
+          { key: "gdsQ13", texto: "13. Cheio de energia?", depressivo: "nao" },
+          { key: "gdsQ14", texto: "14. Situação sem esperança?", depressivo: "sim" },
+          { key: "gdsQ15", texto: "15. Outros estão melhor?", depressivo: "sim" },
+        ];
+        const respondidas = GDS_QUESTOES.filter(q => aga[q.key]);
+        if (respondidas.length === 0 && !aga.gds15) return null;
+        const pontos = GDS_QUESTOES.reduce((s, q) => s + (aga[q.key] === q.depressivo ? 1 : 0), 0);
+        const nivel = pontos <= 5 ? "Normal" : pontos <= 10 ? "Depressão leve" : "Depressão grave";
+        return (
+          <div style={{ marginLeft: "16px", marginTop: "4px", fontSize: "12px" }}>
+            {respondidas.length > 0 ? (
+              <>
+                <strong>GDS-15: {pontos}/15 — {nivel}</strong>
+                <div style={{ marginTop: "4px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px" }}>
+                  {GDS_QUESTOES.map(q => aga[q.key] ? (
+                    <div key={q.key} style={{ fontSize: "11px" }}>
+                      {q.texto} <strong>{aga[q.key] === q.depressivo ? `[${aga[q.key].toUpperCase()} ✓]` : `[${aga[q.key].toUpperCase()}]`}</strong>
+                    </div>
+                  ) : null)}
+                </div>
+              </>
+            ) : (
+              <div><strong>GDS-15:</strong> {aga.gds15}/15</div>
+            )}
+            {/* NPI */}
+            {(() => {
+              const NPI_SINTOMAS = [
+                { key: "npiDelirios", label: "Delírios" }, { key: "npiAlucinacoes", label: "Alucinações" },
+                { key: "npiAgitacao", label: "Agitação" }, { key: "npiDepressao", label: "Depressão" },
+                { key: "npiAnsiedade", label: "Ansiedade" }, { key: "npiEuforia", label: "Euforia" },
+                { key: "npiApatia", label: "Apatia" }, { key: "npiDesinibicao", label: "Desinibição" },
+                { key: "npiIrritabilidade", label: "Irritabilidade" }, { key: "npiMotor", label: "Motor aberrante" },
+                { key: "npiSono", label: "Sono" }, { key: "npiApetite", label: "Apetite" },
+              ];
+              const presentes = NPI_SINTOMAS.filter(s => aga[s.key] === "sim");
+              if (presentes.length === 0) return null;
+              return (
+                <div style={{ marginTop: "4px" }}>
+                  <strong>NPI:</strong> {presentes.map(s => s.label).join(", ")}
+                  {aga.npiObservacoes && <div style={{ fontSize: "11px" }}>Obs: {aga.npiObservacoes}</div>}
+                  {aga.npiImpactoCuidador && <div style={{ fontSize: "11px" }}>Impacto no cuidador: {aga.npiImpactoCuidador}/5</div>}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
       <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}{aga.sonoObservacoes ? ` — ${aga.sonoObservacoes}` : ""}</div>
       <div>Visão: {aga.visao || "—"}{aga.visaoLentes === "sim" ? " (usa lentes corretivas)" : ""} · Audição: {aga.audicao || "—"}{aga.audicaoAparelho === "sim" ? " (usa aparelho auditivo)" : ""}</div>
       <div>Incontinência urinária: {aga.incontinenciaUrinaria === "sim" ? `Sim${aga.incontinenciaUrinariaDes ? " — " + aga.incontinenciaUrinariaDes : ""}` : "Não"} · Incontinência fecal: {aga.incontinenciaFecal === "sim" ? `Sim${aga.incontinenciaFecalDes ? " — " + aga.incontinenciaFecalDes : ""}` : "Não"} · Constipação: {aga.constipacao === "sim" ? `Sim${aga.constipacaoDescricao ? " — " + aga.constipacaoDescricao : ""}` : "Não"}</div>
