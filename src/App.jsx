@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { listPatients, savePatient, deletePatient as apiDeletePatient, purgePatient } from './api.js';
+import { listPatients, savePatient, deletePatient as apiDeletePatient, purgePatient, listarFavoritosMedicacoes, salvarFavoritoMedicacao, removerFavoritoMedicacao } from './api.js';
 import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
@@ -1202,46 +1202,49 @@ function RadioGroup({ value, onChange, options, name }) {
 }
 
 // ============================================================
-// BANCO DE MEDICAÇÕES FAVORITAS — combinações frequentes
+// BANCO DE MEDICAÇÕES FAVORITAS — combinações frequentes (salvo no Google Sheets)
 // ============================================================
-const FAVORITOS_STORAGE_KEY = "prontuario_geriatria_favoritos_meds";
-
-function carregarFavoritos() {
-  try {
-    const raw = localStorage.getItem(FAVORITOS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function salvarFavoritos(lista) {
-  try {
-    localStorage.setItem(FAVORITOS_STORAGE_KEY, JSON.stringify(lista));
-  } catch (e) {
-    console.error("Erro ao salvar favoritos:", e);
-  }
-}
-
 function FavoritosMedicacoes({ onInserir }) {
-  const [favoritos, setFavoritos] = useState(() => carregarFavoritos());
+  const [favoritos, setFavoritos] = useState([]);
+  const [carregando, setCarregando] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [novoNome, setNovoNome] = useState("");
   const [novoTexto, setNovoTexto] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
-  function adicionar() {
+  useEffect(() => {
+    let ativo = true;
+    listarFavoritosMedicacoes()
+      .then(lista => { if (ativo) setFavoritos(lista); })
+      .catch(e => console.error("Erro ao carregar favoritos:", e))
+      .finally(() => { if (ativo) setCarregando(false); });
+    return () => { ativo = false; };
+  }, []);
+
+  async function adicionar() {
     if (!novoNome.trim() || !novoTexto.trim()) return;
-    const atualizados = [...favoritos, { id: uid(), nome: novoNome.trim(), texto: novoTexto.trim() }];
-    setFavoritos(atualizados);
-    salvarFavoritos(atualizados);
+    setSalvando(true);
+    const novoFavorito = { id: uid(), nome: novoNome.trim(), texto: novoTexto.trim(), createdAt: new Date().toISOString() };
+    // Atualiza a UI otimisticamente
+    setFavoritos(prev => [...prev, novoFavorito]);
     setNovoNome(""); setNovoTexto(""); setShowAdd(false);
+    try {
+      await salvarFavoritoMedicacao(novoFavorito);
+    } catch (e) {
+      console.error("Erro ao salvar favorito:", e);
+      alert("Erro ao salvar combinação. Tente novamente.");
+    }
+    setSalvando(false);
   }
 
-  function remover(id, nome) {
+  async function remover(id, nome) {
     if (!confirm(`Excluir a combinação "${nome}"?`)) return;
-    const atualizados = favoritos.filter(f => f.id !== id);
-    setFavoritos(atualizados);
-    salvarFavoritos(atualizados);
+    setFavoritos(prev => prev.filter(f => f.id !== id));
+    try {
+      await removerFavoritoMedicacao(id);
+    } catch (e) {
+      console.error("Erro ao remover favorito:", e);
+    }
   }
 
   return (
@@ -1264,13 +1267,17 @@ function FavoritosMedicacoes({ onInserir }) {
           <Field label="Medicações (uma por linha)">
             <textarea rows={3} value={novoTexto} onChange={e => setNovoTexto(e.target.value)} placeholder={"Metformina 850mg - 1cp 2x/dia\nDapagliflozina 10mg - 1cp/dia"} />
           </Field>
-          <button onClick={adicionar} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
-            <i className="ti ti-device-floppy" aria-hidden="true"></i>Salvar combinação
+          <button onClick={adicionar} disabled={salvando} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+            <i className={salvando ? "ti ti-loader-2" : "ti ti-device-floppy"} aria-hidden="true"></i>{salvando ? "Salvando..." : "Salvar combinação"}
           </button>
         </div>
       )}
 
-      {favoritos.length === 0 && !showAdd && (
+      {carregando && (
+        <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>Carregando combinações salvas...</div>
+      )}
+
+      {!carregando && favoritos.length === 0 && !showAdd && (
         <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>
           Nenhuma combinação salva ainda. Clique em "Salvar nova" para criar atalhos de prescrições frequentes.
         </div>
@@ -1291,6 +1298,9 @@ function FavoritosMedicacoes({ onInserir }) {
             </button>
           </div>
         ))}
+      </div>
+      <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+        <i className="ti ti-cloud" aria-hidden="true"></i> Salvo no Google Sheets — disponível em qualquer dispositivo
       </div>
     </div>
   );
@@ -5792,14 +5802,14 @@ function Dashboard({ patients }) {
       const imcLabel = imc ? (parseFloat(imc) <= 22 ? "Baixo peso" : parseFloat(imc) < 27 ? "Eutrofia" : "Sobrepeso") : "";
 
       // Vacinas
-      const vacInfluenza = (vac.influenza?.historico || []).length > 0 ? "Sim" : "Não registrada";
-      const vacPneumo = (vac.pneumococo?.historico || []).length > 0 ? "Sim" : "Não registrada";
-      const vacCovid = (vac.covid?.historico || []).length > 0 ? "Sim" : "Não registrada";
+      const vacInfluenza = vac.influenza?.dose ? "Sim" : "Não registrada";
+      const vacPneumo = (vac.pneumo?.vpc20 || vac.pneumo?.vpc13) ? "Sim" : "Não registrada";
+      const vacCovid = vac.covid?.dose ? "Sim" : "Não registrada";
 
       rows.push([
         // Identificação
         i.nome || "", i.prontuario || "", i.cpf || "", i.dn || "", idade != null ? idade : "",
-        i.sexo || "", i.naturalidade || "", i.procedencia || "",
+        i.sexo || "", i.natural || "", i.procedente || "",
         i.profissao || "", i.escolaridade || "", i.estadoCivil || "", i.moraCom || "",
         i.telefone || "", i.acompanhante || "", i.cuidador || "",
         // Última consulta
@@ -5813,14 +5823,14 @@ function Dashboard({ patients }) {
         // Fragilidade
         `${frailScore}/5`, frailClass,
         // Cognição
-        aga.meem || "", aga.moca || "", aga.relogio || "", aga.gds || "",
+        aga.meem || "", aga.moca || "", aga.minicogRelogio === "1" ? "Normal" : aga.minicogRelogio === "0" ? "Anormal" : "", aga.gds15 || "",
         // Nutrição
         imc || "", imcLabel, aga.circPanturrilha || "", aga.testeForca || "",
         // Quedas
         aga.quedas || "", aga.quedasNum || "",
         // Antecedentes
         ant.tabagismo || "", ant.etilismo || "", ant.cirurgias || "",
-        ant.internamentos || "", ant.alergias || "", ant.historicofamiliar || "",
+        ant.internamentos || "", ant.alergias || "", ant.historicoFamiliar || "",
         // Medicações
         numMeds, medsLista.join("; "), numMeds >= 5 ? "Sim" : "Não",
         // Alertas
