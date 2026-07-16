@@ -6622,9 +6622,25 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
 // ============================================================
 function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
   // Prioriza a lista final da última receita gerada; senão usa o texto de medicações da consulta
-  const meds = Array.isArray(consulta.ultimaReceitaMeds) && consulta.ultimaReceitaMeds.length > 0
+  const medsRaw = Array.isArray(consulta.ultimaReceitaMeds) && consulta.ultimaReceitaMeds.length > 0
     ? consulta.ultimaReceitaMeds.map(l => l.trim()).filter(Boolean)
     : (consulta.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
+
+  // Junta linhas de continuação (ex: "TOMAR 01 COMPRIMIDO À NOITE...") com a linha anterior
+  // (que contém o nome do remédio), pois formatos de receita costumam quebrar em 2 linhas.
+  function mesclarContinuacao(linhas) {
+    const resultado = [];
+    linhas.forEach(linha => {
+      const ehContinuacao = /^(tomar|aplicar|usar|ingerir|instilar|pingar|gotejar|utilizar|administrar)\b/i.test(linha);
+      if (ehContinuacao && resultado.length > 0) {
+        resultado[resultado.length - 1] += " " + linha;
+      } else {
+        resultado.push(linha);
+      }
+    });
+    return resultado;
+  }
+  const meds = mesclarContinuacao(medsRaw);
   const i = patient.ident;
 
   // Detecta horário de cada medicação a partir do padrão comum "1-0-0", "0-0-1", "1-1-1" etc,
@@ -6633,16 +6649,16 @@ function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
     const lower = linha.toLowerCase();
     const horarios = { manha: false, tarde: false, noite: false };
 
-    // Padrão numérico X-X-X (manhã-tarde-noite)
-    const m = linha.match(/(\d+(?:[,.]?\d*)?)\s*[-x]\s*(\d+(?:[,.]?\d*)?)\s*[-x]\s*(\d+(?:[,.]?\d*)?)/);
+    // Padrão numérico X-X-X (manhã-tarde-noite) — só considera se parecer posologia (números pequenos 0-9)
+    const m = linha.match(/\b(\d)\s*[-x]\s*(\d)\s*[-x]\s*(\d)\b/);
     if (m) {
-      horarios.manha = parseFloat(m[1].replace(",", ".")) > 0;
-      horarios.tarde = parseFloat(m[2].replace(",", ".")) > 0;
-      horarios.noite = parseFloat(m[3].replace(",", ".")) > 0;
+      horarios.manha = parseInt(m[1]) > 0;
+      horarios.tarde = parseInt(m[2]) > 0;
+      horarios.noite = parseInt(m[3]) > 0;
       return horarios;
     }
 
-    // Palavras-chave
+    // Palavras-chave (procura em toda a linha, incluindo texto de continuação já mesclado)
     if (/manh[ãa]|café|acord/i.test(lower)) horarios.manha = true;
     if (/almo[çc]o|tarde|meio.?dia/i.test(lower)) horarios.tarde = true;
     if (/noite|jantar|dormir|deitar/i.test(lower)) horarios.noite = true;
@@ -6653,11 +6669,18 @@ function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
     return horarios;
   }
 
-  // Extrai nome simplificado (remove dose e posologia técnica quando possível)
+  // Extrai nome simplificado (remove dose, preenchimento de traços e instruções técnicas)
   function nomeSimplificado(linha) {
-    // Pega a primeira parte antes do primeiro " - " ou padrão numérico
-    const semPosologia = linha.split(/\s+-\s+|\s+\d+\s*[-x]\s*\d+/)[0];
-    return semPosologia.trim() || linha;
+    let nome = linha;
+    // Remove run de 3+ traços usados como preenchimento em receitas impressas (ex: "-----CONTÍNUO")
+    nome = nome.split(/-{2,}/)[0];
+    // Remove a partir de padrão de posologia "1-0-1" ou "1 x 0 x 1"
+    nome = nome.split(/\s+\d\s*[-x]\s*\d\s*[-x]\s*\d/i)[0];
+    // Remove a partir de instruções mescladas (tomar, aplicar, usar, etc.)
+    nome = nome.split(/\b(tomar|aplicar|usar|ingerir|instilar|pingar|gotejar|utilizar|administrar)\b/i)[0];
+    // Remove traço isolado com espaços residual no final (ex: "Bisacodil 5mg - ")
+    nome = nome.replace(/\s*-\s*$/, "");
+    return nome.trim() || linha.trim();
   }
 
   return (
