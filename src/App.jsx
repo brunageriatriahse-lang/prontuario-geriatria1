@@ -690,6 +690,91 @@ const INTERACOES = [
     ],
     msg: "Colchicina + Inibidor CYP3A4/P-gp: aumento dos níveis de colchicina → risco de miopatia e toxicidade grave — evitar combinação"
   },
+  // Fitoterápicos e suplementos comuns
+  {
+    grupos: [
+      ["erva de são joão","erva-de-são-joão","hypericum","hipérico"],
+      ["fluoxetina","sertralina","paroxetina","escitalopram","citalopram","fluvoxamina","venlafaxina","duloxetina","trazodona"]
+    ],
+    msg: "Erva de São João + Antidepressivo (ISRS/IRSN): risco de síndrome serotonérgica — combinação deve ser evitada"
+  },
+  {
+    grupos: [
+      ["erva de são joão","erva-de-são-joão","hypericum","hipérico"],
+      ["varfarina","warfarina","acenocumarol","rivaroxabana","apixabana","dabigatrana","digoxina"]
+    ],
+    msg: "Erva de São João + Anticoagulante/Digoxina: indutor enzimático potente — reduz eficácia do anticoagulante/digoxina, risco de sub-dosagem"
+  },
+  {
+    grupos: [
+      ["ginkgo biloba","ginkgo"],
+      ["aas","ácido acetilsalicílico","aspirina","clopidogrel","varfarina","warfarina","rivaroxabana","apixabana","dabigatrana"]
+    ],
+    msg: "Ginkgo biloba + Anticoagulante/Antiplaquetário: efeito antiplaquetário adicional do ginkgo — risco aumentado de sangramento"
+  },
+  {
+    grupos: [
+      ["alho","allium sativum","alho em cápsula"],
+      ["varfarina","warfarina","aas","clopidogrel","rivaroxabana","apixabana"]
+    ],
+    msg: "Alho (suplemento) + Anticoagulante/Antiplaquetário: efeito antiplaquetário do alho — risco de sangramento com uso concomitante em altas doses"
+  },
+  {
+    grupos: [
+      ["ginseng","panax ginseng"],
+      ["varfarina","warfarina"]
+    ],
+    msg: "Ginseng + Varfarina: pode reduzir o INR (efeito variável) — monitorar coagulação de perto se uso concomitante"
+  },
+  {
+    grupos: [
+      ["ginseng","panax ginseng"],
+      ["fluoxetina","sertralina","paroxetina","escitalopram","citalopram"]
+    ],
+    msg: "Ginseng + ISRS: relatos de sintomas maníacos/euforia — cautela na combinação"
+  },
+  {
+    grupos: [
+      ["camomila","chamomilla","matricaria"],
+      ["varfarina","warfarina","aas","clopidogrel"]
+    ],
+    msg: "Camomila (uso regular/concentrado) + Anticoagulante: contém cumarinas naturais — pode potencializar efeito anticoagulante"
+  },
+  {
+    grupos: [
+      ["valeriana"],
+      ["diazepam","clonazepam","alprazolam","lorazepam","midazolam","zolpidem","zopiclona"]
+    ],
+    msg: "Valeriana + Benzodiazepínico/Z-drug: potencialização do efeito sedativo — risco aumentado de sonolência excessiva e quedas"
+  },
+  {
+    grupos: [
+      ["melatonina"],
+      ["diazepam","clonazepam","alprazolam","lorazepam","midazolam","zolpidem","zopiclona","trazodona","mirtazapina"]
+    ],
+    msg: "Melatonina + Sedativo/Hipnótico: efeito sedativo aditivo — ajustar horários e monitorar sonolência diurna"
+  },
+  {
+    grupos: [
+      ["cálcio","carbonato de cálcio","citrato de cálcio"],
+      ["ciprofloxacino","levofloxacino","moxifloxacino","doxiciclina","tetraciclina"]
+    ],
+    msg: "Cálcio (suplemento) + Fluorquinolona/Tetraciclina: quelação reduz absorção do antibiótico — espaçar 2h antes ou 6h depois do cálcio"
+  },
+  {
+    grupos: [
+      ["ferro","sulfato ferroso","gluconato ferroso"],
+      ["levotiroxina"]
+    ],
+    msg: "Ferro (suplemento) + Levotiroxina: reduz absorção do hormônio tireoidiano — espaçar ao menos 4h entre as doses"
+  },
+  {
+    grupos: [
+      ["óleo de peixe","ômega 3","omega-3","óleo de peixe (ômega-3)"],
+      ["varfarina","warfarina","aas","clopidogrel","rivaroxabana","apixabana"]
+    ],
+    msg: "Ômega-3 em altas doses + Anticoagulante/Antiplaquetário: leve efeito antiplaquetário adicional — monitorar sinais de sangramento"
+  },
 ];
 
 function checkBeers(nomeMedicacao) {
@@ -1868,7 +1953,7 @@ export default function App() {
               {
                 id: 'cempre',
                 titulo: 'CEMPRE',
-                subtitulo: 'Centro de Medicina Preventiva',
+                subtitulo: 'Centro Multidisciplinar para Promoção de Envelhecimento Ativo',
                 descricao: 'Ambulatório de geriatria — consultas ambulatoriais de seguimento',
                 icon: 'ti-building-hospital',
                 cor: 'var(--color-text-info)',
@@ -2917,6 +3002,33 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const interacoes = checkInteracoes(texto);
   const alertasEspeciais = checkAlertasEspeciais(texto);
 
+  // Checagem cruzada: alergias medicamentosas registradas vs. medicações prescritas
+  const alergiasTexto = (consulta.antecedentes || {}).alergias || "";
+  const alertasAlergia = (() => {
+    if (!alergiasTexto || /^nega/i.test(alergiasTexto.trim())) return [];
+    // Extrai possíveis nomes de fármacos/classes mencionados no texto de alergias
+    // (separa por vírgula, ponto-e-vírgula ou "e")
+    const alergenos = alergiasTexto
+      .split(/[,;]|(?:\be\b)/i)
+      .map(s => s.trim().toLowerCase())
+      .filter(s => s.length >= 4 && !/^nega|^nenhuma|^não|^sem/.test(s));
+
+    const alertas = [];
+    alergenos.forEach(alergeno => {
+      // Remove palavras genéricas comuns que geram falso positivo
+      const termoBusca = alergeno.replace(/\balergia\b|\bà\b|\ba\b|\bao\b/gi, "").trim();
+      if (termoBusca.length < 4) return;
+      linhas.forEach(linhaMed => {
+        const medLower = linhaMed.toLowerCase();
+        // Verifica correspondência direta do termo de alergia na linha de medicação
+        if (medLower.includes(termoBusca)) {
+          alertas.push({ alergeno: alergeno, medicacao: linhaMed });
+        }
+      });
+    });
+    return alertas;
+  })();
+
   // Alertas específicos por comorbidade
   const prob = consulta.problemas || {};
   const alertasComorbidade = [];
@@ -3153,6 +3265,20 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   return (
     <div>
       <SectionCard title="Medicações em uso" icon="ti-pill">
+        {alertasAlergia.length > 0 && (
+          <div style={{ marginBottom: "12px" }}>
+            {alertasAlergia.map((a, i) => (
+              <div key={i} style={{ background: "#f8d7da", border: "2px solid #dc3545", borderRadius: "8px", padding: "12px 14px", fontSize: "13px", marginBottom: "8px" }}>
+                <div style={{ fontWeight: 700, color: "#721c24", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <i className="ti ti-alert-triangle-filled" aria-hidden="true"></i>
+                  ⚠️ ALERTA DE ALERGIA: possível conflito com "{a.alergeno}"
+                </div>
+                <div style={{ marginTop: "4px" }}>Medicação prescrita: <strong>{a.medicacao}</strong></div>
+                <div style={{ fontSize: "12px", marginTop: "4px", color: "#721c24" }}>Verifique se há relação com a alergia registrada nos antecedentes antes de manter esta prescrição.</div>
+              </div>
+            ))}
+          </div>
+        )}
         {alertasComorbidade.length > 0 && (
           <div style={{ marginBottom: "10px" }}>
             {alertasComorbidade.map((a, i) => (
@@ -4240,6 +4366,15 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
   );
 }
 
+function mesesDesde(dateStr, referencia) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  const ref = referencia || new Date();
+  const meses = (ref.getFullYear() - d.getFullYear()) * 12 + (ref.getMonth() - d.getMonth());
+  return meses >= 0 ? meses : null;
+}
+
 function addMonths(dateStr, months) {
   if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
@@ -4458,6 +4593,51 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
         })()}
       </SectionCard>
       <SectionCard title="Situação vacinal" icon="ti-vaccine">
+        {(() => {
+          const hoje = new Date();
+          const alertasVac = [];
+
+          // Influenza — anual (12 meses)
+          if (vac.influenza?.dose) {
+            const meses = mesesDesde(vac.influenza.dose, hoje);
+            if (meses !== null && meses >= 12) {
+              alertasVac.push({ nome: "Influenza", msg: `Última dose há ${meses} meses (${fmtDate(vac.influenza.dose)}) — vencida, dose anual recomendada.` });
+            }
+          }
+
+          // COVID-19 — reforço a cada 6 meses (idosos)
+          if (vac.covid?.dose) {
+            const meses = mesesDesde(vac.covid.dose, hoje);
+            if (meses !== null && meses >= 6) {
+              alertasVac.push({ nome: "COVID-19", msg: `Última dose há ${meses} meses (${fmtDate(vac.covid.dose)}) — reforço recomendado a cada 6 meses em idosos.` });
+            }
+          }
+
+          // dTpa — reforço a cada 10 anos
+          if (vac.dtpa?.reforco) {
+            const anos = mesesDesde(vac.dtpa.reforco, hoje);
+            if (anos !== null && anos >= 120) {
+              alertasVac.push({ nome: "dTpa", msg: `Último reforço há ${Math.floor(anos/12)} anos (${fmtDate(vac.dtpa.reforco)}) — vencido, reforço a cada 10 anos.` });
+            }
+          }
+
+          // Herpes-zóster — dose única (recombinante) ou reforço se vivo atenuada
+          if (vac.zoster?.dose2 === undefined && vac.zoster?.dose1) {
+            const meses = mesesDesde(vac.zoster.dose1, hoje);
+            if (meses !== null && meses >= 3 && !vac.zoster?.dose2) {
+              alertasVac.push({ nome: "Herpes-zóster", msg: `1ª dose há ${meses} meses (${fmtDate(vac.zoster.dose1)}) — verificar se 2ª dose (2–6 meses após) foi aplicada.` });
+            }
+          }
+
+          if (alertasVac.length === 0) return null;
+          return (
+            <div style={{ marginBottom: "12px" }}>
+              {alertasVac.map((a, i) => (
+                <Alert key={i} type="warning">⚠ <strong>{a.nome}</strong>: {a.msg}</Alert>
+              ))}
+            </div>
+          );
+        })()}
         <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: 0 }}>Campos de data conforme o esquema completo de cada vacina (calendário de vacinação do idoso). Ao preencher uma dose, a próxima data é sugerida automaticamente — você pode ajustar livremente.</p>
 
         <div style={{ marginBottom: "16px" }}>
@@ -7147,6 +7327,8 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
   const herdado = consulta._dadosHerdados || null;
   const aHerdado = herdado?.antecedentes || {};
   const plHerdado = herdado?.plano || {};
+  const agaHerdado = herdado?.aga || {};
+  const efHerdado = herdado?.exameFisico || {};
 
   // Selo visual indicando origem do dado
   function SeloOrigem({ atual, herdadoVal }) {
@@ -7257,8 +7439,8 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div style={sectionTitle}>AVALIAÇÃO GERIÁTRICA AMPLA</div>
       <div>AIVD independentes: {Object.values(aga.aivd || {}).filter(Boolean).length}/9 ({Object.keys(aga.aivd || {}).filter(k => aga.aivd[k]).join(", ") || "—"})</div>
       <div>ABVD independentes: {Object.values(aga.abvd || {}).filter(Boolean).length}/6 ({Object.keys(aga.abvd || {}).filter(k => aga.abvd[k]).join(", ") || "—"})</div>
-      <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}</div>
-      <div>Quedas: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Não"}</div>
+      <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}<SeloOrigem atual={aga.marcha} herdadoVal={agaHerdado.marcha} /></div>
+      <div>Quedas: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Não"}<SeloOrigem atual={aga.quedas} herdadoVal={agaHerdado.quedas} /></div>
       {aga.fraturas === "sim" && <div>Fraturas: Sim{aga.fraturasDescricao ? ` — ${aga.fraturasDescricao}` : ""}</div>}
       {aga.tce === "sim" && <div>TCE: Sim{aga.tceDescricao ? ` — ${aga.tceDescricao}` : ""}</div>}
       <div>FRAIL: {Object.values(aga.frail || {}).filter(Boolean).length}/5 critérios — {Object.values(aga.frail || {}).filter(Boolean).length === 0 ? "Robusto" : Object.values(aga.frail || {}).filter(Boolean).length <= 2 ? "Pré-frágil" : "Frágil"}</div>
@@ -7400,10 +7582,10 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
           </div>
         );
       })()}
-      <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}{aga.sonoObservacoes ? ` — ${aga.sonoObservacoes}` : ""}</div>
+      <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}{aga.sonoObservacoes ? ` — ${aga.sonoObservacoes}` : ""}<SeloOrigem atual={aga.sonoObservacoes || aga.higieneSono} herdadoVal={agaHerdado.sonoObservacoes || agaHerdado.higieneSono} /></div>
       <div>Visão: {aga.visao || "—"}{aga.visaoLentes === "sim" ? " (usa lentes corretivas)" : ""} · Audição: {aga.audicao || "—"}{aga.audicaoAparelho === "sim" ? " (usa aparelho auditivo)" : ""}</div>
       <div>Incontinência urinária: {aga.incontinenciaUrinaria === "sim" ? `Sim${aga.incontinenciaUrinariaDes ? " — " + aga.incontinenciaUrinariaDes : ""}` : "Não"} · Incontinência fecal: {aga.incontinenciaFecal === "sim" ? `Sim${aga.incontinenciaFecalDes ? " — " + aga.incontinenciaFecalDes : ""}` : "Não"} · Constipação: {aga.constipacao === "sim" ? `Sim${aga.constipacaoDescricao ? " — " + aga.constipacaoDescricao : ""}` : "Não"}</div>
-      <div>Peso: {aga.peso || "—"} kg · Peso habitual: {aga.pesoHabitual || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
+      <div>Peso: {aga.peso || "—"} kg · Peso habitual: {aga.pesoHabitual || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}<SeloOrigem atual={aga.peso} herdadoVal={agaHerdado.peso} /></div>
       <div>Perda de peso: {aga.perdaPeso === "sim" ? `Sim — ${aga.perdaPesoKg || "?"} kg${aga.perdaPesoTempo ? ` em ${aga.perdaPesoTempo}` : ""}` : "Não"}</div>
       <div>Apetite: {aga.apetite || "—"} · Disfagia: {aga.disfagia || "—"}{aga.disfagiaDieta ? ` (${aga.disfagiaDieta})` : ""}</div>
       <div>Problemas dentários: {aga.problemasDentarios === "sim" ? `Sim${aga.problemasDentariosDes ? " — " + aga.problemasDentariosDes : ""}` : "Não"} · Prótese dentária: {aga.proteseDentaria === "sim" ? "Sim" : "Não"}</div>
@@ -7469,14 +7651,14 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div style={sectionTitle}>EXAME FÍSICO</div>
       <div>PA sentado: {ef.paSentado || "—"} · PA em pé (3 min): {ef.paEmPe || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}</div>
       {(ef.peso || ef.hgt) && <div>Peso: {ef.peso || "—"} kg · HGT: {ef.hgt || "—"} mg/dL</div>}
-      <div>Geral: {ef.geral || "—"}</div>
-      <div>ACV: {ef.acv || "—"}</div>
-      <div>AR: {ef.ar || "—"}</div>
-      <div>ABD: {ef.abd || "—"}</div>
-      <div>EXT: {ef.ext || "—"}</div>
-      <div>SN: {ef.sn || "—"}</div>
-      {ef.pele && <div>Pele: {ef.pele}</div>}
-      {ef.outros && <div>Outros: {ef.outros}</div>}
+      <div>Geral: {ef.geral || "—"}<SeloOrigem atual={ef.geral} herdadoVal={efHerdado.geral} /></div>
+      <div>ACV: {ef.acv || "—"}<SeloOrigem atual={ef.acv} herdadoVal={efHerdado.acv} /></div>
+      <div>AR: {ef.ar || "—"}<SeloOrigem atual={ef.ar} herdadoVal={efHerdado.ar} /></div>
+      <div>ABD: {ef.abd || "—"}<SeloOrigem atual={ef.abd} herdadoVal={efHerdado.abd} /></div>
+      <div>EXT: {ef.ext || "—"}<SeloOrigem atual={ef.ext} herdadoVal={efHerdado.ext} /></div>
+      <div>SN: {ef.sn || "—"}<SeloOrigem atual={ef.sn} herdadoVal={efHerdado.sn} /></div>
+      {ef.pele && <div>Pele: {ef.pele}<SeloOrigem atual={ef.pele} herdadoVal={efHerdado.pele} /></div>}
+      {ef.outros && <div>Outros: {ef.outros}<SeloOrigem atual={ef.outros} herdadoVal={efHerdado.outros} /></div>}
 
       <div style={sectionTitle}>EXAMES<SeloOrigem atual={consulta.labsTexto} herdadoVal={herdado?.labsTexto} /></div>
       <div style={{ whiteSpace: "pre-wrap" }}>{consulta.labsTexto || "—"}</div>
