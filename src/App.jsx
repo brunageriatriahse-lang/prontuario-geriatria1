@@ -1021,6 +1021,10 @@ const EXAMES_LABORATORIAIS_PADRAO = [
 function emptyConsulta(base) {
   if (base) {
     const copy = JSON.parse(JSON.stringify(base));
+    // Guarda snapshot dos dados herdados da consulta anterior (antes de qualquer edição)
+    // para permitir identificar na impressão o que foi mantido vs. o que foi editado nesta consulta.
+    copy._dadosHerdados = JSON.parse(JSON.stringify(base));
+    delete copy._dadosHerdados._dadosHerdados; // evita aninhamento recursivo
     copy.id = uid();
     copy.data = new Date().toISOString().slice(0, 10);
     copy.createdAt = new Date().toISOString();
@@ -2529,181 +2533,10 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
   );
 }
 
-// ============================================================
-// MODO CONSULTA RÁPIDA — o que mudou desde a última consulta
-// ============================================================
-function ConsultaRapida({ patient, consulta, onFechar, onIrParaAba }) {
-  const todasConsultas = (patient.consultas || []).filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data));
-  const anterior = todasConsultas.find(c => c.id !== consulta.id);
-
-  if (!anterior) {
-    return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 65, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
-        <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", padding: "24px", maxWidth: "480px", textAlign: "center" }}>
-          <i className="ti ti-info-circle" style={{ fontSize: "32px", color: "var(--color-text-info)" }} aria-hidden="true"></i>
-          <div style={{ marginTop: "10px", fontSize: "14px" }}>Esta é a primeira consulta deste paciente — não há consulta anterior para comparar.</div>
-          <button onClick={onFechar} style={{ marginTop: "16px", fontSize: "13px" }}>Fechar</button>
-        </div>
-      </div>
-    );
-  }
-
-  const mudancas = [];
-
-  // Comorbidades novas
-  const probAtual = consulta.problemas || {};
-  const probAnterior = anterior.problemas || {};
-  const novasComorbidades = PROBLEMAS.filter(p => probAtual[p] && !probAnterior[p]);
-  const customAtual = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
-  const customAnterior = (anterior.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
-  const novasCustom = customAtual.filter(c => !customAnterior.includes(c));
-  if (novasComorbidades.length > 0 || novasCustom.length > 0) {
-    mudancas.push({ tipo: "novo", categoria: "Novos diagnósticos", icone: "ti-plus", itens: [...novasComorbidades, ...novasCustom], aba: "problemas" });
-  }
-
-  // Medicações alteradas
-  const medsAtual = (consulta.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
-  const medsAnterior = (anterior.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
-  const medsNovas = medsAtual.filter(m => !medsAnterior.some(a => a.toLowerCase().slice(0,15) === m.toLowerCase().slice(0,15)));
-  const medsRemovidas = medsAnterior.filter(m => !medsAtual.some(a => a.toLowerCase().slice(0,15) === m.toLowerCase().slice(0,15)));
-  if (medsNovas.length > 0) mudancas.push({ tipo: "novo", categoria: "Medicações adicionadas", icone: "ti-pill", itens: medsNovas, aba: "medicacoes" });
-  if (medsRemovidas.length > 0) mudancas.push({ tipo: "removido", categoria: "Medicações suspensas", icone: "ti-pill-off", itens: medsRemovidas, aba: "medicacoes" });
-
-  // Peso
-  const pesoAtual = parseFloat((consulta.aga || {}).peso || (consulta.exameFisico || {}).peso);
-  const pesoAnterior = parseFloat((anterior.aga || {}).peso || (anterior.exameFisico || {}).peso);
-  if (!isNaN(pesoAtual) && !isNaN(pesoAnterior) && Math.abs(pesoAtual - pesoAnterior) >= 1) {
-    const diff = (pesoAtual - pesoAnterior).toFixed(1);
-    mudancas.push({ tipo: diff < 0 ? "alerta" : "info", categoria: "Peso", icone: "ti-scale", itens: [`${pesoAnterior} kg → ${pesoAtual} kg (${diff > 0 ? "+" : ""}${diff} kg)`], aba: "exame" });
-  }
-
-  // PA
-  const efAtual = consulta.exameFisico || {};
-  const efAnterior = anterior.exameFisico || {};
-  if (efAtual.paSentado && efAnterior.paSentado && efAtual.paSentado !== efAnterior.paSentado) {
-    mudancas.push({ tipo: "info", categoria: "Pressão arterial", icone: "ti-heartbeat", itens: [`${efAnterior.paSentado} → ${efAtual.paSentado} mmHg`], aba: "exame" });
-  }
-
-  // Fragilidade
-  const frailAtual = Object.values((consulta.aga || {}).frail || {}).filter(Boolean).length;
-  const frailAnterior = Object.values((anterior.aga || {}).frail || {}).filter(Boolean).length;
-  if (frailAtual !== frailAnterior) {
-    const classAtual = frailAtual === 0 ? "Robusto" : frailAtual <= 2 ? "Pré-frágil" : "Frágil";
-    const classAnterior = frailAnterior === 0 ? "Robusto" : frailAnterior <= 2 ? "Pré-frágil" : "Frágil";
-    mudancas.push({ tipo: frailAtual > frailAnterior ? "alerta" : "info", categoria: "Fragilidade", icone: "ti-heart-rate-monitor", itens: [`${classAnterior} (${frailAnterior}/5) → ${classAtual} (${frailAtual}/5)`], aba: "aga" });
-  }
-
-  // Cognição (MEEM/MoCA)
-  const aga = consulta.aga || {}, agaAnt = anterior.aga || {};
-  if (aga.meem && agaAnt.meem && parseInt(aga.meem) !== parseInt(agaAnt.meem)) {
-    const diff = parseInt(aga.meem) - parseInt(agaAnt.meem);
-    mudancas.push({ tipo: diff < -1 ? "alerta" : "info", categoria: "MEEM", icone: "ti-brain", itens: [`${agaAnt.meem} → ${aga.meem} (${diff > 0 ? "+" : ""}${diff})`], aba: "aga" });
-  }
-  if (aga.moca && agaAnt.moca && parseInt(aga.moca) !== parseInt(agaAnt.moca)) {
-    const diff = parseInt(aga.moca) - parseInt(agaAnt.moca);
-    mudancas.push({ tipo: diff < -1 ? "alerta" : "info", categoria: "MoCA", icone: "ti-brain", itens: [`${agaAnt.moca} → ${aga.moca} (${diff > 0 ? "+" : ""}${diff})`], aba: "aga" });
-  }
-
-  // Quedas novas
-  if (aga.quedas === "sim" && agaAnt.quedas !== "sim") {
-    mudancas.push({ tipo: "alerta", categoria: "⚠ Nova queda relatada", icone: "ti-alert-triangle", itens: [aga.quedasDescricao || "Sem detalhes registrados"], aba: "aga" });
-  }
-
-  // Retorno vencido ou próximo
-  const retorno = (anterior.plano || {}).retorno;
-  const retornoAtrasado = retorno && new Date(retorno) < new Date(consulta.data);
-
-  // Queixas da consulta anterior (para lembrar o que estava pendente)
-  const queixasAnteriores = anterior.queixas;
-  const pendenciasAnteriores = (anterior.pendencias || []).filter(p => !p.done);
-
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 65, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
-      <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "640px", padding: "24px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-          <div style={{ fontWeight: 700, fontSize: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-            <i className="ti ti-bolt" style={{ color: "var(--color-text-warning)" }} aria-hidden="true"></i>
-            Consulta Rápida de Retorno
-          </div>
-          <button onClick={onFechar}><i className="ti ti-x" aria-hidden="true"></i></button>
-        </div>
-        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "16px" }}>
-          Comparando com a consulta de <strong>{fmtDate(anterior.data)}</strong>
-        </div>
-
-        {retornoAtrasado && (
-          <Alert type="warning">Retorno estava programado para {fmtDate(retorno)} — paciente atrasou o seguimento.</Alert>
-        )}
-
-        {pendenciasAnteriores.length > 0 && (
-          <div style={{ marginBottom: "14px", padding: "10px 12px", background: "var(--color-background-warning)", borderRadius: "8px" }}>
-            <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "4px" }}>📋 Pendências da consulta anterior</div>
-            {pendenciasAnteriores.map((p, i) => <div key={i} style={{ fontSize: "13px" }}>• {p.text}</div>)}
-          </div>
-        )}
-
-        {queixasAnteriores && (
-          <div style={{ marginBottom: "14px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px" }}>
-            <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "4px" }}>💬 Queixas na última consulta</div>
-            <div style={{ fontSize: "13px", whiteSpace: "pre-wrap" }}>{queixasAnteriores.slice(0, 300)}{queixasAnteriores.length > 300 ? "..." : ""}</div>
-          </div>
-        )}
-
-        <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "10px", marginTop: "18px" }}>
-          O que mudou desde então:
-        </div>
-
-        {mudancas.length === 0 && (
-          <div style={{ textAlign: "center", padding: "24px", color: "var(--color-text-secondary)" }}>
-            <i className="ti ti-check" style={{ fontSize: "28px", color: "var(--color-text-success)" }} aria-hidden="true"></i>
-            <div style={{ marginTop: "8px", fontSize: "13px" }}>Nenhuma mudança significativa detectada nos dados desta consulta em relação à anterior.</div>
-          </div>
-        )}
-
-        <div style={{ display: "grid", gap: "8px" }}>
-          {mudancas.map((m, i) => {
-            const cor = m.tipo === "alerta" ? "danger" : m.tipo === "removido" ? "warning" : m.tipo === "novo" ? "info" : "success";
-            return (
-              <button key={i} onClick={() => { onIrParaAba(m.aba); onFechar(); }}
-                style={{ textAlign: "left", display: "flex", gap: "10px", alignItems: "flex-start", padding: "10px 12px", borderRadius: "8px", background: `var(--color-background-${cor})`, border: `0.5px solid var(--color-border-${cor})`, cursor: "pointer" }}>
-                <i className={`ti ${m.icone}`} style={{ fontSize: "18px", color: `var(--color-text-${cor})`, marginTop: "2px", flexShrink: 0 }} aria-hidden="true"></i>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: "13px", color: `var(--color-text-${cor})` }}>{m.categoria}</div>
-                  {m.itens.map((item, j) => (
-                    <div key={j} style={{ fontSize: "12px", marginTop: "2px" }}>{item}</div>
-                  ))}
-                </div>
-                <i className="ti ti-chevron-right" style={{ fontSize: "16px", color: "var(--color-text-tertiary)", flexShrink: 0 }} aria-hidden="true"></i>
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ marginTop: "20px", display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={onFechar} style={{ fontSize: "13px" }}>Fechar e continuar consulta</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint, onSave }) {
-  const [showConsultaRapida, setShowConsultaRapida] = useState(false);
   return (
     <div>
-      {showConsultaRapida && (
-        <ConsultaRapida
-          patient={patient}
-          consulta={consulta}
-          onFechar={() => setShowConsultaRapida(false)}
-          onIrParaAba={(aba) => setActiveTab(aba)}
-        />
-      )}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
-        <button onClick={() => setShowConsultaRapida(true)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px", background: "var(--color-background-warning)", color: "var(--color-text-warning)", border: "0.5px solid var(--color-border-warning)" }}>
-          <i className="ti ti-bolt" aria-hidden="true"></i>Consulta Rápida de Retorno
-        </button>
-      </div>
       <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
@@ -6971,7 +6804,7 @@ function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
           <div style={{ fontSize: "16px", marginTop: "6px" }}>{i.nome || "Paciente"}</div>
           <div style={{ fontSize: "13px", color: "#666" }}>{new Date().toLocaleDateString("pt-BR")}</div>
           {Array.isArray(consulta.ultimaReceitaMeds) && consulta.ultimaReceitaMeds.length > 0 && (
-            <div className="no-print" style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+            <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
               ℹ️ Baseado na última receita gerada nesta consulta
             </div>
           )}
@@ -7309,6 +7142,38 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
   const notas = consulta.problemasNotas || {};
   const pend = consulta.pendencias || [];
 
+  // Dados herdados da consulta anterior (se esta consulta foi criada copiando de outra)
+  // Usado para identificar na impressão o que foi mantido vs. editado nesta consulta.
+  const herdado = consulta._dadosHerdados || null;
+  const aHerdado = herdado?.antecedentes || {};
+  const plHerdado = herdado?.plano || {};
+
+  // Selo visual indicando origem do dado
+  function SeloOrigem({ atual, herdadoVal }) {
+    if (!herdado) return null; // primeira consulta, sem comparação
+    const mudou = (atual || "") !== (herdadoVal || "");
+    return (
+      <span style={{
+        fontSize: "9px", marginLeft: "6px", padding: "1px 6px", borderRadius: "8px",
+        background: mudou ? "#fff3cd" : "#e8f0fe",
+        color: mudou ? "#856404" : "#1a73e8",
+        fontWeight: 600, verticalAlign: "middle",
+      }}>
+        {mudou ? "ATUALIZADO" : "mantido"}
+      </span>
+    );
+  }
+
+  // Diff de medicações — identifica linhas novas e suspensas desde a consulta anterior
+  const medsAtuais = (consulta.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
+  const medsHerdadas = herdado ? (herdado.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean) : [];
+  const medsNovasSet = new Set(medsAtuais.filter(m => !medsHerdadas.some(h => h.toLowerCase().slice(0,15) === m.toLowerCase().slice(0,15))));
+  const medsSuspensas = herdado ? medsHerdadas.filter(h => !medsAtuais.some(m => m.toLowerCase().slice(0,15) === h.toLowerCase().slice(0,15))) : [];
+
+  // Comorbidades novas desde a última consulta
+  const probHerdado = herdado?.problemas || {};
+  const customHerdado = (herdado?.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
+
   const sectionTitle = { fontWeight: 700, fontSize: "13px", marginTop: "16px", marginBottom: "6px", borderBottom: "1px solid #ccc", paddingBottom: "3px" };
   const label = { fontWeight: 700 };
 
@@ -7321,6 +7186,11 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
   return (
     <PrintShell title="Consulta completa" onClose={onClose} fileName={nomeArquivo} patient={patient} consulta={consulta}>
       <div id="print-content">
+      {herdado && (
+        <div style={{ background: "#f0f7ff", border: "1px solid #cce0ff", borderRadius: "8px", padding: "8px 12px", fontSize: "12px", marginBottom: "12px" }}>
+          <i className="ti ti-info-circle" aria-hidden="true"></i> Esta consulta foi criada copiando dados da consulta de <strong>{fmtDate(herdado.data)}</strong>. Trechos marcados <span style={{ background: "#fff3cd", padding: "1px 5px", borderRadius: "6px", color: "#856404", fontWeight: 600 }}>ATUALIZADO</span> foram alterados nesta consulta; os demais foram mantidos sem edição.
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
         <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
         <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>{getNomeAmbulatorio(ambulatorio || sessionStorage.getItem("ambulatorio") || "cempre")}</div>
@@ -7338,8 +7208,14 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div style={sectionTitle}>LISTA DE PROBLEMAS</div>
       {ativos.length === 0 && customAtivos.length === 0 ? <div>Nenhuma comorbidade ativa registrada.</div> : (
         <ul style={{ margin: 0, paddingLeft: "18px" }}>
-          {ativos.map(p => <li key={p}>{p}{notas[p] ? ` - ${notas[p]}` : ""}</li>)}
-          {customAtivos.map(c => <li key={c.id}>{c.nome}{c.nota ? ` - ${c.nota}` : ""}</li>)}
+          {ativos.map(p => {
+            const ehNova = herdado && !probHerdado[p];
+            return <li key={p}>{p}{notas[p] ? ` - ${notas[p]}` : ""}{ehNova && <span style={{ fontSize: "9px", marginLeft: "6px", padding: "1px 6px", borderRadius: "8px", background: "#e6f4ea", color: "#1e7e34", fontWeight: 600 }}>NOVO</span>}</li>;
+          })}
+          {customAtivos.map(c => {
+            const ehNova = herdado && !customHerdado.includes(c.nome);
+            return <li key={c.id}>{c.nome}{c.nota ? ` - ${c.nota}` : ""}{ehNova && <span style={{ fontSize: "9px", marginLeft: "6px", padding: "1px 6px", borderRadius: "8px", background: "#e6f4ea", color: "#1e7e34", fontWeight: 600 }}>NOVO</span>}</li>;
+          })}
         </ul>
       )}
 
@@ -7352,13 +7228,30 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.internamentos || "—"}</div>
       <div>Alergias: {a.alergias || "—"}</div>
       <div>Histórico familiar:</div>
-      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.historicoFamiliar || "—"}</div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.historicoFamiliar || "—"}<SeloOrigem atual={a.historicoFamiliar} herdadoVal={aHerdado.historicoFamiliar} /></div>
 
       <div style={sectionTitle}>MEDICAÇÕES EM USO</div>
-      <div style={{ whiteSpace: "pre-wrap" }}>{consulta.medicacoesTexto || "—"}</div>
+      {herdado && (medsNovasSet.size > 0 || medsSuspensas.length > 0) ? (
+        <div>
+          {medsAtuais.map((m, idx) => (
+            <div key={idx} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>{m}</span>
+              {medsNovasSet.has(m) && <span style={{ fontSize: "9px", padding: "1px 6px", borderRadius: "8px", background: "#e6f4ea", color: "#1e7e34", fontWeight: 600 }}>NOVA</span>}
+            </div>
+          ))}
+          {medsSuspensas.length > 0 && (
+            <div style={{ marginTop: "6px", fontSize: "12px" }}>
+              <span style={{ fontWeight: 700, color: "#856404" }}>Suspensas desde a última consulta:</span>
+              {medsSuspensas.map((m, idx) => <div key={idx} style={{ textDecoration: "line-through", color: "#999" }}>{m}</div>)}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ whiteSpace: "pre-wrap" }}>{consulta.medicacoesTexto || "—"}</div>
+      )}
       {consulta.medicacoesPrevias && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Uso prévio:</div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.medicacoesPrevias}</div></>)}
 
-      <div style={sectionTitle}>QUEIXAS</div>
+      <div style={sectionTitle}>QUEIXAS<SeloOrigem atual={consulta.queixas} herdadoVal={herdado?.queixas} /></div>
       <div style={{ whiteSpace: "pre-wrap" }}>{consulta.queixas || "—"}</div>
 
       <div style={sectionTitle}>AVALIAÇÃO GERIÁTRICA AMPLA</div>
@@ -7585,18 +7478,18 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       {ef.pele && <div>Pele: {ef.pele}</div>}
       {ef.outros && <div>Outros: {ef.outros}</div>}
 
-      <div style={sectionTitle}>EXAMES</div>
+      <div style={sectionTitle}>EXAMES<SeloOrigem atual={consulta.labsTexto} herdadoVal={herdado?.labsTexto} /></div>
       <div style={{ whiteSpace: "pre-wrap" }}>{consulta.labsTexto || "—"}</div>
-      {consulta.imagemTexto && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Imagem/outros:</div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.imagemTexto}</div></>)}
+      {consulta.imagemTexto && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Imagem/outros:<SeloOrigem atual={consulta.imagemTexto} herdadoVal={herdado?.imagemTexto} /></div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.imagemTexto}</div></>)}
 
       <div style={sectionTitle}>PLANO TERAPÊUTICO</div>
-      <div><strong>1. Ajuste medicamentoso:</strong></div>
+      <div><strong>1. Ajuste medicamentoso:</strong><SeloOrigem atual={pl.ajuste} herdadoVal={plHerdado.ajuste} /></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.ajuste || "—"}</div>
-      <div><strong>2. Solicito:</strong></div>
+      <div><strong>2. Solicito:</strong><SeloOrigem atual={pl.solicito} herdadoVal={plHerdado.solicito} /></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.solicito || "—"}</div>
-      <div><strong>3. Orientações:</strong></div>
+      <div><strong>3. Orientações:</strong><SeloOrigem atual={pl.orientacoes} herdadoVal={plHerdado.orientacoes} /></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.orientacoes || "—"}</div>
-      <div><strong>4. Encaminho para:</strong></div>
+      <div><strong>4. Encaminho para:</strong><SeloOrigem atual={pl.encaminhamentos} herdadoVal={plHerdado.encaminhamentos} /></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.encaminhamentos || "—"}</div>
       <div>5. Retorno agendado em: {pl.retorno ? fmtDate(pl.retorno) : "—"}</div>
 
