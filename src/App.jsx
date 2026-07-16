@@ -1237,7 +1237,8 @@ function FavoritosMedicacoes({ onInserir }) {
     setNovoNome(""); setNovoTexto(""); setShowAdd(false);
   }
 
-  function remover(id) {
+  function remover(id, nome) {
+    if (!confirm(`Excluir a combinação "${nome}"?`)) return;
     const atualizados = favoritos.filter(f => f.id !== id);
     setFavoritos(atualizados);
     salvarFavoritos(atualizados);
@@ -1285,7 +1286,7 @@ function FavoritosMedicacoes({ onInserir }) {
             >
               {f.nome}
             </button>
-            <button onClick={() => remover(f.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", display: "flex" }}>
+            <button onClick={() => remover(f.id, f.nome)} title="Excluir combinação" style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", display: "flex" }}>
               <i className="ti ti-x" style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }} aria-hidden="true"></i>
             </button>
           </div>
@@ -6677,9 +6678,9 @@ function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
           return (
             <div key={idx} style={{ display: "grid", gridTemplateColumns: "2fr 60px 60px 60px", gap: "8px", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #eee" }}>
               <div style={{ fontSize: "16px", fontWeight: 600 }}>{nome}</div>
-              <div style={{ textAlign: "center", fontSize: "28px" }}>{horarios.manha ? "✅" : ""}</div>
-              <div style={{ textAlign: "center", fontSize: "28px" }}>{horarios.tarde ? "✅" : ""}</div>
-              <div style={{ textAlign: "center", fontSize: "28px" }}>{horarios.noite ? "✅" : ""}</div>
+              <div style={{ textAlign: "center", fontSize: "28px" }}>{horarios.manha ? "💊" : ""}</div>
+              <div style={{ textAlign: "center", fontSize: "28px" }}>{horarios.tarde ? "💊" : ""}</div>
+              <div style={{ textAlign: "center", fontSize: "28px" }}>{horarios.noite ? "💊" : ""}</div>
             </div>
           );
         })}
@@ -6690,7 +6691,7 @@ function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
           <div>☀️ = Tomar de manhã</div>
           <div>🌤️ = Tomar à tarde / no almoço</div>
           <div>🌙 = Tomar à noite / antes de dormir</div>
-          <div style={{ marginTop: "6px" }}>✅ = Marca em quais horários tomar cada remédio</div>
+          <div style={{ marginTop: "6px" }}>💊 = Marca em quais horários tomar cada remédio</div>
         </div>
 
         <div style={{ marginTop: "20px", padding: "12px", background: "#fff3cd", borderRadius: "8px", fontSize: "13px", border: "1px solid #ffc107" }}>
