@@ -2254,6 +2254,8 @@ export default function App() {
                 const i = activePatient.ident;
                 const idade = calcIdade(i.dn);
                 const nomeArq = "RECEITA - " + (i.nome || "paciente").replace(/[^a-zA-ZÀ-ÿ0-9 ]/g,"").trim().replace(/ +/g,"_") + "_" + new Date().toLocaleDateString("pt-BR").replace(/\//g,"-") + ".docx";
+                // Salva a lista final da receita na consulta, para uso na Lista de Remédios Simplificada
+                updateActiveConsulta(p => ({ ...p, ultimaReceitaMeds: todasMeds }));
                 preencherReceitasDocx({
                   nome: i.nome || "", prontuario: i.prontuario || "",
                   maeNome: i.maeNome || "", idade: idade != null ? idade : "",
@@ -6609,7 +6611,10 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
 // LISTA DE MEDICAÇÕES SIMPLIFICADA — para baixa escolaridade
 // ============================================================
 function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
-  const meds = (consulta.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
+  // Prioriza a lista final da última receita gerada; senão usa o texto de medicações da consulta
+  const meds = Array.isArray(consulta.ultimaReceitaMeds) && consulta.ultimaReceitaMeds.length > 0
+    ? consulta.ultimaReceitaMeds.map(l => l.trim()).filter(Boolean)
+    : (consulta.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
   const i = patient.ident;
 
   // Detecta horário de cada medicação a partir do padrão comum "1-0-0", "0-0-1", "1-1-1" etc,
@@ -6652,6 +6657,11 @@ function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
           <div style={{ fontWeight: 700, fontSize: "20px" }}>💊 Meus Remédios</div>
           <div style={{ fontSize: "16px", marginTop: "6px" }}>{i.nome || "Paciente"}</div>
           <div style={{ fontSize: "13px", color: "#666" }}>{new Date().toLocaleDateString("pt-BR")}</div>
+          {Array.isArray(consulta.ultimaReceitaMeds) && consulta.ultimaReceitaMeds.length > 0 && (
+            <div className="no-print" style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+              ℹ️ Baseado na última receita gerada nesta consulta
+            </div>
+          )}
         </div>
 
         {/* Cabeçalho da tabela com ícones */}
