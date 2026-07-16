@@ -59,3 +59,29 @@ export async function purgePatient(id, ambulatorio) {
 export async function pingApi() {
   return callApiGet("ping");
 }
+
+export async function listarFavoritosMedicacoes() {
+  const data = await callApiGet("listarFavoritos");
+  if (!data.ok) throw new Error(data.error || "Erro ao listar favoritos");
+  return data.favoritos || [];
+}
+
+export async function salvarFavoritoMedicacao(favorito) {
+  try {
+    await fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "salvarFavorito", favorito }),
+    });
+  } catch (err) {
+    throw new Error("Não foi possível conectar à API (" + err.message + ").");
+  }
+  return favorito;
+}
+
+export async function removerFavoritoMedicacao(id) {
+  const data = await callApiGet("removerFavorito", { id });
+  if (!data.ok) throw new Error(data.error || "Erro ao remover favorito");
+  return true;
+}
