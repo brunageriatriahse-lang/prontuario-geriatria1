@@ -2529,9 +2529,181 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
   );
 }
 
+// ============================================================
+// MODO CONSULTA RÁPIDA — o que mudou desde a última consulta
+// ============================================================
+function ConsultaRapida({ patient, consulta, onFechar, onIrParaAba }) {
+  const todasConsultas = (patient.consultas || []).filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data));
+  const anterior = todasConsultas.find(c => c.id !== consulta.id);
+
+  if (!anterior) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 65, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
+        <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", padding: "24px", maxWidth: "480px", textAlign: "center" }}>
+          <i className="ti ti-info-circle" style={{ fontSize: "32px", color: "var(--color-text-info)" }} aria-hidden="true"></i>
+          <div style={{ marginTop: "10px", fontSize: "14px" }}>Esta é a primeira consulta deste paciente — não há consulta anterior para comparar.</div>
+          <button onClick={onFechar} style={{ marginTop: "16px", fontSize: "13px" }}>Fechar</button>
+        </div>
+      </div>
+    );
+  }
+
+  const mudancas = [];
+
+  // Comorbidades novas
+  const probAtual = consulta.problemas || {};
+  const probAnterior = anterior.problemas || {};
+  const novasComorbidades = PROBLEMAS.filter(p => probAtual[p] && !probAnterior[p]);
+  const customAtual = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
+  const customAnterior = (anterior.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
+  const novasCustom = customAtual.filter(c => !customAnterior.includes(c));
+  if (novasComorbidades.length > 0 || novasCustom.length > 0) {
+    mudancas.push({ tipo: "novo", categoria: "Novos diagnósticos", icone: "ti-plus", itens: [...novasComorbidades, ...novasCustom], aba: "problemas" });
+  }
+
+  // Medicações alteradas
+  const medsAtual = (consulta.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
+  const medsAnterior = (anterior.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
+  const medsNovas = medsAtual.filter(m => !medsAnterior.some(a => a.toLowerCase().slice(0,15) === m.toLowerCase().slice(0,15)));
+  const medsRemovidas = medsAnterior.filter(m => !medsAtual.some(a => a.toLowerCase().slice(0,15) === m.toLowerCase().slice(0,15)));
+  if (medsNovas.length > 0) mudancas.push({ tipo: "novo", categoria: "Medicações adicionadas", icone: "ti-pill", itens: medsNovas, aba: "medicacoes" });
+  if (medsRemovidas.length > 0) mudancas.push({ tipo: "removido", categoria: "Medicações suspensas", icone: "ti-pill-off", itens: medsRemovidas, aba: "medicacoes" });
+
+  // Peso
+  const pesoAtual = parseFloat((consulta.aga || {}).peso || (consulta.exameFisico || {}).peso);
+  const pesoAnterior = parseFloat((anterior.aga || {}).peso || (anterior.exameFisico || {}).peso);
+  if (!isNaN(pesoAtual) && !isNaN(pesoAnterior) && Math.abs(pesoAtual - pesoAnterior) >= 1) {
+    const diff = (pesoAtual - pesoAnterior).toFixed(1);
+    mudancas.push({ tipo: diff < 0 ? "alerta" : "info", categoria: "Peso", icone: "ti-scale", itens: [`${pesoAnterior} kg → ${pesoAtual} kg (${diff > 0 ? "+" : ""}${diff} kg)`], aba: "exame" });
+  }
+
+  // PA
+  const efAtual = consulta.exameFisico || {};
+  const efAnterior = anterior.exameFisico || {};
+  if (efAtual.paSentado && efAnterior.paSentado && efAtual.paSentado !== efAnterior.paSentado) {
+    mudancas.push({ tipo: "info", categoria: "Pressão arterial", icone: "ti-heartbeat", itens: [`${efAnterior.paSentado} → ${efAtual.paSentado} mmHg`], aba: "exame" });
+  }
+
+  // Fragilidade
+  const frailAtual = Object.values((consulta.aga || {}).frail || {}).filter(Boolean).length;
+  const frailAnterior = Object.values((anterior.aga || {}).frail || {}).filter(Boolean).length;
+  if (frailAtual !== frailAnterior) {
+    const classAtual = frailAtual === 0 ? "Robusto" : frailAtual <= 2 ? "Pré-frágil" : "Frágil";
+    const classAnterior = frailAnterior === 0 ? "Robusto" : frailAnterior <= 2 ? "Pré-frágil" : "Frágil";
+    mudancas.push({ tipo: frailAtual > frailAnterior ? "alerta" : "info", categoria: "Fragilidade", icone: "ti-heart-rate-monitor", itens: [`${classAnterior} (${frailAnterior}/5) → ${classAtual} (${frailAtual}/5)`], aba: "aga" });
+  }
+
+  // Cognição (MEEM/MoCA)
+  const aga = consulta.aga || {}, agaAnt = anterior.aga || {};
+  if (aga.meem && agaAnt.meem && parseInt(aga.meem) !== parseInt(agaAnt.meem)) {
+    const diff = parseInt(aga.meem) - parseInt(agaAnt.meem);
+    mudancas.push({ tipo: diff < -1 ? "alerta" : "info", categoria: "MEEM", icone: "ti-brain", itens: [`${agaAnt.meem} → ${aga.meem} (${diff > 0 ? "+" : ""}${diff})`], aba: "aga" });
+  }
+  if (aga.moca && agaAnt.moca && parseInt(aga.moca) !== parseInt(agaAnt.moca)) {
+    const diff = parseInt(aga.moca) - parseInt(agaAnt.moca);
+    mudancas.push({ tipo: diff < -1 ? "alerta" : "info", categoria: "MoCA", icone: "ti-brain", itens: [`${agaAnt.moca} → ${aga.moca} (${diff > 0 ? "+" : ""}${diff})`], aba: "aga" });
+  }
+
+  // Quedas novas
+  if (aga.quedas === "sim" && agaAnt.quedas !== "sim") {
+    mudancas.push({ tipo: "alerta", categoria: "⚠ Nova queda relatada", icone: "ti-alert-triangle", itens: [aga.quedasDescricao || "Sem detalhes registrados"], aba: "aga" });
+  }
+
+  // Retorno vencido ou próximo
+  const retorno = (anterior.plano || {}).retorno;
+  const retornoAtrasado = retorno && new Date(retorno) < new Date(consulta.data);
+
+  // Queixas da consulta anterior (para lembrar o que estava pendente)
+  const queixasAnteriores = anterior.queixas;
+  const pendenciasAnteriores = (anterior.pendencias || []).filter(p => !p.done);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 65, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
+      <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "640px", padding: "24px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+          <div style={{ fontWeight: 700, fontSize: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+            <i className="ti ti-bolt" style={{ color: "var(--color-text-warning)" }} aria-hidden="true"></i>
+            Consulta Rápida de Retorno
+          </div>
+          <button onClick={onFechar}><i className="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+        <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "16px" }}>
+          Comparando com a consulta de <strong>{fmtDate(anterior.data)}</strong>
+        </div>
+
+        {retornoAtrasado && (
+          <Alert type="warning">Retorno estava programado para {fmtDate(retorno)} — paciente atrasou o seguimento.</Alert>
+        )}
+
+        {pendenciasAnteriores.length > 0 && (
+          <div style={{ marginBottom: "14px", padding: "10px 12px", background: "var(--color-background-warning)", borderRadius: "8px" }}>
+            <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "4px" }}>📋 Pendências da consulta anterior</div>
+            {pendenciasAnteriores.map((p, i) => <div key={i} style={{ fontSize: "13px" }}>• {p.text}</div>)}
+          </div>
+        )}
+
+        {queixasAnteriores && (
+          <div style={{ marginBottom: "14px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px" }}>
+            <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "4px" }}>💬 Queixas na última consulta</div>
+            <div style={{ fontSize: "13px", whiteSpace: "pre-wrap" }}>{queixasAnteriores.slice(0, 300)}{queixasAnteriores.length > 300 ? "..." : ""}</div>
+          </div>
+        )}
+
+        <div style={{ fontWeight: 700, fontSize: "14px", marginBottom: "10px", marginTop: "18px" }}>
+          O que mudou desde então:
+        </div>
+
+        {mudancas.length === 0 && (
+          <div style={{ textAlign: "center", padding: "24px", color: "var(--color-text-secondary)" }}>
+            <i className="ti ti-check" style={{ fontSize: "28px", color: "var(--color-text-success)" }} aria-hidden="true"></i>
+            <div style={{ marginTop: "8px", fontSize: "13px" }}>Nenhuma mudança significativa detectada nos dados desta consulta em relação à anterior.</div>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gap: "8px" }}>
+          {mudancas.map((m, i) => {
+            const cor = m.tipo === "alerta" ? "danger" : m.tipo === "removido" ? "warning" : m.tipo === "novo" ? "info" : "success";
+            return (
+              <button key={i} onClick={() => { onIrParaAba(m.aba); onFechar(); }}
+                style={{ textAlign: "left", display: "flex", gap: "10px", alignItems: "flex-start", padding: "10px 12px", borderRadius: "8px", background: `var(--color-background-${cor})`, border: `0.5px solid var(--color-border-${cor})`, cursor: "pointer" }}>
+                <i className={`ti ${m.icone}`} style={{ fontSize: "18px", color: `var(--color-text-${cor})`, marginTop: "2px", flexShrink: 0 }} aria-hidden="true"></i>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: "13px", color: `var(--color-text-${cor})` }}>{m.categoria}</div>
+                  {m.itens.map((item, j) => (
+                    <div key={j} style={{ fontSize: "12px", marginTop: "2px" }}>{item}</div>
+                  ))}
+                </div>
+                <i className="ti ti-chevron-right" style={{ fontSize: "16px", color: "var(--color-text-tertiary)", flexShrink: 0 }} aria-hidden="true"></i>
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ marginTop: "20px", display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={onFechar} style={{ fontSize: "13px" }}>Fechar e continuar consulta</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint, onSave }) {
+  const [showConsultaRapida, setShowConsultaRapida] = useState(false);
   return (
     <div>
+      {showConsultaRapida && (
+        <ConsultaRapida
+          patient={patient}
+          consulta={consulta}
+          onFechar={() => setShowConsultaRapida(false)}
+          onIrParaAba={(aba) => setActiveTab(aba)}
+        />
+      )}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+        <button onClick={() => setShowConsultaRapida(true)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px", background: "var(--color-background-warning)", color: "var(--color-text-warning)", border: "0.5px solid var(--color-border-warning)" }}>
+          <i className="ti ti-bolt" aria-hidden="true"></i>Consulta Rápida de Retorno
+        </button>
+      </div>
       <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
@@ -5304,7 +5476,115 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
           onChange={e => updateConsulta(p => ({ ...p, imagemTexto: e.target.value }))}
           placeholder={"Registre exames de imagem e outros, datas e resultados livremente. Ex:\n10/05/2026 - USG abdome total: esteatose hepática leve"}
         />
+        <UploadFotosExame consulta={consulta} updateConsulta={updateConsulta} patient={patient} />
       </SectionCard>
+    </div>
+  );
+}
+
+// ============================================================
+// UPLOAD DE FOTOS DE EXAMES — anexa foto de laudo/ECG/RX à consulta
+// ============================================================
+function UploadFotosExame({ consulta, updateConsulta, patient }) {
+  const [enviando, setEnviando] = useState(false);
+  const [progresso, setProgresso] = useState("");
+  const fotos = Array.isArray(consulta.fotosExames) ? consulta.fotosExames : [];
+  const fileInputRef = useRef(null);
+
+  async function handleArquivos(files) {
+    if (!files || files.length === 0) return;
+    setEnviando(true);
+    const novasFotos = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setProgresso(`Enviando ${i + 1}/${files.length}: ${file.name}`);
+        const nomePaciente = patient?.ident?.nome || "SEM_NOME";
+        const dataConsulta = (consulta.data || new Date().toISOString().slice(0,10)).replace(/-/g, "");
+        const nomeArquivo = `EXAME_${dataConsulta}_${Date.now()}_${file.name}`;
+        const result = await salvarNoDrive(file, nomePaciente, nomeArquivo);
+        if (!result || !result.ok) {
+          throw new Error(result?.error || "Falha ao enviar para o Drive");
+        }
+        novasFotos.push({
+          id: uid(),
+          nome: file.name,
+          driveLink: result.link || null,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+      updateConsulta(p => ({ ...p, fotosExames: [...(p.fotosExames || []), ...novasFotos] }));
+    } catch (e) {
+      alert("Erro ao enviar foto: " + e.message + "\n\nVerifique se popups estão permitidos para autorizar o Google Drive.");
+    }
+    setEnviando(false);
+    setProgresso("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removerFoto(id) {
+    if (!confirm("Remover esta foto da consulta? (o arquivo permanece no Google Drive)")) return;
+    updateConsulta(p => ({ ...p, fotosExames: (p.fotosExames || []).filter(f => f.id !== id) }));
+  }
+
+  return (
+    <div style={{ marginTop: "14px", borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: "14px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+        <div style={{ fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+          <i className="ti ti-camera" aria-hidden="true"></i>Fotos de laudos, ECG, RX
+        </div>
+        <label style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px", cursor: enviando ? "wait" : "pointer", padding: "4px 10px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "6px" }}>
+          <i className={enviando ? "ti ti-loader-2" : "ti ti-upload"} aria-hidden="true"></i>
+          {enviando ? "Enviando..." : "Anexar foto"}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            capture="environment"
+            disabled={enviando}
+            onChange={e => handleArquivos(e.target.files)}
+            style={{ display: "none" }}
+          />
+        </label>
+      </div>
+
+      {enviando && progresso && (
+        <div style={{ fontSize: "12px", color: "var(--color-text-info)", marginBottom: "8px" }}>{progresso}</div>
+      )}
+
+      {fotos.length === 0 && !enviando && (
+        <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+          Nenhuma foto anexada. Use a câmera do celular ou selecione arquivos para fotografar laudos, ECGs ou exames de imagem — salvos automaticamente no Google Drive do paciente.
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "8px" }}>
+        {fotos.map(f => (
+          <div key={f.id} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "8px", position: "relative" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+              <i className="ti ti-file-photo" style={{ fontSize: "18px", color: "var(--color-text-info)" }} aria-hidden="true"></i>
+              <div style={{ fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }} title={f.nome}>{f.nome}</div>
+            </div>
+            <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginBottom: "6px" }}>
+              {new Date(f.uploadedAt).toLocaleDateString("pt-BR")}
+            </div>
+            <div style={{ display: "flex", gap: "6px" }}>
+              {f.driveLink && (
+                <a href={f.driveLink} target="_blank" rel="noreferrer" style={{ fontSize: "11px", color: "var(--color-text-info)" }}>
+                  <i className="ti ti-external-link" aria-hidden="true"></i> Abrir
+                </a>
+              )}
+              <button onClick={() => removerFoto(f.id)} style={{ fontSize: "11px", marginLeft: "auto", padding: "2px 6px" }}>
+                <i className="ti ti-trash" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+        <i className="ti ti-cloud" aria-hidden="true"></i> Fotos salvas na pasta do paciente no Google Drive
+      </div>
     </div>
   );
 }
