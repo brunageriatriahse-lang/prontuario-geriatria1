@@ -7352,6 +7352,22 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
     );
   }
 
+  // Selo de seção — compara múltiplos campos de uma vez e mostra um único selo agregado no título
+  function SeloSecao({ campos }) {
+    if (!herdado) return null;
+    const mudou = campos.some(([atual, herdadoVal]) => (atual || "") !== (herdadoVal || ""));
+    return (
+      <span style={{
+        fontSize: "9px", marginLeft: "8px", padding: "2px 8px", borderRadius: "8px",
+        background: mudou ? "#fff3cd" : "#e8f0fe",
+        color: mudou ? "#856404" : "#1a73e8",
+        fontWeight: 600, verticalAlign: "middle",
+      }}>
+        {mudou ? "ATUALIZADO" : "mantido"}
+      </span>
+    );
+  }
+
   // Diff de medicações — identifica linhas novas e suspensas desde a consulta anterior
   const medsAtuais = (consulta.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
   const medsHerdadas = herdado ? (herdado.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean) : [];
@@ -7393,7 +7409,10 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div>Profissão: {i.profissao || "—"} · Escolaridade: {i.escolaridade || "—"} · Estado civil: {i.estadoCivil || "—"}</div>
       <div>Acompanhante: {i.acompanhante || "—"} · Cuidador: {i.cuidador || "—"} · Mora com: {i.moraCom || "—"} · Pode contar com: {i.podeContarCom || "—"} · Telefone: {i.telefone || "—"}</div>
 
-      <div style={sectionTitle}>LISTA DE PROBLEMAS</div>
+      <div style={sectionTitle}>LISTA DE PROBLEMAS<SeloSecao campos={[
+        [JSON.stringify(consulta.problemas || {}), JSON.stringify(probHerdado)],
+        [JSON.stringify((consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome)), JSON.stringify(customHerdado)],
+      ]} /></div>
       {ativos.length === 0 && customAtivos.length === 0 ? <div>Nenhuma comorbidade ativa registrada.</div> : (
         <ul style={{ margin: 0, paddingLeft: "18px" }}>
           {ativos.map(p => {
@@ -7407,7 +7426,11 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
         </ul>
       )}
 
-      <div style={sectionTitle}>ANTECEDENTES</div>
+      <div style={sectionTitle}>ANTECEDENTES<SeloSecao campos={[
+        [a.tabagismo, aHerdado.tabagismo], [a.etilismo, aHerdado.etilismo],
+        [a.cirurgias, aHerdado.cirurgias], [a.internamentos, aHerdado.internamentos],
+        [a.alergias, aHerdado.alergias], [a.historicoFamiliar, aHerdado.historicoFamiliar],
+      ]} /></div>
       <div>Tabagismo: {a.tabagismo || "—"}{a.tabagismo && a.tabagismo !== "Nunca fumou" && (a.macosAno || a.macosDia) ? ` — ${a.macosDia || "?"}mç/dia, ${a.macosAno || "?"}mç-ano${a.tabagismoInicio ? `, início ${a.tabagismoInicio}` : ""}${a.tabagismoCessou ? `, cessou ${a.tabagismoCessou}` : ""}` : ""}</div>
       <div>Etilismo: {a.etilismo || "—"}{a.etilismo && a.etilismo !== "Nega" ? ` — ${a.etilismoTipo || ""}${a.etilismoFrequencia ? `, ${a.etilismoFrequencia}` : ""}${a.etilismoInicio ? `, início ${a.etilismoInicio}` : ""}${a.etilismoCessou ? `, cessou ${a.etilismoCessou}` : ""}` : ""}</div>
       <div>Cirurgias prévias:</div>
@@ -7416,9 +7439,11 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.internamentos || "—"}</div>
       <div>Alergias: {a.alergias || "—"}</div>
       <div>Histórico familiar:</div>
-      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.historicoFamiliar || "—"}<SeloOrigem atual={a.historicoFamiliar} herdadoVal={aHerdado.historicoFamiliar} /></div>
+      <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.historicoFamiliar || "—"}</div>
 
-      <div style={sectionTitle}>MEDICAÇÕES EM USO</div>
+      <div style={sectionTitle}>MEDICAÇÕES EM USO<SeloSecao campos={[
+        [consulta.medicacoesTexto, herdado?.medicacoesTexto], [consulta.medicacoesPrevias, herdado?.medicacoesPrevias],
+      ]} /></div>
       {herdado && (medsNovasSet.size > 0 || medsSuspensas.length > 0) ? (
         <div>
           {medsAtuais.map((m, idx) => (
@@ -7442,11 +7467,17 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div style={sectionTitle}>QUEIXAS<SeloOrigem atual={consulta.queixas} herdadoVal={herdado?.queixas} /></div>
       <div style={{ whiteSpace: "pre-wrap" }}>{consulta.queixas || "—"}</div>
 
-      <div style={sectionTitle}>AVALIAÇÃO GERIÁTRICA AMPLA</div>
+      <div style={sectionTitle}>AVALIAÇÃO GERIÁTRICA AMPLA<SeloSecao campos={[
+        [JSON.stringify(aga.aivd), JSON.stringify(agaHerdado.aivd)], [JSON.stringify(aga.abvd), JSON.stringify(agaHerdado.abvd)],
+        [aga.marcha, agaHerdado.marcha], [aga.quedas, agaHerdado.quedas], [aga.peso, agaHerdado.peso],
+        [aga.queixasCognitivasDescricao, agaHerdado.queixasCognitivasDescricao], [aga.meem, agaHerdado.meem], [aga.moca, agaHerdado.moca],
+        [aga.queixasHumorDescricao, agaHerdado.queixasHumorDescricao], [aga.gds15, agaHerdado.gds15],
+        [aga.sonoObservacoes, agaHerdado.sonoObservacoes], [aga.higieneSono, agaHerdado.higieneSono],
+      ]} /></div>
       <div>AIVD independentes: {Object.values(aga.aivd || {}).filter(Boolean).length}/9 ({Object.keys(aga.aivd || {}).filter(k => aga.aivd[k]).join(", ") || "—"})</div>
       <div>ABVD independentes: {Object.values(aga.abvd || {}).filter(Boolean).length}/6 ({Object.keys(aga.abvd || {}).filter(k => aga.abvd[k]).join(", ") || "—"})</div>
-      <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}<SeloOrigem atual={aga.marcha} herdadoVal={agaHerdado.marcha} /></div>
-      <div>Quedas: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Não"}<SeloOrigem atual={aga.quedas} herdadoVal={agaHerdado.quedas} /></div>
+      <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}</div>
+      <div>Quedas: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Não"}</div>
       {aga.fraturas === "sim" && <div>Fraturas: Sim{aga.fraturasDescricao ? ` — ${aga.fraturasDescricao}` : ""}</div>}
       {aga.tce === "sim" && <div>TCE: Sim{aga.tceDescricao ? ` — ${aga.tceDescricao}` : ""}</div>}
       <div>FRAIL: {Object.values(aga.frail || {}).filter(Boolean).length}/5 critérios — {Object.values(aga.frail || {}).filter(Boolean).length === 0 ? "Robusto" : Object.values(aga.frail || {}).filter(Boolean).length <= 2 ? "Pré-frágil" : "Frágil"}</div>
@@ -7588,16 +7619,20 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
           </div>
         );
       })()}
-      <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}{aga.sonoObservacoes ? ` — ${aga.sonoObservacoes}` : ""}<SeloOrigem atual={aga.sonoObservacoes || aga.higieneSono} herdadoVal={agaHerdado.sonoObservacoes || agaHerdado.higieneSono} /></div>
+      <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}{aga.sonoObservacoes ? ` — ${aga.sonoObservacoes}` : ""}</div>
       <div>Visão: {aga.visao || "—"}{aga.visaoLentes === "sim" ? " (usa lentes corretivas)" : ""} · Audição: {aga.audicao || "—"}{aga.audicaoAparelho === "sim" ? " (usa aparelho auditivo)" : ""}</div>
       <div>Incontinência urinária: {aga.incontinenciaUrinaria === "sim" ? `Sim${aga.incontinenciaUrinariaDes ? " — " + aga.incontinenciaUrinariaDes : ""}` : "Não"} · Incontinência fecal: {aga.incontinenciaFecal === "sim" ? `Sim${aga.incontinenciaFecalDes ? " — " + aga.incontinenciaFecalDes : ""}` : "Não"} · Constipação: {aga.constipacao === "sim" ? `Sim${aga.constipacaoDescricao ? " — " + aga.constipacaoDescricao : ""}` : "Não"}</div>
-      <div>Peso: {aga.peso || "—"} kg · Peso habitual: {aga.pesoHabitual || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}<SeloOrigem atual={aga.peso} herdadoVal={agaHerdado.peso} /></div>
+      <div>Peso: {aga.peso || "—"} kg · Peso habitual: {aga.pesoHabitual || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
       <div>Perda de peso: {aga.perdaPeso === "sim" ? `Sim — ${aga.perdaPesoKg || "?"} kg${aga.perdaPesoTempo ? ` em ${aga.perdaPesoTempo}` : ""}` : "Não"}</div>
       <div>Apetite: {aga.apetite || "—"} · Disfagia: {aga.disfagia || "—"}{aga.disfagiaDieta ? ` (${aga.disfagiaDieta})` : ""}</div>
       <div>Problemas dentários: {aga.problemasDentarios === "sim" ? `Sim${aga.problemasDentariosDes ? " — " + aga.problemasDentariosDes : ""}` : "Não"} · Prótese dentária: {aga.proteseDentaria === "sim" ? "Sim" : "Não"}</div>
       <div>Teste de força: {aga.testeForca || "—"} kgf · Circunferência da panturrilha: {aga.circPanturrilha || "—"} cm · Atividade física: {aga.atividadeFisica || "—"}</div>
 
-      <div style={sectionTitle}>PREVENÇÃO E VACINAS</div>
+      <div style={sectionTitle}>PREVENÇÃO E VACINAS<SeloSecao campos={[
+        [JSON.stringify(consulta.rastreioGeral || {}), JSON.stringify(herdado?.rastreioGeral || {})],
+        [JSON.stringify(consulta.rastreioEspecifico || {}), JSON.stringify(herdado?.rastreioEspecifico || {})],
+        [JSON.stringify(consulta.vacinas || {}), JSON.stringify(herdado?.vacinas || {})],
+      ]} /></div>
       {(() => {
         const rg = consulta.rastreioGeral || {};
         const re = consulta.rastreioEspecifico || {};
@@ -7654,30 +7689,40 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
         );
       })()}
 
-      <div style={sectionTitle}>EXAME FÍSICO</div>
+      <div style={sectionTitle}>EXAME FÍSICO<SeloSecao campos={[
+        [ef.geral, efHerdado.geral], [ef.acv, efHerdado.acv], [ef.ar, efHerdado.ar],
+        [ef.abd, efHerdado.abd], [ef.ext, efHerdado.ext], [ef.sn, efHerdado.sn],
+        [ef.pele, efHerdado.pele], [ef.outros, efHerdado.outros],
+      ]} /></div>
       <div>PA sentado: {ef.paSentado || "—"} · PA em pé (3 min): {ef.paEmPe || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}</div>
       {(ef.peso || ef.hgt) && <div>Peso: {ef.peso || "—"} kg · HGT: {ef.hgt || "—"} mg/dL</div>}
-      <div>Geral: {ef.geral || "—"}<SeloOrigem atual={ef.geral} herdadoVal={efHerdado.geral} /></div>
-      <div>ACV: {ef.acv || "—"}<SeloOrigem atual={ef.acv} herdadoVal={efHerdado.acv} /></div>
-      <div>AR: {ef.ar || "—"}<SeloOrigem atual={ef.ar} herdadoVal={efHerdado.ar} /></div>
-      <div>ABD: {ef.abd || "—"}<SeloOrigem atual={ef.abd} herdadoVal={efHerdado.abd} /></div>
-      <div>EXT: {ef.ext || "—"}<SeloOrigem atual={ef.ext} herdadoVal={efHerdado.ext} /></div>
-      <div>SN: {ef.sn || "—"}<SeloOrigem atual={ef.sn} herdadoVal={efHerdado.sn} /></div>
-      {ef.pele && <div>Pele: {ef.pele}<SeloOrigem atual={ef.pele} herdadoVal={efHerdado.pele} /></div>}
-      {ef.outros && <div>Outros: {ef.outros}<SeloOrigem atual={ef.outros} herdadoVal={efHerdado.outros} /></div>}
+      <div>Geral: {ef.geral || "—"}</div>
+      <div>ACV: {ef.acv || "—"}</div>
+      <div>AR: {ef.ar || "—"}</div>
+      <div>ABD: {ef.abd || "—"}</div>
+      <div>EXT: {ef.ext || "—"}</div>
+      <div>SN: {ef.sn || "—"}</div>
+      {ef.pele && <div>Pele: {ef.pele}</div>}
+      {ef.outros && <div>Outros: {ef.outros}</div>}
 
-      <div style={sectionTitle}>EXAMES<SeloOrigem atual={consulta.labsTexto} herdadoVal={herdado?.labsTexto} /></div>
+      <div style={sectionTitle}>EXAMES<SeloSecao campos={[
+        [consulta.labsTexto, herdado?.labsTexto], [consulta.imagemTexto, herdado?.imagemTexto],
+      ]} /></div>
       <div style={{ whiteSpace: "pre-wrap" }}>{consulta.labsTexto || "—"}</div>
-      {consulta.imagemTexto && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Imagem/outros:<SeloOrigem atual={consulta.imagemTexto} herdadoVal={herdado?.imagemTexto} /></div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.imagemTexto}</div></>)}
+      {consulta.imagemTexto && (<><div style={{ fontWeight: 700, marginTop: "6px" }}>Imagem/outros:</div><div style={{ whiteSpace: "pre-wrap" }}>{consulta.imagemTexto}</div></>)}
 
-      <div style={sectionTitle}>PLANO TERAPÊUTICO</div>
-      <div><strong>1. Ajuste medicamentoso:</strong><SeloOrigem atual={pl.ajuste} herdadoVal={plHerdado.ajuste} /></div>
+      <div style={sectionTitle}>PLANO TERAPÊUTICO<SeloSecao campos={[
+        [pl.ajuste, plHerdado.ajuste], [pl.solicito, plHerdado.solicito],
+        [pl.orientacoes, plHerdado.orientacoes], [pl.encaminhamentos, plHerdado.encaminhamentos],
+        [pl.retorno, plHerdado.retorno],
+      ]} /></div>
+      <div><strong>1. Ajuste medicamentoso:</strong></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.ajuste || "—"}</div>
-      <div><strong>2. Solicito:</strong><SeloOrigem atual={pl.solicito} herdadoVal={plHerdado.solicito} /></div>
+      <div><strong>2. Solicito:</strong></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.solicito || "—"}</div>
-      <div><strong>3. Orientações:</strong><SeloOrigem atual={pl.orientacoes} herdadoVal={plHerdado.orientacoes} /></div>
+      <div><strong>3. Orientações:</strong></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.orientacoes || "—"}</div>
-      <div><strong>4. Encaminho para:</strong><SeloOrigem atual={pl.encaminhamentos} herdadoVal={plHerdado.encaminhamentos} /></div>
+      <div><strong>4. Encaminho para:</strong></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.encaminhamentos || "—"}</div>
       <div>5. Retorno agendado em: {pl.retorno ? fmtDate(pl.retorno) : "—"}</div>
 
