@@ -1201,6 +1201,100 @@ function RadioGroup({ value, onChange, options, name }) {
   );
 }
 
+// ============================================================
+// BANCO DE MEDICAÇÕES FAVORITAS — combinações frequentes
+// ============================================================
+const FAVORITOS_STORAGE_KEY = "prontuario_geriatria_favoritos_meds";
+
+function carregarFavoritos() {
+  try {
+    const raw = localStorage.getItem(FAVORITOS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function salvarFavoritos(lista) {
+  try {
+    localStorage.setItem(FAVORITOS_STORAGE_KEY, JSON.stringify(lista));
+  } catch (e) {
+    console.error("Erro ao salvar favoritos:", e);
+  }
+}
+
+function FavoritosMedicacoes({ onInserir }) {
+  const [favoritos, setFavoritos] = useState(() => carregarFavoritos());
+  const [showAdd, setShowAdd] = useState(false);
+  const [novoNome, setNovoNome] = useState("");
+  const [novoTexto, setNovoTexto] = useState("");
+
+  function adicionar() {
+    if (!novoNome.trim() || !novoTexto.trim()) return;
+    const atualizados = [...favoritos, { id: uid(), nome: novoNome.trim(), texto: novoTexto.trim() }];
+    setFavoritos(atualizados);
+    salvarFavoritos(atualizados);
+    setNovoNome(""); setNovoTexto(""); setShowAdd(false);
+  }
+
+  function remover(id) {
+    const atualizados = favoritos.filter(f => f.id !== id);
+    setFavoritos(atualizados);
+    salvarFavoritos(atualizados);
+  }
+
+  return (
+    <div style={{ marginBottom: "16px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+        <div style={{ fontSize: "13px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+          <i className="ti ti-star" style={{ color: "var(--color-text-warning)" }} aria-hidden="true"></i>
+          Combinações favoritas
+        </div>
+        <button onClick={() => setShowAdd(!showAdd)} style={{ fontSize: "12px", padding: "3px 8px", display: "flex", alignItems: "center", gap: "4px" }}>
+          <i className="ti ti-plus" aria-hidden="true"></i>{showAdd ? "Cancelar" : "Salvar nova"}
+        </button>
+      </div>
+
+      {showAdd && (
+        <div style={{ marginBottom: "10px", padding: "10px", background: "var(--color-background-secondary)", borderRadius: "8px" }}>
+          <Field label="Nome da combinação (ex: Esquema HAS padrão)">
+            <input value={novoNome} onChange={e => setNovoNome(e.target.value)} placeholder="Ex: Esquema DM2 inicial" />
+          </Field>
+          <Field label="Medicações (uma por linha)">
+            <textarea rows={3} value={novoTexto} onChange={e => setNovoTexto(e.target.value)} placeholder={"Metformina 850mg - 1cp 2x/dia\nDapagliflozina 10mg - 1cp/dia"} />
+          </Field>
+          <button onClick={adicionar} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+            <i className="ti ti-device-floppy" aria-hidden="true"></i>Salvar combinação
+          </button>
+        </div>
+      )}
+
+      {favoritos.length === 0 && !showAdd && (
+        <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+          Nenhuma combinação salva ainda. Clique em "Salvar nova" para criar atalhos de prescrições frequentes.
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+        {favoritos.map(f => (
+          <div key={f.id} style={{ display: "flex", alignItems: "center", gap: "4px", background: "var(--color-background-info)", border: "0.5px solid var(--color-border-info)", borderRadius: "16px", padding: "3px 6px 3px 12px" }}>
+            <button
+              onClick={() => onInserir(f.texto)}
+              title={f.texto}
+              style={{ fontSize: "12px", color: "var(--color-text-info)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+            >
+              {f.nome}
+            </button>
+            <button onClick={() => remover(f.id)} style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", display: "flex" }}>
+              <i className="ti ti-x" style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }} aria-hidden="true"></i>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
   function handlePrint() {
     const titleAnterior = document.title;
@@ -2117,12 +2211,18 @@ export default function App() {
       {printDoc && <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} ambulatorio={ambulatorio} />}
 
       {showPrescricaoHeader && activePatient && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
-          <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "520px", padding: "24px" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", overflowY: "auto" }}>
+          <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "560px", padding: "24px", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
               <div style={{ fontWeight: 600, fontSize: "15px" }}>📋 Gerar receita (Word)</div>
               <button onClick={() => { setShowPrescricaoHeader(false); setMedicacoesAdicionaisHeader(""); }}><i className="ti ti-x" aria-hidden="true"></i></button>
             </div>
+
+            {/* BANCO DE MEDICAÇÕES FAVORITAS */}
+            <FavoritosMedicacoes
+              onInserir={(texto) => setMedicacoesAdicionaisHeader(prev => prev ? prev + "\n" + texto : texto)}
+            />
+
             {medicacoesSelecionadasHeader.length > 0 && (
               <div style={{ marginBottom: "14px" }}>
                 <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>Medicações em uso — selecione as que entram na receita:</div>
@@ -2143,7 +2243,7 @@ export default function App() {
               </div>
             )}
             <Field label="Medicações adicionais (opcional — uma por linha)">
-              <textarea rows={3} value={medicacoesAdicionaisHeader} onChange={e => setMedicacoesAdicionaisHeader(e.target.value)} placeholder="Ex: Dipirona 500mg - 1cp se dor ou febre..." />
+              <textarea rows={4} value={medicacoesAdicionaisHeader} onChange={e => setMedicacoesAdicionaisHeader(e.target.value)} placeholder="Ex: Dipirona 500mg - 1cp se dor ou febre..." />
             </Field>
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "12px" }}>
               <button onClick={() => { setShowPrescricaoHeader(false); setMedicacoesAdicionaisHeader(""); }} style={{ fontSize: "13px" }}>Cancelar</button>
@@ -2452,6 +2552,9 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
 
           <button onClick={() => onPrint({ type: "sugestoesIA" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-info)", color: "var(--color-text-info)", border: "0.5px solid var(--color-border-info)" }}>
             <i className="ti ti-sparkles" aria-hidden="true"></i>Sugestões de conduta (IA)
+          </button>
+          <button onClick={() => onPrint({ type: "listaMedicacoesSimplificada" })} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "var(--color-background-warning)", color: "var(--color-text-warning)", border: "0.5px solid var(--color-border-warning)" }}>
+            <i className="ti ti-sun" aria-hidden="true"></i>Lista de remédios simplificada
           </button>
 
           <button onClick={() => onPrint({ type: "consultaCompleta" })} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -6501,9 +6604,114 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
 }
 
 
+// ============================================================
+// LISTA DE MEDICAÇÕES SIMPLIFICADA — para baixa escolaridade
+// ============================================================
+function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
+  const meds = (consulta.medicacoesTexto || "").split("\n").map(l => l.trim()).filter(Boolean);
+  const i = patient.ident;
+
+  // Detecta horário de cada medicação a partir do padrão comum "1-0-0", "0-0-1", "1-1-1" etc,
+  // ou palavras-chave como "manhã", "noite", "almoço", "jantar"
+  function detectarHorarios(linha) {
+    const lower = linha.toLowerCase();
+    const horarios = { manha: false, tarde: false, noite: false };
+
+    // Padrão numérico X-X-X (manhã-tarde-noite)
+    const m = linha.match(/(\d+(?:[,.]?\d*)?)\s*[-x]\s*(\d+(?:[,.]?\d*)?)\s*[-x]\s*(\d+(?:[,.]?\d*)?)/);
+    if (m) {
+      horarios.manha = parseFloat(m[1].replace(",", ".")) > 0;
+      horarios.tarde = parseFloat(m[2].replace(",", ".")) > 0;
+      horarios.noite = parseFloat(m[3].replace(",", ".")) > 0;
+      return horarios;
+    }
+
+    // Palavras-chave
+    if (/manh[ãa]|café|acord/i.test(lower)) horarios.manha = true;
+    if (/almo[çc]o|tarde|meio.?dia/i.test(lower)) horarios.tarde = true;
+    if (/noite|jantar|dormir|deitar/i.test(lower)) horarios.noite = true;
+
+    // Se nada detectado, assume manhã como padrão
+    if (!horarios.manha && !horarios.tarde && !horarios.noite) horarios.manha = true;
+
+    return horarios;
+  }
+
+  // Extrai nome simplificado (remove dose e posologia técnica quando possível)
+  function nomeSimplificado(linha) {
+    // Pega a primeira parte antes do primeiro " - " ou padrão numérico
+    const semPosologia = linha.split(/\s+-\s+|\s+\d+\s*[-x]\s*\d+/)[0];
+    return semPosologia.trim() || linha;
+  }
+
+  return (
+    <PrintShell title="Lista de Remédios" onClose={onClose} fileName={`Lista_Remedios_${i.nome || "paciente"}`} patient={patient} consulta={consulta}>
+      <div id="print-content">
+        <div style={{ textAlign: "center", marginBottom: "20px" }}>
+          <div style={{ fontWeight: 700, fontSize: "20px" }}>💊 Meus Remédios</div>
+          <div style={{ fontSize: "16px", marginTop: "6px" }}>{i.nome || "Paciente"}</div>
+          <div style={{ fontSize: "13px", color: "#666" }}>{new Date().toLocaleDateString("pt-BR")}</div>
+        </div>
+
+        {/* Cabeçalho da tabela com ícones */}
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 60px 60px 60px", gap: "8px", marginBottom: "8px", padding: "8px 0", borderBottom: "2px solid #333" }}>
+          <div style={{ fontWeight: 700, fontSize: "15px" }}>Remédio</div>
+          <div style={{ textAlign: "center", fontSize: "24px" }}>☀️</div>
+          <div style={{ textAlign: "center", fontSize: "24px" }}>🌤️</div>
+          <div style={{ textAlign: "center", fontSize: "24px" }}>🌙</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 60px 60px 60px", gap: "8px", marginBottom: "16px", paddingBottom: "8px", borderBottom: "1px solid #ccc" }}>
+          <div></div>
+          <div style={{ textAlign: "center", fontSize: "11px", color: "#666" }}>Manhã</div>
+          <div style={{ textAlign: "center", fontSize: "11px", color: "#666" }}>Tarde</div>
+          <div style={{ textAlign: "center", fontSize: "11px", color: "#666" }}>Noite</div>
+        </div>
+
+        {/* Linhas de medicações */}
+        {meds.length === 0 && (
+          <div style={{ textAlign: "center", color: "#999", padding: "20px" }}>Nenhum remédio cadastrado nesta consulta.</div>
+        )}
+        {meds.map((linha, idx) => {
+          const horarios = detectarHorarios(linha);
+          const nome = nomeSimplificado(linha);
+          return (
+            <div key={idx} style={{ display: "grid", gridTemplateColumns: "2fr 60px 60px 60px", gap: "8px", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #eee" }}>
+              <div style={{ fontSize: "16px", fontWeight: 600 }}>{nome}</div>
+              <div style={{ textAlign: "center", fontSize: "28px" }}>{horarios.manha ? "✅" : ""}</div>
+              <div style={{ textAlign: "center", fontSize: "28px" }}>{horarios.tarde ? "✅" : ""}</div>
+              <div style={{ textAlign: "center", fontSize: "28px" }}>{horarios.noite ? "✅" : ""}</div>
+            </div>
+          );
+        })}
+
+        {/* Legenda */}
+        <div style={{ marginTop: "24px", padding: "12px", background: "#f0f7ff", borderRadius: "8px", fontSize: "13px" }}>
+          <div style={{ fontWeight: 700, marginBottom: "6px" }}>Como usar esta lista:</div>
+          <div>☀️ = Tomar de manhã</div>
+          <div>🌤️ = Tomar à tarde / no almoço</div>
+          <div>🌙 = Tomar à noite / antes de dormir</div>
+          <div style={{ marginTop: "6px" }}>✅ = Marca em quais horários tomar cada remédio</div>
+        </div>
+
+        <div style={{ marginTop: "20px", padding: "12px", background: "#fff3cd", borderRadius: "8px", fontSize: "13px", border: "1px solid #ffc107" }}>
+          <div style={{ fontWeight: 700 }}>⚠️ Importante</div>
+          <div>Tome os remédios todos os dias, mesmo se sentir bem.</div>
+          <div>Não pare de tomar sem falar com o médico.</div>
+          <div>Se esquecer um horário, não tome dose dobrada no próximo.</div>
+        </div>
+
+        <div style={{ marginTop: "20px", fontSize: "12px", color: "#888", textAlign: "center" }}>
+          Ambulatório de Geriatria — HSE-PE / CEMPRE
+        </div>
+      </div>
+    </PrintShell>
+  );
+}
+
 function PrintDocRenderer({ doc, patient, consulta, onClose, ambulatorio }) {
   if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} ambulatorio={ambulatorio} />;
   if (doc.type === "sugestoesIA") return <SugestoesCondutaIA patient={patient} consulta={consulta} onClose={onClose} />;
+  if (doc.type === "listaMedicacoesSimplificada") return <ListaMedicacoesSimplificada patient={patient} consulta={consulta} onClose={onClose} />;
   return null;
 }
 
