@@ -7324,7 +7324,13 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
 
   // Dados herdados da consulta anterior (se esta consulta foi criada copiando de outra)
   // Usado para identificar na impressão o que foi mantido vs. editado nesta consulta.
-  const herdado = consulta._dadosHerdados || null;
+  // Prioriza o snapshot salvo no momento da criação (mais preciso: reflete o estado antes de qualquer
+  // edição nesta sessão). Se não existir (consultas criadas antes desta funcionalidade), busca
+  // dinamicamente a consulta anterior real do paciente por data, para funcionar retroativamente.
+  const consultasAnterioresPorData = (patient.consultas || [])
+    .filter(c => !c.deletedAt && c.id !== consulta.id)
+    .sort((a, b) => new Date(b.data) - new Date(a.data));
+  const herdado = consulta._dadosHerdados || consultasAnterioresPorData[0] || null;
   const aHerdado = herdado?.antecedentes || {};
   const plHerdado = herdado?.plano || {};
   const agaHerdado = herdado?.aga || {};
@@ -7370,7 +7376,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div id="print-content">
       {herdado && (
         <div style={{ background: "#f0f7ff", border: "1px solid #cce0ff", borderRadius: "8px", padding: "8px 12px", fontSize: "12px", marginBottom: "12px" }}>
-          <i className="ti ti-info-circle" aria-hidden="true"></i> Esta consulta foi criada copiando dados da consulta de <strong>{fmtDate(herdado.data)}</strong>. Trechos marcados <span style={{ background: "#fff3cd", padding: "1px 5px", borderRadius: "6px", color: "#856404", fontWeight: 600 }}>ATUALIZADO</span> foram alterados nesta consulta; os demais foram mantidos sem edição.
+          <i className="ti ti-info-circle" aria-hidden="true"></i> Comparando com a consulta anterior de <strong>{fmtDate(herdado.data)}</strong>. Trechos marcados <span style={{ background: "#fff3cd", padding: "1px 5px", borderRadius: "6px", color: "#856404", fontWeight: 600 }}>ATUALIZADO</span> foram alterados desde então; os demais foram mantidos sem edição.
         </div>
       )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
