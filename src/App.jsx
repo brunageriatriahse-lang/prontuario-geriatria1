@@ -245,8 +245,8 @@ const PREVENCAO_ESPECIFICA = {
   "Osteoporose": ["Densitometria mineral óssea (a cada 1–2 anos)","RX de coluna (se dor ou suspeita de fratura)"],
   "Osteoartrose": ["RX das articulações acometidas","USG articular (se derrame articular)"],
   "Hipotireoidismo": ["TSH e T4 livre (a cada 6–12 meses ou após ajuste de dose)","ECG"],
-  "Transtorno depressivo": ["GDS-15 (toda consulta)"],
-  "TAG": ["GDS-15 (toda consulta)"],
+  "Transtorno depressivo": ["PHQ-9 (toda consulta)"],
+  "TAG": ["PHQ-9 (toda consulta)"],
   "Insônia": ["Polissonografia (se suspeita de SAOS ou SPI)"],
   "Síndrome demencial": ["MEEM e/ou MoCA (toda consulta)","RNM de crânio s/ contraste","Vitamina B12, ácido fólico, TSH, VDRL"],
   "Doença de Alzheimer": ["MEEM e/ou MoCA (toda consulta)","RNM de crânio s/ contraste","Vitamina B12, ácido fólico, TSH, VDRL"],
@@ -1146,7 +1146,7 @@ function emptyConsulta(base) {
       marcha: "", dispositivo: "",
       quedas: "nao", quedasNum: "", quedasDescricao: "", fraturas: "nao", fraturasDescricao: "", tce: "nao", tceDescricao: "",
       frail: {}, semQueixasCognitivas: false, queixasCognitivasDescricao: "", minicog: "", meem: "", moca: "",
-      semQueixasHumor: false, queixasHumorDescricao: "", gds15: "",
+      semQueixasHumor: false, queixasHumorDescricao: "", phq9: "",
       semQueixasSono: false, roncos: "", sonolenciaDiurna: "", higieneSono: "",
       visao: "preservada", visaoLentes: "nao", audicao: "preservada", audicaoAparelho: "nao",
       incontinenciaUrinaria: "nao", incontinenciaUrinariaDes: "", incontinenciaFecal: "nao", incontinenciaFecalDes: "", constipacao: "nao", constipacaoDescricao: "",
@@ -3483,7 +3483,7 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
     hipoteses.push({ diag: "Investigar neoplasia oculta", prob: "Moderada", cor: "danger", motivo: "Perda de peso não intencional em idoso — rastreio oncológico" });
     hipoteses.push({ diag: "Desnutrição / Sarcopenia", prob: "Alta", cor: "warning", motivo: "Avaliar MNA-SF, ingesta calórica e proteica" });
     hipoteses.push({ diag: "Hipertireoidismo", prob: "Moderada", cor: "warning", motivo: "Perda de peso + taquicardia/palpitações — verificar TSH" });
-    hipoteses.push({ diag: "Depressão", prob: "Moderada", cor: "warning", motivo: "Perda de peso + anedonia/tristeza — aplicar GDS-15" });
+    hipoteses.push({ diag: "Depressão", prob: "Moderada", cor: "warning", motivo: "Perda de peso + anedonia/tristeza — aplicar PHQ-9" });
   }
 
   // Respiratório
@@ -3546,7 +3546,7 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
 
   // Psiquiátrico
   if (tem("ansiedade", "preocupação excessiva", "nervoso", "agitado")) {
-    hipoteses.push({ diag: "Transtorno de ansiedade generalizada", prob: "Alta", cor: "warning", motivo: "Preocupação persistente e excessiva — GDS-15 pode identificar componente depressivo" });
+    hipoteses.push({ diag: "Transtorno de ansiedade generalizada", prob: "Alta", cor: "warning", motivo: "Preocupação persistente e excessiva — PHQ-9 pode identificar componente depressivo" });
     hipoteses.push({ diag: "Ansiedade secundária a medicação", prob: "Moderada", cor: "warning", motivo: "Verificar: corticoide, broncodilatador, levotiroxina em dose excessiva, cafeína" });
     hipoteses.push({ diag: "Ansiedade por dor crônica", prob: "Moderada", cor: "info", motivo: "Dor não controlada é causa frequente de ansiedade em idosos" });
   }
@@ -3669,8 +3669,8 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
     ? (sexoPaciente === "M" ? forcaNum < 27 : forcaNum < 16) : false;
   const alertaCirc = aga.circPanturrilha && !isNaN(circNum) ? circNum < 31 : false;
   const alertaSarcopenia = alertaForca || alertaCirc;
-  const gdsNum = parseInt(aga.gds15, 10);
-  const gdsPositive = !isNaN(gdsNum) && gdsNum >= 6;
+  const phq9Num = parseInt(aga.phq9, 10);
+  const phq9Positive = !isNaN(phq9Num) && phq9Num >= 10;
 
   const toggleAivd = (item) => set("aivd", { ...(aga.aivd || {}), [item]: !(aga.aivd || {})[item] });
   const toggleAbvd = (item) => set("abvd", { ...(aga.abvd || {}), [item]: !(aga.abvd || {})[item] });
@@ -3956,63 +3956,61 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
           <>
             <Field label="Descrição da queixa de humor"><textarea rows={2} value={aga.queixasHumorDescricao || ""} onChange={e => set("queixasHumorDescricao", e.target.value)} placeholder="ex: tristeza, anedonia, irritabilidade..." /></Field>
 
-            {/* GDS-15 estruturado */}
-            <SectionCard title="GDS-15 — Escala de Depressão Geriátrica" icon="ti-clipboard-list" defaultOpen={false}>
+            {/* PHQ-9 estruturado */}
+            <SectionCard title="PHQ-9 — Questionário de Saúde do Paciente" icon="ti-clipboard-list" defaultOpen={false}>
               {(() => {
-                const GDS_QUESTOES = [
-                  { key: "gdsQ1",  texto: "1. Está satisfeito(a) com sua vida?", depressivo: "nao" },
-                  { key: "gdsQ2",  texto: "2. Abandonou muitas de suas atividades e interesses?", depressivo: "sim" },
-                  { key: "gdsQ3",  texto: "3. Sente que sua vida está vazia?", depressivo: "sim" },
-                  { key: "gdsQ4",  texto: "4. Fica com frequência aborrecido(a)?", depressivo: "sim" },
-                  { key: "gdsQ5",  texto: "5. Está de bom humor na maior parte do tempo?", depressivo: "nao" },
-                  { key: "gdsQ6",  texto: "6. Tem medo de que algo ruim vá lhe acontecer?", depressivo: "sim" },
-                  { key: "gdsQ7",  texto: "7. Sente-se feliz na maior parte do tempo?", depressivo: "nao" },
-                  { key: "gdsQ8",  texto: "8. Sente-se frequentemente desamparado(a)?", depressivo: "sim" },
-                  { key: "gdsQ9",  texto: "9. Prefere ficar em casa a sair e fazer coisas novas?", depressivo: "sim" },
-                  { key: "gdsQ10", texto: "10. Acha que tem mais problemas de memória do que a maioria?", depressivo: "sim" },
-                  { key: "gdsQ11", texto: "11. Acha que é maravilhoso estar vivo(a)?", depressivo: "nao" },
-                  { key: "gdsQ12", texto: "12. Sente-se inútil?", depressivo: "sim" },
-                  { key: "gdsQ13", texto: "13. Sente-se cheio(a) de energia?", depressivo: "nao" },
-                  { key: "gdsQ14", texto: "14. Sente que sua situação é sem esperança?", depressivo: "sim" },
-                  { key: "gdsQ15", texto: "15. Acha que a maioria das pessoas está melhor do que você?", depressivo: "sim" },
+                const PHQ9_QUESTOES = [
+                  { key: "phq9Q1", texto: "1. Pouco interesse ou prazer em fazer as coisas" },
+                  { key: "phq9Q2", texto: "2. Sentir-se para baixo, deprimido(a) ou sem esperança" },
+                  { key: "phq9Q3", texto: "3. Dificuldade para pegar no sono, continuar dormindo ou dormir demais" },
+                  { key: "phq9Q4", texto: "4. Sentir-se cansado(a) ou com pouca energia" },
+                  { key: "phq9Q5", texto: "5. Falta de apetite ou comer demais" },
+                  { key: "phq9Q6", texto: "6. Sentir-se mal consigo mesmo(a) — ou achar que é um fracasso ou decepcionou-se ou à família" },
+                  { key: "phq9Q7", texto: "7. Dificuldade de concentração (ex: ler o jornal, ver televisão)" },
+                  { key: "phq9Q8", texto: "8. Lentidão para se movimentar/falar (a ponto de outros notarem), ou agitação/inquietação" },
+                  { key: "phq9Q9", texto: "9. Pensamentos de que seria melhor estar morto(a) ou de se machucar de alguma forma" },
                 ];
-                const pontos = GDS_QUESTOES.reduce((s, q) => {
-                  const resp = aga[q.key];
-                  if (!resp) return s;
-                  return s + (resp === q.depressivo ? 1 : 0);
-                }, 0);
-                const respondidas = GDS_QUESTOES.filter(q => aga[q.key]).length;
-                const positivo = pontos >= 6;
-                const nivel = pontos <= 5 ? "Normal" : pontos <= 10 ? "Depressão leve" : "Depressão grave";
-                const corNivel = pontos <= 5 ? "success" : pontos <= 10 ? "warning" : "danger";
+                const OPCOES = [
+                  { value: "0", label: "Nenhum dia" },
+                  { value: "1", label: "Vários dias" },
+                  { value: "2", label: "Mais da metade dos dias" },
+                  { value: "3", label: "Quase todos os dias" },
+                ];
+                const pontos = PHQ9_QUESTOES.reduce((s, q) => s + (parseInt(aga[q.key]) || 0), 0);
+                const respondidas = PHQ9_QUESTOES.filter(q => aga[q.key] !== undefined && aga[q.key] !== "").length;
+                const item9Positivo = parseInt(aga.phq9Q9) > 0;
+                const nivel = pontos <= 4 ? "Mínima/ausente" : pontos <= 9 ? "Leve" : pontos <= 14 ? "Moderada" : pontos <= 19 ? "Moderadamente grave" : "Grave";
+                const corNivel = pontos <= 4 ? "success" : pontos <= 9 ? "info" : pontos <= 14 ? "warning" : "danger";
                 return (
                   <div>
-                    {GDS_QUESTOES.map(q => (
-                      <div key={q.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", gap: "8px", padding: "6px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-                        <span style={{ fontSize: "13px", flex: 1 }}>{q.texto}</span>
-                        <div style={{ display: "flex", gap: "8px" }}>
-                          {["sim", "nao"].map(opt => {
-                            const sel = aga[q.key] === opt;
+                    <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "10px" }}>
+                      Nas últimas 2 semanas, com que frequência você foi incomodado(a) por algum dos problemas abaixo?
+                    </div>
+                    {PHQ9_QUESTOES.map(q => (
+                      <div key={q.key} style={{ marginBottom: "10px", padding: "8px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                        <div style={{ fontSize: "13px", marginBottom: "6px" }}>{q.texto}</div>
+                        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                          {OPCOES.map(opt => {
+                            const sel = aga[q.key] === opt.value;
                             return (
-                              <label key={opt} onClick={e => {
+                              <label key={opt.value} onClick={e => {
                                 e.preventDefault();
                                 if (sel) {
-                                  // Desmarcar: remove a chave do objeto aga
                                   updateConsulta(p => {
                                     const novaAga = { ...(p.aga || {}) };
                                     delete novaAga[q.key];
                                     return { ...p, aga: novaAga };
                                   });
                                 } else {
-                                  set(q.key, opt);
+                                  set(q.key, opt.value);
                                 }
                               }}
-                                style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", cursor: "pointer",
+                                style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", cursor: "pointer",
                                   padding: "3px 10px", borderRadius: "16px",
                                   background: sel ? "var(--color-background-info)" : "var(--color-background-secondary)",
                                   border: `1px solid ${sel ? "var(--color-border-info)" : "var(--color-border-tertiary)"}`,
                                   color: sel ? "var(--color-text-info)" : "var(--color-text-primary)", userSelect: "none" }}>
-                                {opt === "sim" ? "Sim" : "Não"}
+                                {opt.label} ({opt.value})
                               </label>
                             );
                           })}
@@ -4022,15 +4020,19 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
                     {respondidas > 0 && (
                       <div style={{ marginTop: "12px", padding: "10px 14px", background: `var(--color-background-${corNivel})`, borderRadius: "8px" }}>
                         <div style={{ fontWeight: 700, color: `var(--color-text-${corNivel})` }}>
-                          GDS-15: {pontos}/15 — {nivel}
-                          {respondidas < 15 && <span style={{ fontWeight: 400, fontSize: "12px" }}> ({respondidas}/15 respondidas)</span>}
+                          PHQ-9: {pontos}/27 — Depressão {nivel}
+                          {respondidas < 9 && <span style={{ fontWeight: 400, fontSize: "12px" }}> ({respondidas}/9 respondidas)</span>}
                         </div>
-                        {positivo && <div style={{ fontSize: "12px", marginTop: "4px" }}>Rastreio positivo (≥6 pontos) — considerar avaliação clínica detalhada e tratamento</div>}
+                        {item9Positivo && (
+                          <div style={{ fontSize: "12px", marginTop: "6px", fontWeight: 700, color: "var(--color-text-danger)" }}>
+                            ⚠ Item 9 positivo — pensamentos de morte ou autolesão relatados. Avaliar risco de suicídio imediatamente e considerar encaminhamento urgente à saúde mental.
+                          </div>
+                        )}
                       </div>
                     )}
-                    {pontos !== (parseInt(aga.gds15) || 0) && respondidas === 15 && (
-                      <button onClick={() => set("gds15", String(pontos))} style={{ marginTop: "8px", fontSize: "12px" }}>
-                        Salvar pontuação ({pontos}) no campo GDS-15
+                    {pontos !== (parseInt(aga.phq9) || 0) && respondidas === 9 && (
+                      <button onClick={() => set("phq9", String(pontos))} style={{ marginTop: "8px", fontSize: "12px" }}>
+                        Salvar pontuação ({pontos}) no campo PHQ-9
                       </button>
                     )}
                   </div>
@@ -4038,13 +4040,13 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
               })()}
             </SectionCard>
 
-{gdsPositive && <Alert type="warning">GDS-15 = {gdsNum}: rastreio positivo para sintomas depressivos. Considerar avaliação complementar.</Alert>}
+{phq9Positive && <Alert type="warning">PHQ-9 = {phq9Num}: rastreio positivo para sintomas depressivos (≥10 pontos). Considerar avaliação complementar.</Alert>}
           </>
         )}
       </SectionCard>
 
-      {/* NPI — apenas se demência na lista de problemas */}
-      {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"]) && (
+      {/* NPI — se demência na lista de problemas OU queixa cognitiva presente nesta consulta */}
+      {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"] || !aga.semQueixasCognitivas) && (
         <SectionCard title="NPI — Inventário Neuropsiquiátrico (simplificado)" icon="ti-brain" defaultOpen={false}>
           {(() => {
             const NPI_SINTOMAS = [
@@ -6035,7 +6037,7 @@ function Dashboard({ patients }) {
       // AGA — fragilidade
       "FRAIL score", "Perfil fragilidade",
       // AGA — cognição
-      "MEEM", "MoCA", "Relógio", "GDS-15",
+      "MEEM", "MoCA", "Relógio", "PHQ-9",
       // AGA — nutrição
       "IMC", "Classificação IMC", "Circunf. panturrilha", "Força preensão (kgf)",
       // AGA — quedas
@@ -6116,7 +6118,7 @@ function Dashboard({ patients }) {
         // Fragilidade
         `${frailScore}/5`, frailClass,
         // Cognição
-        aga.meem || "", aga.moca || "", aga.minicogRelogio === "1" ? "Normal" : aga.minicogRelogio === "0" ? "Anormal" : "", aga.gds15 || "",
+        aga.meem || "", aga.moca || "", aga.minicogRelogio === "1" ? "Normal" : aga.minicogRelogio === "0" ? "Anormal" : "", aga.phq9 || "",
         // Nutrição
         imc || "", imcLabel, aga.circPanturrilha || "", aga.testeForca || "",
         // Quedas
@@ -7471,7 +7473,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
         [JSON.stringify(aga.aivd), JSON.stringify(agaHerdado.aivd)], [JSON.stringify(aga.abvd), JSON.stringify(agaHerdado.abvd)],
         [aga.marcha, agaHerdado.marcha], [aga.quedas, agaHerdado.quedas], [aga.peso, agaHerdado.peso],
         [aga.queixasCognitivasDescricao, agaHerdado.queixasCognitivasDescricao], [aga.meem, agaHerdado.meem], [aga.moca, agaHerdado.moca],
-        [aga.queixasHumorDescricao, agaHerdado.queixasHumorDescricao], [aga.gds15, agaHerdado.gds15],
+        [aga.queixasHumorDescricao, agaHerdado.queixasHumorDescricao], [aga.phq9, agaHerdado.phq9],
         [aga.sonoObservacoes, agaHerdado.sonoObservacoes], [aga.higieneSono, agaHerdado.higieneSono],
       ]} /></div>
       <div>AIVD independentes: {Object.values(aga.aivd || {}).filter(Boolean).length}/9 ({Object.keys(aga.aivd || {}).filter(k => aga.aivd[k]).join(", ") || "—"})</div>
@@ -7556,45 +7558,41 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
         );
       })()}
 
-      {/* HUMOR — GDS-15 detalhado */}
+      {/* HUMOR — PHQ-9 detalhado */}
       <div>Humor: {aga.semQueixasHumor ? "Sem queixas de humor" : aga.queixasHumorDescricao || "Queixa de humor referida"}</div>
       {!aga.semQueixasHumor && (() => {
-        const GDS_QUESTOES = [
-          { key: "gdsQ1",  texto: "1. Satisfeito com a vida?", depressivo: "nao" },
-          { key: "gdsQ2",  texto: "2. Abandonou atividades?", depressivo: "sim" },
-          { key: "gdsQ3",  texto: "3. Vida vazia?", depressivo: "sim" },
-          { key: "gdsQ4",  texto: "4. Aborrecido frequentemente?", depressivo: "sim" },
-          { key: "gdsQ5",  texto: "5. Bom humor na maior parte?", depressivo: "nao" },
-          { key: "gdsQ6",  texto: "6. Medo de algo ruim?", depressivo: "sim" },
-          { key: "gdsQ7",  texto: "7. Feliz na maior parte?", depressivo: "nao" },
-          { key: "gdsQ8",  texto: "8. Desamparado?", depressivo: "sim" },
-          { key: "gdsQ9",  texto: "9. Prefere ficar em casa?", depressivo: "sim" },
-          { key: "gdsQ10", texto: "10. Mais problemas de memória?", depressivo: "sim" },
-          { key: "gdsQ11", texto: "11. Maravilhoso estar vivo?", depressivo: "nao" },
-          { key: "gdsQ12", texto: "12. Sente-se inútil?", depressivo: "sim" },
-          { key: "gdsQ13", texto: "13. Cheio de energia?", depressivo: "nao" },
-          { key: "gdsQ14", texto: "14. Situação sem esperança?", depressivo: "sim" },
-          { key: "gdsQ15", texto: "15. Outros estão melhor?", depressivo: "sim" },
+        const PHQ9_QUESTOES = [
+          { key: "phq9Q1", texto: "1. Pouco interesse ou prazer" },
+          { key: "phq9Q2", texto: "2. Para baixo/deprimido/sem esperança" },
+          { key: "phq9Q3", texto: "3. Problemas de sono" },
+          { key: "phq9Q4", texto: "4. Cansaço/pouca energia" },
+          { key: "phq9Q5", texto: "5. Apetite alterado" },
+          { key: "phq9Q6", texto: "6. Sentir-se mal consigo/fracasso" },
+          { key: "phq9Q7", texto: "7. Dificuldade de concentração" },
+          { key: "phq9Q8", texto: "8. Lentidão ou agitação" },
+          { key: "phq9Q9", texto: "9. Pensamentos de morte/autolesão" },
         ];
-        const respondidas = GDS_QUESTOES.filter(q => aga[q.key]);
-        if (respondidas.length === 0 && !aga.gds15) return null;
-        const pontos = GDS_QUESTOES.reduce((s, q) => s + (aga[q.key] === q.depressivo ? 1 : 0), 0);
-        const nivel = pontos <= 5 ? "Normal" : pontos <= 10 ? "Depressão leve" : "Depressão grave";
+        const respondidas = PHQ9_QUESTOES.filter(q => aga[q.key] !== undefined && aga[q.key] !== "");
+        if (respondidas.length === 0 && !aga.phq9) return null;
+        const pontos = PHQ9_QUESTOES.reduce((s, q) => s + (parseInt(aga[q.key]) || 0), 0);
+        const nivel = pontos <= 4 ? "Mínima/ausente" : pontos <= 9 ? "Leve" : pontos <= 14 ? "Moderada" : pontos <= 19 ? "Moderadamente grave" : "Grave";
+        const item9Positivo = parseInt(aga.phq9Q9) > 0;
         return (
           <div style={{ marginLeft: "16px", marginTop: "4px", fontSize: "12px" }}>
             {respondidas.length > 0 ? (
               <>
-                <strong>GDS-15: {pontos}/15 — {nivel}</strong>
+                <strong>PHQ-9: {pontos}/27 — Depressão {nivel}</strong>
+                {item9Positivo && <div style={{ color: "#c00", fontWeight: 700 }}>⚠ Item 9 positivo — pensamentos de morte/autolesão relatados</div>}
                 <div style={{ marginTop: "4px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px" }}>
-                  {GDS_QUESTOES.map(q => aga[q.key] ? (
+                  {PHQ9_QUESTOES.map(q => aga[q.key] !== undefined && aga[q.key] !== "" ? (
                     <div key={q.key} style={{ fontSize: "11px" }}>
-                      {q.texto} <strong>{aga[q.key] === q.depressivo ? `[${aga[q.key].toUpperCase()} ✓]` : `[${aga[q.key].toUpperCase()}]`}</strong>
+                      {q.texto} <strong>[{aga[q.key]}]</strong>
                     </div>
                   ) : null)}
                 </div>
               </>
             ) : (
-              <div><strong>GDS-15:</strong> {aga.gds15}/15</div>
+              <div><strong>PHQ-9:</strong> {aga.phq9}/27</div>
             )}
             {/* NPI */}
             {(() => {
