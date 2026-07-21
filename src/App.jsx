@@ -3941,6 +3941,63 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
                 })()}
               </SectionCard>
             )}
+
+        {/* NPI — se demência na lista de problemas OU queixa cognitiva presente nesta consulta */}
+        {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"] || !aga.semQueixasCognitivas) && (
+          <SectionCard title="NPI — Inventário Neuropsiquiátrico (simplificado)" icon="ti-brain" defaultOpen={false}>
+            {(() => {
+              const NPI_SINTOMAS = [
+                { key: "npiDelirios", label: "Delírios (crenças falsas fixas)" },
+                { key: "npiAlucinacoes", label: "Alucinações (visuais, auditivas)" },
+                { key: "npiAgitacao", label: "Agitação / Agressividade" },
+                { key: "npiDepressao", label: "Depressão / Disforia" },
+                { key: "npiAnsiedade", label: "Ansiedade" },
+                { key: "npiEuforia", label: "Euforia / Elação" },
+                { key: "npiApatia", label: "Apatia / Indiferença" },
+                { key: "npiDesinibicao", label: "Desinibição" },
+                { key: "npiIrritabilidade", label: "Irritabilidade / Labilidade emocional" },
+                { key: "npiMotor", label: "Comportamento motor aberrante (agitação motora)" },
+                { key: "npiSono", label: "Distúrbios do sono e comportamento noturno" },
+                { key: "npiApetite", label: "Distúrbios do apetite e alimentação" },
+              ];
+              const presentes = NPI_SINTOMAS.filter(s => aga[s.key] === "sim");
+              return (
+                <div>
+                  <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "10px" }}>
+                    Marque os sintomas neuropsiquiátricos presentes no último mês. Para cada sintoma presente, descreva a intensidade e o impacto no campo de observações.
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "6px", marginBottom: "12px" }}>
+                    {NPI_SINTOMAS.map(s => (
+                      <label key={s.key} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", padding: "6px 8px", borderRadius: "6px", background: aga[s.key] === "sim" ? "var(--color-background-warning)" : "var(--color-background-secondary)" }}>
+                        <input type="checkbox" checked={aga[s.key] === "sim"} onChange={e => set(s.key, e.target.checked ? "sim" : "nao")} />
+                        {s.label}
+                      </label>
+                    ))}
+                  </div>
+                  {presentes.length > 0 && (
+                    <Alert type="warning">
+                      {presentes.length} sintoma(s) neuropsiquiátrico(s) presente(s): {presentes.map(s => s.label).join(", ")}
+                    </Alert>
+                  )}
+                  <Field label="Observações / Intensidade dos sintomas">
+                    <textarea rows={3} value={aga.npiObservacoes || ""} onChange={e => set("npiObservacoes", e.target.value)} placeholder="Ex: agitação vespertina, alucinações visuais noturnas, recusa alimentar..." />
+                  </Field>
+                  <Field label="Impacto no cuidador">
+                    <select value={aga.npiImpactoCuidador || ""} onChange={e => set("npiImpactoCuidador", e.target.value)}>
+                      <option value="">Selecione...</option>
+                      <option value="0">Sem impacto</option>
+                      <option value="1">Mínimo</option>
+                      <option value="2">Leve</option>
+                      <option value="3">Moderado</option>
+                      <option value="4">Grave</option>
+                      <option value="5">Extremo</option>
+                    </select>
+                  </Field>
+                </div>
+              );
+            })()}
+          </SectionCard>
+        )}
           </>
         )}
       </SectionCard>
@@ -4045,62 +4102,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
         )}
       </SectionCard>
 
-      {/* NPI — se demência na lista de problemas OU queixa cognitiva presente nesta consulta */}
-      {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"] || !aga.semQueixasCognitivas) && (
-        <SectionCard title="NPI — Inventário Neuropsiquiátrico (simplificado)" icon="ti-brain" defaultOpen={false}>
-          {(() => {
-            const NPI_SINTOMAS = [
-              { key: "npiDelirios", label: "Delírios (crenças falsas fixas)" },
-              { key: "npiAlucinacoes", label: "Alucinações (visuais, auditivas)" },
-              { key: "npiAgitacao", label: "Agitação / Agressividade" },
-              { key: "npiDepressao", label: "Depressão / Disforia" },
-              { key: "npiAnsiedade", label: "Ansiedade" },
-              { key: "npiEuforia", label: "Euforia / Elação" },
-              { key: "npiApatia", label: "Apatia / Indiferença" },
-              { key: "npiDesinibicao", label: "Desinibição" },
-              { key: "npiIrritabilidade", label: "Irritabilidade / Labilidade emocional" },
-              { key: "npiMotor", label: "Comportamento motor aberrante (agitação motora)" },
-              { key: "npiSono", label: "Distúrbios do sono e comportamento noturno" },
-              { key: "npiApetite", label: "Distúrbios do apetite e alimentação" },
-            ];
-            const presentes = NPI_SINTOMAS.filter(s => aga[s.key] === "sim");
-            return (
-              <div>
-                <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "10px" }}>
-                  Marque os sintomas neuropsiquiátricos presentes no último mês. Para cada sintoma presente, descreva a intensidade e o impacto no campo de observações.
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "6px", marginBottom: "12px" }}>
-                  {NPI_SINTOMAS.map(s => (
-                    <label key={s.key} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", padding: "6px 8px", borderRadius: "6px", background: aga[s.key] === "sim" ? "var(--color-background-warning)" : "var(--color-background-secondary)" }}>
-                      <input type="checkbox" checked={aga[s.key] === "sim"} onChange={e => set(s.key, e.target.checked ? "sim" : "nao")} />
-                      {s.label}
-                    </label>
-                  ))}
-                </div>
-                {presentes.length > 0 && (
-                  <Alert type="warning">
-                    {presentes.length} sintoma(s) neuropsiquiátrico(s) presente(s): {presentes.map(s => s.label).join(", ")}
-                  </Alert>
-                )}
-                <Field label="Observações / Intensidade dos sintomas">
-                  <textarea rows={3} value={aga.npiObservacoes || ""} onChange={e => set("npiObservacoes", e.target.value)} placeholder="Ex: agitação vespertina, alucinações visuais noturnas, recusa alimentar..." />
-                </Field>
-                <Field label="Impacto no cuidador">
-                  <select value={aga.npiImpactoCuidador || ""} onChange={e => set("npiImpactoCuidador", e.target.value)}>
-                    <option value="">Selecione...</option>
-                    <option value="0">Sem impacto</option>
-                    <option value="1">Mínimo</option>
-                    <option value="2">Leve</option>
-                    <option value="3">Moderado</option>
-                    <option value="4">Grave</option>
-                    <option value="5">Extremo</option>
-                  </select>
-                </Field>
-              </div>
-            );
-          })()}
-        </SectionCard>
-      )}
+
 
       <SectionCard title="Sono" icon="ti-moon">
         <Field label="">
