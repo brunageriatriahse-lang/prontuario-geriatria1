@@ -2619,9 +2619,97 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
 }
 
 
-function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint, onSave }) {
+// ============================================================
+// MODO EMERGÊNCIA / INTERCORRÊNCIA — versão simplificada
+// ============================================================
+function ModoEmergencia({ patient, consulta, updateConsulta, onSair, onSave }) {
+  const i = patient.ident;
+  const idade = calcIdade(i.dn);
+  const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
+  const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
+  const meds = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim());
+  const alergias = (consulta.antecedentes || {}).alergias || "";
+  const ef = consulta.exameFisico || {};
+
+  const setEf = (k, v) => updateConsulta(p => ({ ...p, exameFisico: { ...p.exameFisico, [k]: v } }));
+
   return (
     <div>
+      <div style={{ background: "var(--color-background-danger)", border: "1px solid var(--color-border-danger)", borderRadius: "8px", padding: "10px 14px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontWeight: 700, color: "var(--color-text-danger)", display: "flex", alignItems: "center", gap: "8px" }}>
+          <i className="ti ti-emergency-bed" aria-hidden="true"></i>MODO EMERGÊNCIA/INTERCORRÊNCIA
+        </div>
+        <button onClick={onSair} style={{ fontSize: "12px" }}>Voltar ao prontuário completo</button>
+      </div>
+
+      {/* Resumo essencial do paciente — somente leitura */}
+      <div style={{ background: "var(--color-background-secondary)", borderRadius: "8px", padding: "14px", marginBottom: "16px" }}>
+        <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "6px" }}>{i.nome} — {idade != null ? `${idade} anos` : ""} — {i.sexo === "F" ? "Feminino" : "Masculino"}</div>
+        <div style={{ fontSize: "13px", marginBottom: "4px" }}>
+          <strong>Comorbidades:</strong> {[...ativos, ...customAtivos].join(", ") || "Nenhuma registrada"}
+        </div>
+        <div style={{ fontSize: "13px", marginBottom: "4px" }}>
+          <strong>Medicações em uso:</strong> {meds.length > 0 ? meds.join("; ") : "Nenhuma registrada"}
+        </div>
+        {alergias && !/^nega/i.test(alergias.trim()) && (
+          <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--color-text-danger)", marginTop: "6px" }}>
+            ⚠ ALERGIAS: {alergias}
+          </div>
+        )}
+      </div>
+
+      {/* Sinais vitais rápidos */}
+      <SectionCard title="Sinais vitais" icon="ti-heartbeat">
+        <Row cols="repeat(3, 1fr)">
+          <Field label="PA"><input value={ef.paSentado || ""} onChange={e => setEf("paSentado", e.target.value)} placeholder="120x80" /></Field>
+          <Field label="FC"><input value={ef.fc || ""} onChange={e => setEf("fc", e.target.value)} /></Field>
+          <Field label="FR"><input value={ef.fr || ""} onChange={e => setEf("fr", e.target.value)} /></Field>
+          <Field label="SatO2"><input value={ef.sato2 || ""} onChange={e => setEf("sato2", e.target.value)} /></Field>
+          <Field label="Temp"><input value={ef.temp || ""} onChange={e => setEf("temp", e.target.value)} /></Field>
+          <Field label="HGT"><input value={ef.hgt || ""} onChange={e => setEf("hgt", e.target.value)} /></Field>
+        </Row>
+      </SectionCard>
+
+      {/* Motivo da intercorrência */}
+      <SectionCard title="Motivo da intercorrência" icon="ti-message-2">
+        <textarea rows={4} value={consulta.queixas || ""} onChange={e => updateConsulta(p => ({ ...p, queixas: e.target.value }))} placeholder="Descreva o motivo da vinda fora do agendado..." />
+      </SectionCard>
+
+      {/* Exame físico rápido */}
+      <SectionCard title="Exame físico" icon="ti-stethoscope">
+        <Field label="Geral"><textarea rows={2} value={ef.geral || ""} onChange={e => setEf("geral", e.target.value)} /></Field>
+        <Field label="Achados relevantes"><textarea rows={3} value={ef.outros || ""} onChange={e => setEf("outros", e.target.value)} placeholder="Descreva achados focados no motivo da consulta..." /></Field>
+      </SectionCard>
+
+      {/* Conduta */}
+      <SectionCard title="Conduta" icon="ti-target-arrow">
+        <textarea rows={4} value={(consulta.plano || {}).ajuste || ""} onChange={e => updateConsulta(p => ({ ...p, plano: { ...p.plano, ajuste: e.target.value } }))} placeholder="Conduta tomada, orientações, encaminhamento se necessário..." />
+      </SectionCard>
+
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "16px" }}>
+        <button onClick={onSave} style={{ background: "var(--color-background-success)", color: "var(--color-text-success)", border: "0.5px solid var(--color-border-success)", display: "flex", alignItems: "center", gap: "6px" }}>
+          <i className="ti ti-device-floppy" aria-hidden="true"></i>Salvar
+        </button>
+        <button onClick={onSair} style={{ fontSize: "13px" }}>Voltar ao prontuário completo</button>
+      </div>
+    </div>
+  );
+}
+
+function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint, onSave }) {
+  const [modoEmergencia, setModoEmergencia] = useState(false);
+
+  if (modoEmergencia) {
+    return <ModoEmergencia patient={patient} consulta={consulta} updateConsulta={updateConsulta} onSair={() => setModoEmergencia(false)} onSave={onSave} />;
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+        <button onClick={() => setModoEmergencia(true)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px", background: "var(--color-background-danger)", color: "var(--color-text-danger)", border: "0.5px solid var(--color-border-danger)" }}>
+          <i className="ti ti-emergency-bed" aria-hidden="true"></i>Modo Emergência/Intercorrência
+        </button>
+      </div>
       <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
@@ -2859,6 +2947,30 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
         const charlsonTotal = pontosDoencas + pontosIdade;
         const mortalidade10a = charlsonTotal === 0 ? 3.3 : charlsonTotal === 1 ? 12 : charlsonTotal === 2 ? 26 : charlsonTotal >= 3 && charlsonTotal <= 4 ? 52 : 85;
 
+        // Expectativa de vida ajustada — combina Charlson + fragilidade + idade
+        // Baseado em tábuas de sobrevida ajustadas por comorbidade (Lee et al. / ePrognosis, adaptado)
+        const frailScoreEV = Object.values(consulta.aga?.frail || {}).filter(Boolean).length;
+        const expectativaAjustada = (() => {
+          if (!idade) return null;
+          // Expectativa de vida basal por idade e sexo (IBGE aproximado, Brasil)
+          const sexoPac = patient?.ident?.sexo || "";
+          let baseEV;
+          if (idade < 65) baseEV = sexoPac === "F" ? 22 : 18;
+          else if (idade < 70) baseEV = sexoPac === "F" ? 18 : 15;
+          else if (idade < 75) baseEV = sexoPac === "F" ? 14 : 12;
+          else if (idade < 80) baseEV = sexoPac === "F" ? 11 : 9;
+          else if (idade < 85) baseEV = sexoPac === "F" ? 8 : 7;
+          else if (idade < 90) baseEV = sexoPac === "F" ? 6 : 5;
+          else baseEV = sexoPac === "F" ? 4 : 3.5;
+
+          // Ajuste por Charlson (redução proporcional à mortalidade estimada)
+          const fatorCharlson = charlsonTotal === 0 ? 1.0 : charlsonTotal <= 2 ? 0.85 : charlsonTotal <= 4 ? 0.65 : 0.4;
+          // Ajuste por fragilidade
+          const fatorFrail = frailScoreEV === 0 ? 1.0 : frailScoreEV <= 2 ? 0.85 : 0.6;
+
+          return Math.max(1, Math.round(baseEV * fatorCharlson * fatorFrail * 10) / 10);
+        })();
+
         if (charlsonTotal === 0 && pontosDoencas === 0) return null;
         return (
           <div style={{ marginTop: "12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "12px" }}>
@@ -2871,9 +2983,29 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
             <div style={{ fontSize: "13px", marginBottom: "6px" }}>
               Mortalidade estimada em 10 anos: <strong>{mortalidade10a}%</strong>
             </div>
-            <div style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+            <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "10px" }}>
               Comorbidades contadas: {charlsonItens.filter(it => it.cond).map(it => `${it.nome} (${it.pts}pt)`).join(", ") || "nenhuma"}
             </div>
+            {expectativaAjustada !== null && (
+              <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", paddingTop: "10px" }}>
+                <div style={{ fontWeight: 700, fontSize: "13px", marginBottom: "4px" }}>
+                  🕐 Expectativa de vida ajustada: <strong>~{expectativaAjustada} anos</strong>
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "6px" }}>
+                  Estimativa combinando idade, sexo, Charlson e fragilidade — não substitui julgamento clínico individualizado.
+                </div>
+                {expectativaAjustada < 10 && (
+                  <Alert type="info">
+                    Expectativa de vida &lt; 10 anos: considerar <strong>não priorizar</strong> rastreios de câncer com benefício em longo prazo (próstata, mama, colorretal) se assintomático, conforme diretrizes de rastreio geriátrico (USPSTF/SBGG). Focar em qualidade de vida e sintomas atuais.
+                  </Alert>
+                )}
+                {expectativaAjustada >= 10 && (
+                  <div style={{ fontSize: "12px", color: "var(--color-text-success)" }}>
+                    Expectativa ≥ 10 anos: manter rastreios oncológicos de rotina conforme idade e sexo.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         );
       })()}
@@ -2995,12 +3127,63 @@ function AntecedentesTab({ consulta, updateConsulta }) {
   );
 }
 
+// Medicamentos disponíveis no SUS (RENAME) / Farmácia Popular — lista das classes mais comuns em geriatria
+const MEDS_SUS_FARMACIA_POPULAR = {
+  // Cardiovascular
+  "losartana": "Farmácia Popular (gratuito)", "captopril": "Farmácia Popular (gratuito)",
+  "enalapril": "Farmácia Popular (gratuito)", "propranolol": "Farmácia Popular (gratuito)",
+  "atenolol": "Farmácia Popular (gratuito)", "hidroclorotiazida": "Farmácia Popular (gratuito)",
+  "anlodipino": "Farmácia Popular (gratuito)", "amlodipino": "Farmácia Popular (gratuito)",
+  "sinvastatina": "Farmácia Popular (gratuito)", "aas": "Farmácia Popular (gratuito)",
+  "furosemida": "SUS/RENAME", "espironolactona": "SUS/RENAME",
+  "digoxina": "SUS/RENAME", "varfarina": "SUS/RENAME", "carvedilol": "SUS/RENAME",
+  "metoprolol": "SUS/RENAME",
+  // Diabetes
+  "metformina": "Farmácia Popular (gratuito)", "glibenclamida": "Farmácia Popular (gratuito)",
+  "insulina nph": "Farmácia Popular (gratuito)", "insulina regular": "Farmácia Popular (gratuito)",
+  "gliclazida": "SUS/RENAME",
+  // Respiratório
+  "salbutamol": "Farmácia Popular (gratuito)", "beclometasona": "SUS/RENAME",
+  // Psiquiátrico/Neurológico
+  "fluoxetina": "Farmácia Popular (gratuito)", "amitriptilina": "SUS/RENAME",
+  "haloperidol": "SUS/RENAME", "carbamazepina": "SUS/RENAME", "fenitoína": "SUS/RENAME",
+  "diazepam": "SUS/RENAME", "levodopa": "SUS/RENAME (alto custo)",
+  // Tireoide
+  "levotiroxina": "Farmácia Popular (gratuito)",
+  // Osteoporose
+  "alendronato": "SUS/RENAME", "carbonato de cálcio": "SUS/RENAME",
+  // Outros comuns
+  "paracetamol": "SUS/RENAME", "omeprazol": "SUS/RENAME", "ranitidina": "SUS/RENAME",
+  "prednisona": "SUS/RENAME", "dipirona": "SUS/RENAME",
+};
+
+function verificarDisponibilidadeSUS(texto) {
+  const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
+  const disponiveis = [];
+  const naoEncontrados = [];
+  linhas.forEach(linha => {
+    const lower = linha.toLowerCase();
+    let encontrado = false;
+    for (const [droga, disponibilidade] of Object.entries(MEDS_SUS_FARMACIA_POPULAR)) {
+      if (lower.includes(droga)) {
+        disponiveis.push({ medicacao: linha, droga, disponibilidade });
+        encontrado = true;
+        break;
+      }
+    }
+    if (!encontrado) naoEncontrados.push(linha);
+  });
+  return { disponiveis, naoEncontrados };
+}
+
 function MedicacoesTab({ consulta, updateConsulta }) {
   const texto = consulta.medicacoesTexto || "";
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
   const beersAlerts = linhas.filter(l => checkBeers(l));
   const interacoes = checkInteracoes(texto);
   const alertasEspeciais = checkAlertasEspeciais(texto);
+  const [showDisponibilidadeSUS, setShowDisponibilidadeSUS] = useState(false);
+  const disponibilidadeSUS = verificarDisponibilidadeSUS(texto);
 
   // Checagem cruzada: alergias medicamentosas registradas vs. medicações prescritas
   const alergiasTexto = (consulta.antecedentes || {}).alergias || "";
@@ -3265,6 +3448,35 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   return (
     <div>
       <SectionCard title="Medicações em uso" icon="ti-pill">
+        {linhas.length > 0 && (
+          <div style={{ marginBottom: "10px" }}>
+            <button onClick={() => setShowDisponibilidadeSUS(!showDisponibilidadeSUS)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-building-hospital" aria-hidden="true"></i>
+              {showDisponibilidadeSUS ? "Ocultar" : "Verificar"} disponibilidade SUS/Farmácia Popular
+            </button>
+            {showDisponibilidadeSUS && (
+              <div style={{ marginTop: "8px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px", fontSize: "12px" }}>
+                {disponibilidadeSUS.disponiveis.length > 0 && (
+                  <div style={{ marginBottom: "8px" }}>
+                    <div style={{ fontWeight: 700, marginBottom: "4px", color: "var(--color-text-success)" }}>✓ Acesso facilitado identificado:</div>
+                    {disponibilidadeSUS.disponiveis.map((d, i) => (
+                      <div key={i} style={{ marginBottom: "2px" }}>{d.medicacao} — <strong>{d.disponibilidade}</strong></div>
+                    ))}
+                  </div>
+                )}
+                {disponibilidadeSUS.naoEncontrados.length > 0 && (
+                  <div>
+                    <div style={{ fontWeight: 700, marginBottom: "4px", color: "var(--color-text-tertiary)" }}>ℹ Não identificado na lista padrão (verificar disponibilidade local):</div>
+                    {disponibilidadeSUS.naoEncontrados.map((m, i) => <div key={i}>{m}</div>)}
+                  </div>
+                )}
+                <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                  Lista baseada em RENAME/Farmácia Popular — pode variar conforme disponibilidade local. Confirme na farmácia da unidade.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {alertasAlergia.length > 0 && (
           <div style={{ marginBottom: "12px" }}>
             {alertasAlergia.map((a, i) => (
@@ -3574,15 +3786,122 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
   });
 }
 
+// Sugere exame específico mais custo-efetivo baseado em sintoma-chave + tempo de evolução
+function sugerirExamePorSintomaTempo(consulta) {
+  const queixas = (consulta.queixas || "").toLowerCase();
+  const sugestoes = [];
+
+  // Extrai tempo de evolução mencionado (dias/semanas/meses/anos)
+  function extrairTempo(termoBusca) {
+    const regex = new RegExp(termoBusca + "[^.]{0,60}?(\\d+)\\s*(dia|dias|semana|semanas|m[êe]s|meses|ano|anos)", "i");
+    const m = queixas.match(regex);
+    if (!m) return null;
+    const valor = parseInt(m[1]);
+    const unidade = m[2].toLowerCase();
+    let dias = valor;
+    if (unidade.startsWith("semana")) dias = valor * 7;
+    else if (unidade.startsWith("m")) dias = valor * 30;
+    else if (unidade.startsWith("ano")) dias = valor * 365;
+    return { valor, unidade, dias };
+  }
+
+  // Cefaleia
+  if (queixas.includes("cefaleia") || queixas.includes("dor de cabeça")) {
+    const tempo = extrairTempo("cefaleia|dor de cabeça");
+    if (tempo && tempo.dias <= 7) {
+      sugestoes.push({ sintoma: "Cefaleia aguda (< 7 dias)", exame: "TC de crânio sem contraste", motivo: "Cefaleia de início recente em idoso — excluir causa estrutural/hemorrágica antes de tratamento sintomático" });
+    } else if (tempo && tempo.dias > 30) {
+      sugestoes.push({ sintoma: `Cefaleia crônica (${tempo.valor} ${tempo.unidade})`, exame: "VHS/PCR + RNM de crânio se sinais de alarme", motivo: "Cefaleia crônica em idoso — rastrear arterite de células gigantes e causas estruturais" });
+    }
+  }
+
+  // Dispneia
+  if (queixas.includes("dispneia") || queixas.includes("falta de ar")) {
+    const tempo = extrairTempo("dispneia|falta de ar");
+    if (tempo && tempo.dias <= 3) {
+      sugestoes.push({ sintoma: "Dispneia aguda (≤ 3 dias)", exame: "ECG + RX tórax + BNP/troponina se disponível", motivo: "Dispneia aguda — excluir síndrome coronariana, IC descompensada ou TEP" });
+    } else if (tempo && tempo.dias > 30) {
+      sugestoes.push({ sintoma: `Dispneia crônica (${tempo.valor} ${tempo.unidade})`, exame: "Ecocardiograma + espirometria", motivo: "Dispneia crônica — diferenciar causa cardíaca vs. pulmonar" });
+    }
+  }
+
+  // Dor abdominal
+  if (queixas.includes("dor abdominal") || queixas.includes("dor na barriga")) {
+    const tempo = extrairTempo("dor abdominal|dor na barriga");
+    if (tempo && tempo.dias <= 2) {
+      sugestoes.push({ sintoma: "Dor abdominal aguda (≤ 2 dias)", exame: "USG de abdome + hemograma + PCR", motivo: "Dor abdominal aguda em idoso — maior risco de abdome cirúrgico, menor sensibilidade ao exame físico clássico" });
+    } else if (tempo && tempo.dias > 30) {
+      sugestoes.push({ sintoma: `Dor abdominal crônica (${tempo.valor} ${tempo.unidade})`, exame: "USG abdome + EDA/colonoscopia conforme localização", motivo: "Dor abdominal crônica — investigar causa estrutural, incluindo rastreio oncológico se indicado" });
+    }
+  }
+
+  // Tontura/vertigem
+  if (queixas.includes("tontura") || queixas.includes("vertigem")) {
+    const tempo = extrairTempo("tontura|vertigem");
+    if (tempo && tempo.dias <= 7) {
+      sugestoes.push({ sintoma: "Tontura aguda (≤ 7 dias)", exame: "PA ortostática + ECG + glicemia capilar", motivo: "Tontura aguda — descartar causa cardiovascular ou metabólica antes de rotular como labiríntica" });
+    } else if (tempo && tempo.dias > 30) {
+      sugestoes.push({ sintoma: `Tontura crônica (${tempo.valor} ${tempo.unidade})`, exame: "Avaliação otoneurológica + revisão de medicações", motivo: "Tontura crônica — frequentemente multifatorial e relacionada a polifarmácia em idosos" });
+    }
+  }
+
+  // Perda de peso
+  if (queixas.includes("perda de peso") || queixas.includes("emagrecimento")) {
+    const tempo = extrairTempo("perda de peso|emagrecimento");
+    sugestoes.push({
+      sintoma: tempo ? `Perda de peso (${tempo.valor} ${tempo.unidade})` : "Perda de peso não intencional",
+      exame: "Hemograma + PCR/VHS + função tireoidiana + rastreio oncológico direcionado por idade/sexo",
+      motivo: "Perda de peso não intencional em idoso — investigação inicial ampla antes de atribuir a causas benignas"
+    });
+  }
+
+  // Fadiga/cansaço
+  if ((queixas.includes("fadiga") || queixas.includes("cansaço")) && !queixas.includes("dispneia")) {
+    const tempo = extrairTempo("fadiga|cansaço");
+    if (tempo && tempo.dias > 30) {
+      sugestoes.push({ sintoma: `Fadiga crônica (${tempo.valor} ${tempo.unidade})`, exame: "Hemograma + TSH + B12/folato + glicemia + função renal/hepática", motivo: "Fadiga crônica — painel básico custo-efetivo para causas reversíveis mais comuns" });
+    }
+  }
+
+  // Febre
+  if (queixas.includes("febre")) {
+    const tempo = extrairTempo("febre");
+    if (tempo && tempo.dias <= 3) {
+      sugestoes.push({ sintoma: "Febre aguda (≤ 3 dias)", exame: "Hemograma + PCR + EAS/urocultura + RX tórax se sintomas respiratórios", motivo: "Febre aguda em idoso — rastreio direcionado (ITU e pneumonia são as causas mais comuns e podem ter apresentação atípica)" });
+    } else if (tempo && tempo.dias > 14) {
+      sugestoes.push({ sintoma: `Febre prolongada (${tempo.valor} ${tempo.unidade})`, exame: "Hemograma + PCR/VHS + hemoculturas + USG/TC conforme foco suspeito", motivo: "Febre de origem obscura em idoso — investigação ampliada, incluir endocardite e neoplasia no diagnóstico diferencial" });
+    }
+  }
+
+  return sugestoes;
+}
+
 function QueixasTab({ consulta, updateConsulta, patient }) {
   const hipoteses = gerarHipotesesDiagnosticas(consulta, patient);
+  const examesSugeridos = sugerirExamePorSintomaTempo(consulta);
   const [showHipoteses, setShowHipoteses] = useState(false);
 
   return (
     <div>
       <SectionCard title="Queixas" icon="ti-message">
         <textarea rows={8} value={consulta.queixas} onChange={e => updateConsulta(p => ({ ...p, queixas: e.target.value }))} placeholder="Descreva a queixa principal e a história da doença atual..." />
+        <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+          💡 Dica: mencionar o tempo de evolução (ex: "há 3 dias", "há 2 meses") ativa sugestões automáticas de exames mais direcionados.
+        </div>
       </SectionCard>
+
+      {examesSugeridos.length > 0 && (
+        <SectionCard title={`Exames sugeridos por sintoma (${examesSugeridos.length})`} icon="ti-flask" defaultOpen={true}>
+          <Alert type="info">Sugestões de exames mais custo-efetivos baseadas no sintoma-chave e tempo de evolução mencionados nas queixas.</Alert>
+          {examesSugeridos.map((s, i) => (
+            <div key={i} style={{ background: "var(--color-background-info)", border: "0.5px solid var(--color-border-info)", borderRadius: "8px", padding: "10px 14px", marginBottom: "8px" }}>
+              <div style={{ fontWeight: 700, color: "var(--color-text-info)", fontSize: "13px" }}>{s.sintoma}</div>
+              <div style={{ fontSize: "13px", marginTop: "4px" }}><strong>Sugestão:</strong> {s.exame}</div>
+              <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "2px" }}>{s.motivo}</div>
+            </div>
+          ))}
+        </SectionCard>
+      )}
 
       {hipoteses.length > 0 && (
         <SectionCard title={`Apoio diagnóstico (${hipoteses.length} hipóteses identificadas)`} icon="ti-bulb" defaultOpen={false}>
@@ -4379,6 +4698,55 @@ function mesesDesde(dateStr, referencia) {
   return meses >= 0 ? meses : null;
 }
 
+function addDays(dateStr, days) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return "";
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+// Sugere prazo de retorno baseado no perfil clínico do paciente
+function sugerirRetorno(consulta, patient) {
+  const prob = consulta.problemas || {};
+  const aga = consulta.aga || {};
+  const ef = consulta.exameFisico || {};
+  const labs = (consulta.labsTexto || "").toLowerCase();
+  const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+  const ehFragil = frailScore >= 3;
+
+  // DM2 descompensado — HbA1c alta ou glicemia alta
+  if (prob["DM2"]) {
+    const mHbA1c = labs.match(/(?:hba1c|glicada)[^\d]*(\d+[,.]\d+|\d+)/i);
+    const hba1c = mHbA1c ? parseFloat(mHbA1c[1].replace(",", ".")) : null;
+    if (hba1c && hba1c > 9) return { dias: 30, motivo: "DM2 descompensado (HbA1c > 9%)" };
+  }
+
+  // HAS descompensada — PA muito alta
+  const mPA = (ef.paSentado || "").match(/(\d+)/);
+  const PAS = mPA ? parseInt(mPA[1]) : null;
+  if (prob["HAS"] && PAS && PAS >= 160) return { dias: 15, motivo: "PA não controlada (≥160 mmHg)" };
+
+  // IC descompensada
+  if ((prob["Insuficiência cardíaca"] || prob["IC"]) && (ef.ext || "").toLowerCase().includes("edema")) {
+    return { dias: 15, motivo: "sinais de possível descompensação de IC" };
+  }
+
+  // Ajuste de medicação recente (plano com ajuste preenchido)
+  if ((consulta.plano || {}).ajuste && (consulta.plano.ajuste || "").trim().length > 10) {
+    return { dias: 30, motivo: "ajuste medicamentoso recente — reavaliar resposta" };
+  }
+
+  // Frágil ou complexo — seguimento mais próximo
+  if (ehFragil) return { dias: 60, motivo: "paciente frágil — seguimento mais próximo" };
+
+  const numComorbidades = PROBLEMAS.filter(p => prob[p]).length + (consulta.problemasCustom || []).filter(c => c.checked).length;
+  if (numComorbidades >= 5) return { dias: 60, motivo: "múltiplas comorbidades (complexidade elevada)" };
+
+  // Estável — retorno de rotina
+  return { dias: 90, motivo: "quadro estável — retorno de rotina" };
+}
+
 function addMonths(dateStr, months) {
   if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
@@ -4955,6 +5323,104 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
   );
 }
 
+// ============================================================
+// RACIOCÍNIO CLÍNICO ASSISTIDO — padrões multissistêmicos
+// ============================================================
+function detectarPadroesMultissistemicos(consulta, patient) {
+  const labs = (consulta.labsTexto || "").toLowerCase();
+  const prob = consulta.problemas || {};
+  const custom = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome.toLowerCase());
+  const aga = consulta.aga || {};
+  const queixas = (consulta.queixas || "").toLowerCase();
+
+  function tem(...termos) { return termos.some(t => labs.includes(t) || queixas.includes(t)); }
+  function temValorBaixo(regex, limite) {
+    const m = labs.match(regex);
+    if (!m) return false;
+    return parseFloat(m[1].replace(",", ".")) < limite;
+  }
+
+  const padroes = [];
+
+  // Insuficiência adrenal: hipotireoidismo + constipação + fraqueza + hiponatremia
+  const temHipotireoidismo = prob["Hipotireoidismo"];
+  const temConstipacao = aga.constipacao === "sim" || tem("constipação", "constipacao");
+  const temFraqueza = tem("fraqueza", "cansaço", "fadiga", "astenia");
+  const temHiponatremia = temValorBaixo(/(?:na|s[oó]dio)[^\d]*(\d+)/i, 135);
+  if (temHipotireoidismo && temConstipacao && temFraqueza && temHiponatremia) {
+    padroes.push({
+      titulo: "Possível Insuficiência Adrenal",
+      achados: ["Hipotireoidismo conhecido", "Constipação", "Fraqueza/fadiga", "Hiponatremia"],
+      sugestao: "Considerar dosagem de cortisol basal (8h) e ACTH — a combinação de hipotireoidismo + hiponatremia + fraqueza pode mascarar insuficiência adrenal concomitante (síndrome poliglandular autoimune tipo 2).",
+    });
+  }
+
+  // Hipercalcemia + confusão + constipação + poliúria: síndrome hipercalcêmica
+  const mCa = labs.match(/(?:ca|cálcio)[^\d]*(\d+[,.]\d+|\d+)/i);
+  const caVal = mCa ? parseFloat(mCa[1].replace(",",".")) : null;
+  const temConfusao = tem("confusão", "confusao", "desorientação", "desorientacao");
+  const temPoliuria = tem("poliúria", "poliuria", "urina muito", "sede excessiva");
+  if (caVal && caVal > 10.5 && (temConfusao || temPoliuria) && temConstipacao) {
+    padroes.push({
+      titulo: "Síndrome Hipercalcêmica",
+      achados: [`Cálcio elevado (${caVal})`, temConfusao ? "Confusão" : "", temPoliuria ? "Poliúria" : "", "Constipação"].filter(Boolean),
+      sugestao: "Investigar causa: PTH, eletroforese de proteínas (mieloma), rastreio de neoplasia oculta, vitamina D. 'Stones, bones, groans, psychiatric overtones'.",
+    });
+  }
+
+  // Anemia + macrocitose + declínio cognitivo: deficiência de B12
+  const mB12 = labs.match(/(?:b12|vitamina\s*b12)[^\d]*(\d+)/i);
+  const b12Val = mB12 ? parseInt(mB12[1]) : null;
+  const temDeclinioCognitivo = !aga.semQueixasCognitivas || tem("memória", "memoria", "esquecimento");
+  const mHb = labs.match(/(?:hb|hemoglobina)[^\d]*(\d+[,.]\d+|\d+)(?!\s*a1c)/i);
+  const hbVal = mHb ? parseFloat(mHb[1].replace(",",".")) : null;
+  if (b12Val && b12Val < 300 && hbVal && hbVal < 12 && temDeclinioCognitivo) {
+    padroes.push({
+      titulo: "Anemia Macrocítica + Declínio Cognitivo — Suspeita de Deficiência de B12",
+      achados: [`B12 baixa (${b12Val})`, `Anemia (Hb ${hbVal})`, "Queixa cognitiva"],
+      sugestao: "Causa reversível de declínio cognitivo. Solicitar VCM, homocisteína, ácido metilmalônico se disponível. Repor B12 e reavaliar cognição em 3 meses.",
+    });
+  }
+
+  // Hipotireoidismo + dislipidemia refratária + fraqueza muscular
+  const temDislipidemia = prob["Dislipidemia"];
+  const mCK = labs.match(/(?:cpk|ck)[^\d]*(\d+)/i);
+  const ckVal = mCK ? parseInt(mCK[1]) : null;
+  if (temHipotireoidismo && temDislipidemia && temFraqueza && ckVal && ckVal > 200) {
+    padroes.push({
+      titulo: "Miopatia Hipotireoidea",
+      achados: ["Hipotireoidismo", "Dislipidemia", "Fraqueza muscular", `CK elevada (${ckVal})`],
+      sugestao: "Ajustar dose de levotiroxina antes de atribuir miopatia à estatina. TSH descompensado pode causar CK elevada e mialgia — repetir TSH e CK após otimização da reposição hormonal.",
+    });
+  }
+
+  // Depressão refratária + fadiga + constipação + intolerância ao frio: hipotireoidismo não diagnosticado
+  const mTSH = labs.match(/(?:tsh)[^\d]*(\d+[,.]\d+|\d+)/i);
+  const tshVal = mTSH ? parseFloat(mTSH[1].replace(",",".")) : null;
+  const temDepressao = prob["Transtorno depressivo"] || tem("tristeza", "depressão", "depressao");
+  const temIntoleranciaFrio = tem("frio", "intolerância ao frio");
+  if (!temHipotireoidismo && temDepressao && temFraqueza && (temConstipacao || temIntoleranciaFrio) && (!tshVal || tshVal > 4.5)) {
+    padroes.push({
+      titulo: "Possível Hipotireoidismo Não Diagnosticado",
+      achados: ["Sintomas depressivos", "Fadiga", temConstipacao ? "Constipação" : "Intolerância ao frio"],
+      sugestao: "Padrão sugestivo de hipotireoidismo mascarado como depressão — se TSH não estiver nos labs recentes, solicitar TSH e T4 livre antes de escalonar tratamento antidepressivo.",
+    });
+  }
+
+  // Quedas + hipotensão ortostática + polifarmácia + tontura: síndrome de fragilidade cardiovascular
+  const numMeds = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim()).length;
+  const temTontura = tem("tontura", "tonto", "vertigem");
+  if (aga.quedas === "sim" && temTontura && numMeds >= 5) {
+    padroes.push({
+      titulo: "Síndrome de Fragilidade Cardiovascular (queda + polifarmácia)",
+      achados: ["Quedas relatadas", "Tontura", `Polifarmácia (${numMeds} medicamentos)`],
+      sugestao: "Investigar hipotensão ortostática (medir PA deitado/em pé), revisar anti-hipertensivos e psicotrópicos, considerar Holter se suspeita de arritmia.",
+    });
+  }
+
+  return padroes;
+}
+
 function ExamesTab({ consulta, updateConsulta, patient }) {
   // Perfil para meta de HbA1c
   const temDM2 = consulta.problemas?.["DM2"];
@@ -5396,6 +5862,25 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
 
   return (
     <div>
+      {(() => {
+        const padroes = detectarPadroesMultissistemicos(consulta, patient);
+        if (padroes.length === 0) return null;
+        return (
+          <SectionCard title="🧩 Raciocínio clínico assistido — padrões detectados" icon="ti-puzzle" defaultOpen={true}>
+            <Alert type="info">Padrões multissistêmicos identificados a partir de queixas, comorbidades e labs registrados. Apoio ao raciocínio — não substitui avaliação clínica.</Alert>
+            {padroes.map((p, i) => (
+              <div key={i} style={{ background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "8px", padding: "12px 14px", marginBottom: "10px" }}>
+                <div style={{ fontWeight: 700, color: "var(--color-text-warning)", marginBottom: "6px" }}>⚠ {p.titulo}</div>
+                <div style={{ fontSize: "12px", marginBottom: "6px" }}>
+                  <strong>Achados combinados:</strong> {p.achados.join(" + ")}
+                </div>
+                <div style={{ fontSize: "13px" }}>{p.sugestao}</div>
+              </div>
+            ))}
+          </SectionCard>
+        );
+      })()}
+
       <SectionCard title="Calculadoras de risco" icon="ti-calculator" defaultOpen={false}>
         <CardiovascularRisk consulta={consulta} patient={patient} />
         <FraxCalc consulta={consulta} patient={patient} />
@@ -5772,7 +6257,23 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
           <textarea rows={2} value={pl.encaminhamentos || ""} onChange={e => set("encaminhamentos", e.target.value)} placeholder="Encaminhamentos adicionais..." />
         </Field>
 
-        <Field label="5. Retorno agendado em"><input type="date" value={pl.retorno || ""} onChange={e => set("retorno", e.target.value)} /></Field>
+        <Field label="5. Retorno agendado em">
+          <input type="date" value={pl.retorno || ""} onChange={e => set("retorno", e.target.value)} />
+          {(() => {
+            const sugestao = sugerirRetorno(consulta, patient);
+            if (!sugestao) return null;
+            return (
+              <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
+                  💡 Sugestão: <strong>{sugestao.dias} dias</strong> ({sugestao.motivo})
+                </span>
+                <button onClick={() => set("retorno", addDays(consulta.data, sugestao.dias))} style={{ fontSize: "11px", padding: "3px 10px" }}>
+                  Usar {fmtDate(addDays(consulta.data, sugestao.dias))}
+                </button>
+              </div>
+            );
+          })()}
+        </Field>
       </SectionCard>
 
       <SectionCard title="Pendências para próxima consulta" icon="ti-checklist">
@@ -6850,6 +7351,81 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
       "Avaliar indicação de alendronato 70mg/semana (1ª linha) ou risedronato",
       "Associar cálcio 1000-1200 mg/dia + vitamina D 800-2000 UI/dia",
       "Verificar FRAX na aba Prevenção",
+    ]});
+  }
+
+  // GAP TERAPÊUTICO — FA sem anticoagulante
+  if ((ativos.includes("FA") || ativos.includes("Flutter atrial")) && !meds.toLowerCase().match(/varfarina|warfarina|acenocumarol|rivaroxabana|apixabana|dabigatrana|edoxabana/)) {
+    sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: FA sem anticoagulante", items: [
+      "Fibrilação/Flutter atrial registrado sem anticoagulante oral identificado",
+      "Calcular CHA₂DS₂-VASc (disponível na aba Lista de Problemas) para confirmar indicação",
+      "Se indicado e sem contraindicação: considerar apixabana, rivaroxabana ou varfarina",
+      "Se não anticoagulado por decisão clínica (ex: sangramento prévio), documentar motivo explicitamente",
+    ]});
+  }
+
+  // GAP TERAPÊUTICO — DAC sem antiagregante/estatina
+  if (ativos.includes("DAC") && !meds.toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|ticagrelor|prasugrel/)) {
+    sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: DAC sem antiagregante", items: [
+      "Doença arterial coronariana registrada sem AAS ou outro antiagregante identificado",
+      "Prevenção secundária padrão inclui antiagregante — reavaliar indicação",
+    ]});
+  }
+  if (ativos.includes("DAC") && !meds.toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina|fluvastatina|pitavastatina/)) {
+    sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: DAC sem estatina", items: [
+      "Doença arterial coronariana sem estatina identificada — indicação de alta intensidade em prevenção secundária",
+      "Meta de LDL < 55 mg/dL (muito alto risco) — ver aba Exames",
+    ]});
+  }
+
+  // GAP TERAPÊUTICO — IC com FE reduzida sem terapia quádrupla
+  if ((ativos.includes("Insuficiência cardíaca") || ativos.includes("IC"))) {
+    const temIECABRA = meds.toLowerCase().match(/captopril|enalapril|lisinopril|ramipril|losartana|valsartana|sacubitril/);
+    const temBetabloq = meds.toLowerCase().match(/metoprolol|carvedilol|bisoprolol|nebivolol/);
+    const temISGLT2 = meds.toLowerCase().match(/dapagliflozina|empagliflozina/);
+    const temAntiMineralo = meds.toLowerCase().match(/espironolactona|eplerenona/);
+    const faltando = [];
+    if (!temIECABRA) faltando.push("IECA/BRA ou sacubitril-valsartana");
+    if (!temBetabloq) faltando.push("betabloqueador");
+    if (!temISGLT2) faltando.push("iSGLT2 (dapa/empagliflozina)");
+    if (!temAntiMineralo) faltando.push("antagonista mineralocorticoide");
+    if (faltando.length >= 2) {
+      sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: IC sem terapia quádrupla completa", items: [
+        `Faltando na terapia: ${faltando.join(", ")}`,
+        "Terapia quádrupla (IECA/BRA/sacubitril + betabloqueador + iSGLT2 + antagonista mineralocorticoide) reduz mortalidade em IC com FE reduzida",
+        "Se FE preservada, adaptar conforme perfil (ver H2FPEF na aba Exame Físico)",
+      ]});
+    }
+  }
+
+  // GAP TERAPÊUTICO — DM2 sem estatina em prevenção primária (se >40 anos)
+  if (ativos.includes("DM2") && idade >= 40 && !meds.toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina/)) {
+    sugestoes.push({ cat: "GAP TERAPÊUTICO: DM2 sem estatina", items: [
+      "DM2 em paciente ≥ 40 anos sem estatina identificada",
+      "Diretrizes recomendam estatina em DM2 para prevenção cardiovascular, salvo contraindicação ou expectativa de vida muito reduzida",
+    ]});
+  }
+
+  // GAP TERAPÊUTICO — Asma/DPOC sem broncodilatador
+  if ((ativos.includes("DPOC") || ativos.includes("Asma")) && !meds.toLowerCase().match(/salbutamol|formoterol|salmeterol|tiotrópio|budesonida|beclometasona|fluticasona|indacaterol|glicopirrônio/)) {
+    sugestoes.push({ cat: "GAP TERAPÊUTICO: DPOC/Asma sem broncodilatador/corticoide inalatório", items: [
+      "Doença pulmonar obstrutiva registrada sem broncodilatador ou corticoide inalatório identificado",
+      "Revisar necessidade de terapia inalatória de manutenção",
+    ]});
+  }
+
+  // GAP TERAPÊUTICO — Depressão sem tratamento
+  if (ativos.includes("Transtorno depressivo") && !meds.toLowerCase().match(/fluoxetina|sertralina|escitalopram|citalopram|paroxetina|venlafaxina|duloxetina|mirtazapina|bupropiona|trazodona/)) {
+    sugestoes.push({ cat: "GAP TERAPÊUTICO: Depressão sem antidepressivo", items: [
+      "Transtorno depressivo registrado sem antidepressivo identificado nas medicações",
+      "Avaliar se em tratamento não farmacológico exclusivo (psicoterapia) ou se há gap a corrigir",
+    ]});
+  }
+
+  // GAP TERAPÊUTICO — Hipotireoidismo sem levotiroxina
+  if (ativos.includes("Hipotireoidismo") && !meds.toLowerCase().match(/levotiroxina|puran|synthroid/)) {
+    sugestoes.push({ cat: "GAP TERAPÊUTICO: Hipotireoidismo sem reposição", items: [
+      "Hipotireoidismo registrado sem levotiroxina identificada nas medicações — verificar se é um erro de registro ou gap real",
     ]});
   }
 
