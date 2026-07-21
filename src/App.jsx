@@ -804,6 +804,77 @@ function checkInteracoes(texto) {
   return alerts;
 }
 
+// ============================================================
+// VERIFICAÇÃO DE DOSE MÁXIMA DIÁRIA
+// ============================================================
+// Extrai dose e frequência de uma linha de medicação e estima dose diária total
+function extrairDoseDiaria(linha, doseUnitariaMg) {
+  const lower = linha.toLowerCase();
+  // Busca padrão "1-1-1", "1-0-1" etc (posologia manhã-tarde-noite)
+  const mPosologia = linha.match(/(\d+(?:[,.]?\d*)?)\s*[-x]\s*(\d+(?:[,.]?\d*)?)\s*[-x]\s*(\d+(?:[,.]?\d*)?)/);
+  if (mPosologia) {
+    const total = parseFloat(mPosologia[1].replace(",",".")) + parseFloat(mPosologia[2].replace(",",".")) + parseFloat(mPosologia[3].replace(",","."));
+    return total * doseUnitariaMg;
+  }
+  // Busca "Xx/dia" ou "X vezes ao dia"
+  const mVezes = lower.match(/(\d+)\s*(?:x|vezes)\s*(?:ao dia|\/dia|dia)/);
+  if (mVezes) {
+    return parseInt(mVezes[1]) * doseUnitariaMg;
+  }
+  // Busca "de Xh em Xh" e calcula vezes/dia
+  const mIntervalo = lower.match(/de\s*(\d+)\s*(?:em|\/)\s*(\d+)\s*h/);
+  if (mIntervalo) {
+    const intervalo = parseInt(mIntervalo[2]) || parseInt(mIntervalo[1]);
+    if (intervalo > 0) return Math.round(24 / intervalo) * doseUnitariaMg;
+  }
+  // Padrão "se dor" / "se necessário" — não soma à dose fixa diária, mas alerta com dose unitária
+  if (/se\s*(dor|necess[aá]rio|febre)/i.test(lower)) {
+    return null; // não computa automaticamente, é uso eventual
+  }
+  return null; // não foi possível determinar
+}
+
+const DOSES_MAXIMAS_DIARIAS = [
+  { nome: "Paracetamol", regex: /paracetamol|acetaminofeno/i, doseUnitariaMg: null, maxMg: 3000, maxMgIdoso: 3000, obs: "Reduzir para 2g/dia se hepatopatia ou etilismo" },
+  { nome: "Dipirona", regex: /dipirona|metamizol/i, doseUnitariaMg: 500, maxMg: 4000, maxMgIdoso: 3000, obs: "" },
+  { nome: "Tramadol", regex: /tramadol/i, doseUnitariaMg: 50, maxMg: 400, maxMgIdoso: 300, obs: "Reduzir dose em idosos e DRC" },
+  { nome: "Ibuprofeno", regex: /ibuprofeno/i, doseUnitariaMg: 400, maxMg: 3200, maxMgIdoso: 1200, obs: "Evitar doses altas prolongadas em idosos — risco GI/renal/cardiovascular" },
+  { nome: "Diclofenaco", regex: /diclofenaco/i, doseUnitariaMg: 50, maxMg: 150, maxMgIdoso: 100, obs: "Preferir menor dose eficaz pelo menor tempo" },
+  { nome: "Amitriptilina", regex: /amitriptilina/i, doseUnitariaMg: 25, maxMg: 300, maxMgIdoso: 75, obs: "Doses altas raramente indicadas em idosos — Beers 2023" },
+  { nome: "Sertralina", regex: /sertralina/i, doseUnitariaMg: 50, maxMg: 200, maxMgIdoso: 200, obs: "" },
+  { nome: "Metformina", regex: /metformina/i, doseUnitariaMg: 500, maxMg: 2550, maxMgIdoso: 2000, obs: "Ajustar por TFG" },
+  { nome: "Losartana", regex: /losartana/i, doseUnitariaMg: 50, maxMg: 100, maxMgIdoso: 100, obs: "" },
+  { nome: "Omeprazol", regex: /omeprazol/i, doseUnitariaMg: 20, maxMg: 40, maxMgIdoso: 40, obs: "" },
+  { nome: "Sinvastatina", regex: /sinvastatina/i, doseUnitariaMg: 20, maxMg: 40, maxMgIdoso: 40, obs: "Dose > 40mg tem risco aumentado de miopatia — evitar" },
+];
+
+function verificarDoseMaximaDiaria(texto) {
+  const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
+  const alertas = [];
+  linhas.forEach(linha => {
+    DOSES_MAXIMAS_DIARIAS.forEach(med => {
+      if (!med.regex.test(linha)) return;
+      // Tenta extrair a dose unitária da própria linha (ex: "750mg")
+      const mDoseLinha = linha.match(/(\d+)\s*mg/i);
+      const doseUnit = med.doseUnitariaMg || (mDoseLinha ? parseInt(mDoseLinha[1]) : null);
+      if (!doseUnit) return;
+      const doseDiaria = extrairDoseDiaria(linha, doseUnit);
+      if (doseDiaria === null) return;
+      if (doseDiaria > med.maxMgIdoso) {
+        alertas.push({
+          medicacao: linha,
+          nome: med.nome,
+          doseDiaria,
+          maxRecomendado: med.maxMgIdoso,
+          excedeAbsoluto: doseDiaria > med.maxMg,
+          obs: med.obs,
+        });
+      }
+    });
+  });
+  return alertas;
+}
+
 function checkAlertasEspeciais(texto) {
   if (!texto) return [];
   const lower = texto.toLowerCase();
@@ -2379,6 +2450,104 @@ export default function App() {
   );
 }
 
+// ============================================================
+// BUSCA NO HISTÓRICO — pergunta livre sobre o paciente
+// ============================================================
+function BuscaHistoricoPaciente({ patient }) {
+  const [pergunta, setPergunta] = useState("");
+  const [resultados, setResultados] = useState(null);
+
+  function buscar() {
+    const termo = pergunta.trim().toLowerCase();
+    if (!termo) { setResultados(null); return; }
+
+    // Extrai palavras-chave relevantes (remove palavras comuns de pergunta)
+    const stopwords = new Set(["quando","foi","a","o","de","do","da","que","ele","ela","fez","teve","tem","última","ultima","vez","qual","quais","como","está","esta","pra","para","no","na","em","com","um","uma"]);
+    const palavras = termo.split(/\s+/).filter(p => p.length > 2 && !stopwords.has(p));
+
+    if (palavras.length === 0) { setResultados([]); return; }
+
+    const consultas = [...(patient.consultas || [])].filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data));
+    const achados = [];
+
+    consultas.forEach(c => {
+      // Campos de texto onde buscar
+      const camposBusca = [
+        { label: "Queixas", texto: c.queixas || "" },
+        { label: "Exames/Labs", texto: c.labsTexto || "" },
+        { label: "Imagem/outros", texto: c.imagemTexto || "" },
+        { label: "Medicações", texto: c.medicacoesTexto || "" },
+        { label: "Plano — Ajuste", texto: (c.plano || {}).ajuste || "" },
+        { label: "Plano — Solicito", texto: (c.plano || {}).solicito || "" },
+        { label: "Plano — Orientações", texto: (c.plano || {}).orientacoes || "" },
+      ];
+      // Rastreio geral e específico (arrays com data + resultado)
+      Object.entries(c.rastreioGeral || {}).forEach(([nome, registros]) => {
+        (Array.isArray(registros) ? registros : []).forEach(r => {
+          camposBusca.push({ label: `Rastreio: ${nome}`, texto: `${r.resultado || ""}`, data: r.data });
+        });
+      });
+      Object.entries(c.rastreioEspecifico || {}).forEach(([nome, registros]) => {
+        (Array.isArray(registros) ? registros : []).forEach(r => {
+          camposBusca.push({ label: `Rastreio: ${nome.split("::")[1] || nome}`, texto: `${r.resultado || ""}`, data: r.data });
+        });
+      });
+
+      camposBusca.forEach(campo => {
+        const textoLower = campo.texto.toLowerCase();
+        const bateu = palavras.some(p => textoLower.includes(p));
+        if (bateu && campo.texto.trim()) {
+          achados.push({
+            data: campo.data || c.data,
+            campo: campo.label,
+            trecho: campo.texto.length > 200 ? campo.texto.slice(0, 200) + "..." : campo.texto,
+          });
+        }
+      });
+    });
+
+    // Ordena por data mais recente primeiro
+    achados.sort((a, b) => new Date(b.data) - new Date(a.data));
+    setResultados(achados);
+  }
+
+  return (
+    <div style={{ marginBottom: "16px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "12px" }}>
+      <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+        <i className="ti ti-search" aria-hidden="true"></i>Buscar no histórico deste paciente
+      </div>
+      <div style={{ display: "flex", gap: "8px" }}>
+        <input
+          value={pergunta}
+          onChange={e => setPergunta(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && buscar()}
+          placeholder='Ex: "colonoscopia", "quando foi o último TSH", "queda"...'
+          style={{ flex: 1 }}
+        />
+        <button onClick={buscar} style={{ fontSize: "13px" }}>Buscar</button>
+      </div>
+
+      {resultados !== null && (
+        <div style={{ marginTop: "12px" }}>
+          {resultados.length === 0 ? (
+            <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>Nenhum resultado encontrado para "{pergunta}" no histórico deste paciente.</div>
+          ) : (
+            <div style={{ display: "grid", gap: "8px", maxHeight: "300px", overflowY: "auto" }}>
+              <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)" }}>{resultados.length} resultado(s) encontrado(s):</div>
+              {resultados.map((r, i) => (
+                <div key={i} style={{ background: "var(--color-background-secondary)", borderRadius: "6px", padding: "8px 10px", fontSize: "12px" }}>
+                  <div style={{ fontWeight: 600, color: "var(--color-text-info)" }}>{fmtDate(r.data)} — {r.campo}</div>
+                  <div style={{ marginTop: "2px", whiteSpace: "pre-wrap" }}>{r.trecho}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConsultasView({ patient, onOpenConsulta, onCreateConsulta, onRemoveConsulta, updatePatient }) {
   const consultas = [...(patient.consultas || [])].filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data));
   return (
@@ -2391,6 +2560,7 @@ function ConsultasView({ patient, onOpenConsulta, onCreateConsulta, onRemoveCons
       <button onClick={onCreateConsulta} style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "14px" }}>
         <i className="ti ti-plus" aria-hidden="true"></i>Nova consulta
       </button>
+      <BuscaHistoricoPaciente patient={patient} />
       <GraficoEvolucao patient={patient} />
       <div style={{ display: "grid", gap: "8px" }}>
         {consultas.map(c => {
@@ -2696,6 +2866,47 @@ function ModoEmergencia({ patient, consulta, updateConsulta, onSair, onSave }) {
   );
 }
 
+// ============================================================
+// CRONÔMETRO DE CONSULTA — 30 minutos
+// ============================================================
+function CronometroConsulta() {
+  const [segundos, setSegundos] = useState(0);
+  const [rodando, setRodando] = useState(false);
+  const DURACAO_ALVO = 30 * 60; // 30 minutos em segundos
+
+  useEffect(() => {
+    if (!rodando) return;
+    const interval = setInterval(() => setSegundos(s => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [rodando]);
+
+  const minutos = Math.floor(segundos / 60);
+  const segsRestantes = segundos % 60;
+  const pctDecorrido = Math.min(100, (segundos / DURACAO_ALVO) * 100);
+  const excedeu = segundos > DURACAO_ALVO;
+  const cor = excedeu ? "danger" : pctDecorrido > 80 ? "warning" : "success";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
+      <span style={{
+        fontFamily: "monospace", fontWeight: 700, fontSize: "13px",
+        color: `var(--color-text-${cor})`,
+      }}>
+        {excedeu ? "+" : ""}{String(minutos).padStart(2, "0")}:{String(segsRestantes).padStart(2, "0")}
+      </span>
+      <button onClick={() => setRodando(!rodando)} title={rodando ? "Pausar" : "Iniciar"} style={{ padding: "3px 8px", fontSize: "11px", display: "flex", alignItems: "center", gap: "3px" }}>
+        <i className={rodando ? "ti ti-player-pause" : "ti ti-player-play"} aria-hidden="true"></i>
+      </button>
+      {segundos > 0 && (
+        <button onClick={() => { setSegundos(0); setRodando(false); }} title="Reiniciar" style={{ padding: "3px 8px", fontSize: "11px" }}>
+          <i className="ti ti-refresh" aria-hidden="true"></i>
+        </button>
+      )}
+      {excedeu && <span style={{ color: "var(--color-text-danger)", fontSize: "11px" }}>⏱ excedeu 30 min</span>}
+    </div>
+  );
+}
+
 function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTab, setActiveTab, onPrint, onSave }) {
   const [modoEmergencia, setModoEmergencia] = useState(false);
 
@@ -2705,7 +2916,8 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+        <CronometroConsulta />
         <button onClick={() => setModoEmergencia(true)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px", background: "var(--color-background-danger)", color: "var(--color-text-danger)", border: "0.5px solid var(--color-border-danger)" }}>
           <i className="ti ti-emergency-bed" aria-hidden="true"></i>Modo Emergência/Intercorrência
         </button>
@@ -3184,6 +3396,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const alertasEspeciais = checkAlertasEspeciais(texto);
   const [showDisponibilidadeSUS, setShowDisponibilidadeSUS] = useState(false);
   const disponibilidadeSUS = verificarDisponibilidadeSUS(texto);
+  const alertasDoseMaxima = verificarDoseMaximaDiaria(texto);
 
   // Checagem cruzada: alergias medicamentosas registradas vs. medicações prescritas
   const alergiasTexto = (consulta.antecedentes || {}).alergias || "";
@@ -3218,6 +3431,21 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const lower2 = texto.toLowerCase();
   function temMedComorb(...drugs) {
     return drugs.some(d => new RegExp("(^|\\s|,|;|\\+|-|\\()" + d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(lower2));
+  }
+
+  // RECATALOGAÇÃO AUTOMÁTICA — comorbidade recém-marcada sem medicação correspondente
+  const probAtivo = consulta.problemas || {};
+  if ((probAtivo["FA"] || probAtivo["Flutter atrial"]) && !temMedComorb("varfarina","warfarina","acenocumarol","rivaroxabana","apixabana","dabigatrana","edoxabana")) {
+    alertasComorbidade.push({ tipo: "danger", msg: "🔗 FA/Flutter marcado na Lista de Problemas — nenhum anticoagulante identificado aqui. Verificar CHA₂DS₂-VASc na aba Lista de Problemas antes de decidir." });
+  }
+  if (probAtivo["Osteoporose"] && !temMedComorb("alendronato","risedronato","ibandronato","zoledronato","denosumabe","teriparatida","romosozumabe")) {
+    alertasComorbidade.push({ tipo: "warning", msg: "🔗 Osteoporose marcada na Lista de Problemas — nenhum antirreabsortivo identificado aqui. Ver FRAX na aba Prevenção." });
+  }
+  if (probAtivo["DAC"] && !temMedComorb("aas","ácido acetilsalicílico","clopidogrel","ticagrelor","prasugrel")) {
+    alertasComorbidade.push({ tipo: "warning", msg: "🔗 DAC marcada na Lista de Problemas — nenhum antiagregante identificado aqui." });
+  }
+  if (probAtivo["Hipotireoidismo"] && !temMedComorb("levotiroxina","puran","synthroid")) {
+    alertasComorbidade.push({ tipo: "info", msg: "🔗 Hipotireoidismo marcado na Lista de Problemas — nenhuma levotiroxina identificada aqui. Verificar se é subclínico/em observação." });
   }
 
   // Betabloqueador em bradicardia/BAV
@@ -3475,6 +3703,20 @@ function MedicacoesTab({ consulta, updateConsulta }) {
                 </div>
               </div>
             )}
+          </div>
+        )}
+        {alertasDoseMaxima.length > 0 && (
+          <div style={{ marginBottom: "12px" }}>
+            {alertasDoseMaxima.map((a, i) => (
+              <div key={i} style={{ background: a.excedeAbsoluto ? "#f8d7da" : "var(--color-background-warning)", border: `2px solid ${a.excedeAbsoluto ? "#dc3545" : "var(--color-border-warning)"}`, borderRadius: "8px", padding: "12px 14px", fontSize: "13px", marginBottom: "8px" }}>
+                <div style={{ fontWeight: 700, color: a.excedeAbsoluto ? "#721c24" : "var(--color-text-warning)" }}>
+                  ⚠ {a.excedeAbsoluto ? "DOSE ACIMA DO LIMITE ABSOLUTO" : "Dose acima do recomendado para idoso"}: {a.nome}
+                </div>
+                <div style={{ marginTop: "4px" }}>Medicação: <strong>{a.medicacao}</strong></div>
+                <div style={{ marginTop: "2px" }}>Dose diária estimada: <strong>~{a.doseDiaria}mg</strong> · Máximo recomendado em idoso: <strong>{a.maxRecomendado}mg/dia</strong></div>
+                {a.obs && <div style={{ fontSize: "12px", marginTop: "4px" }}>{a.obs}</div>}
+              </div>
+            ))}
           </div>
         )}
         {alertasAlergia.length > 0 && (
@@ -4641,7 +4883,10 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
           })()}
         </SectionCard>
         <Row cols="repeat(4, 1fr)">
-          <Field label="Peso atual (kg)"><input type="number" value={aga.peso || ""} onChange={e => set("peso", e.target.value)} /></Field>
+          <Field label="Peso atual (kg)">
+            <input type="number" value={aga.peso || ""} onChange={e => set("peso", e.target.value)} />
+            {(() => { const a = verificarPlausibilidade("peso", aga.peso); return a ? <div style={{ fontSize: "11px", color: "var(--color-text-danger)", marginTop: "3px" }}>{a}</div> : null; })()}
+          </Field>
           <Field label="Peso habitual (kg)"><input type="number" value={aga.pesoHabitual || ""} onChange={e => set("pesoHabitual", e.target.value)} /></Field>
           <Field label="Altura (m)"><input type="number" step="0.01" value={aga.altura || ""} onChange={e => set("altura", e.target.value)} /></Field>
           <Field label="IMC calculado" hint={imcLabel}>
@@ -5082,6 +5327,29 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
   );
 }
 
+// Verifica se um valor clínico está dentro de faixa plausível — alerta sem bloquear
+function verificarPlausibilidade(tipo, valor) {
+  if (!valor) return null;
+  const limites = {
+    peso: { min: 20, max: 250, unidade: "kg" },
+    pa_sistolica: { min: 50, max: 260, unidade: "mmHg" },
+    pa_diastolica: { min: 30, max: 160, unidade: "mmHg" },
+    fc: { min: 25, max: 220, unidade: "bpm" },
+    temp: { min: 32, max: 42, unidade: "°C" },
+    sato2: { min: 50, max: 100, unidade: "%" },
+    hgt: { min: 20, max: 700, unidade: "mg/dL" },
+    altura: { min: 1.0, max: 2.2, unidade: "m" },
+  };
+  const lim = limites[tipo];
+  if (!lim) return null;
+  const num = parseFloat(String(valor).replace(",", "."));
+  if (isNaN(num)) return null;
+  if (num < lim.min || num > lim.max) {
+    return `⚠ Valor ${num}${lim.unidade} fora da faixa plausível (${lim.min}–${lim.max}${lim.unidade}) — confira se não é erro de digitação`;
+  }
+  return null;
+}
+
 function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
   const e = consulta.exameFisico || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, exameFisico: { ...p.exameFisico, [k]: v } }));
@@ -5249,9 +5517,21 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
           </div>
         )}
         <Row cols="repeat(3, 1fr)">
-          <Field label="PA sentado (mmHg)"><input value={e.paSentado || ""} onChange={ev => set("paSentado", ev.target.value)} placeholder="ex: 130/80" /></Field>
+          <Field label="PA sentado (mmHg)">
+            <input value={e.paSentado || ""} onChange={ev => set("paSentado", ev.target.value)} placeholder="ex: 130/80" />
+            {(() => {
+              const m = (e.paSentado || "").match(/(\d+)\s*[xX\/]\s*(\d+)/);
+              if (!m) return null;
+              const avisoSis = verificarPlausibilidade("pa_sistolica", m[1]);
+              const avisoDia = verificarPlausibilidade("pa_diastolica", m[2]);
+              return (avisoSis || avisoDia) ? <div style={{ fontSize: "11px", color: "var(--color-text-danger)", marginTop: "3px" }}>{avisoSis || avisoDia}</div> : null;
+            })()}
+          </Field>
           <Field label="PA em pé após 3 min (mmHg)" hint="Triagem de hipotensão ortostática"><input value={e.paEmPe || ""} onChange={ev => set("paEmPe", ev.target.value)} placeholder="ex: 120/75" /></Field>
-          <Field label="FC (bpm)"><input value={e.fc || ""} onChange={ev => set("fc", ev.target.value)} /></Field>
+          <Field label="FC (bpm)">
+            <input value={e.fc || ""} onChange={ev => set("fc", ev.target.value)} />
+            {(() => { const a = verificarPlausibilidade("fc", e.fc); return a ? <div style={{ fontSize: "11px", color: "var(--color-text-danger)", marginTop: "3px" }}>{a}</div> : null; })()}
+          </Field>
         </Row>
         <Row cols="repeat(3, 1fr)">
           <Field label="SatO2 (%)"><input value={e.sato2 || ""} onChange={ev => set("sato2", ev.target.value)} /></Field>
@@ -5259,7 +5539,10 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
           <Field label="Temp (°C)"><input value={e.temp || ""} onChange={ev => set("temp", ev.target.value)} /></Field>
         </Row>
         <Row cols="repeat(2, 1fr)">
-          <Field label="Peso (kg)" hint="Aferido na consulta"><input value={e.peso || ""} onChange={ev => set("peso", ev.target.value)} /></Field>
+          <Field label="Peso (kg)" hint="Aferido na consulta">
+            <input value={e.peso || ""} onChange={ev => set("peso", ev.target.value)} />
+            {(() => { const a = verificarPlausibilidade("peso", e.peso); return a ? <div style={{ fontSize: "11px", color: "var(--color-text-danger)", marginTop: "3px" }}>{a}</div> : null; })()}
+          </Field>
           <Field label="HGT (mg/dL)"><input value={e.hgt || ""} onChange={ev => set("hgt", ev.target.value)} /></Field>
         </Row>
         <Field label="Dor (EVA 0–10)" hint="0 = sem dor · 10 = pior dor imaginável">
