@@ -3788,14 +3788,15 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
 
 // Sugere exame específico mais custo-efetivo baseado em sintoma-chave + tempo de evolução
 function sugerirExamePorSintomaTempo(consulta) {
+  try {
   const queixas = (consulta.queixas || "").toLowerCase();
   const sugestoes = [];
 
   // Extrai tempo de evolução mencionado (dias/semanas/meses/anos)
   function extrairTempo(termoBusca) {
-    const regex = new RegExp(termoBusca + "[^.]{0,60}?(\\d+)\\s*(dia|dias|semana|semanas|m[êe]s|meses|ano|anos)", "i");
+    const regex = new RegExp("(?:" + termoBusca + ")[^.]{0,60}?(\\d+)\\s*(dia|dias|semana|semanas|m[êe]s|meses|ano|anos)", "i");
     const m = queixas.match(regex);
-    if (!m) return null;
+    if (!m || !m[1] || !m[2]) return null;
     const valor = parseInt(m[1]);
     const unidade = m[2].toLowerCase();
     let dias = valor;
@@ -3874,6 +3875,10 @@ function sugerirExamePorSintomaTempo(consulta) {
   }
 
   return sugestoes;
+  } catch (e) {
+    console.error("Erro ao sugerir exames por sintoma:", e);
+    return [];
+  }
 }
 
 function QueixasTab({ consulta, updateConsulta, patient }) {
