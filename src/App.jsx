@@ -8113,7 +8113,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   ]});
 
   // Osteoporose sem tratamento
-  if (ativos.includes("Osteoporose") && !meds.toLowerCase().match(/alendronato|risedronato|ibandronato|zoledronato|denosumabe|teriparatida|romosozumabe/)) {
+  if (ativos.includes("Osteoporose") && !(consulta.medicacoesTexto || "").toLowerCase().match(/alendronato|risedronato|ibandronato|zoledronato|denosumabe|teriparatida|romosozumabe/)) {
     sugestoes.push({ cat: "Osteoporose sem tratamento antirreabsortivo", items: [
       "Nenhum bisfosfonato ou outro antirreabsortivo identificado nas medicações",
       "Avaliar indicação de alendronato 70mg/semana (1ª linha) ou risedronato",
@@ -8131,7 +8131,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
     return temAlgumSemNegacao(textoCompleto, "sangramento ativo", "hemorragia ativa", "sangramento digestivo ativo",
       "hemorragia digestiva ativa", "AVC hemorrágico", "trombocitopenia grave", "varizes esofágicas sangrantes");
   })();
-  if ((ativos.includes("FA") || ativos.includes("Flutter atrial")) && !meds.toLowerCase().match(/varfarina|warfarina|acenocumarol|rivaroxabana|apixabana|dabigatrana|edoxabana/)) {
+  if ((ativos.includes("FA") || ativos.includes("Flutter atrial")) && !(consulta.medicacoesTexto || "").toLowerCase().match(/varfarina|warfarina|acenocumarol|rivaroxabana|apixabana|dabigatrana|edoxabana/)) {
     if (temContraindicacaoAnticoagulacao) {
       sugestoes.push({ cat: "FA sem anticoagulante — possível contraindicação identificada", items: [
         "Fibrilação/Flutter atrial sem anticoagulante, MAS foi identificado texto sugestivo de contraindicação (sangramento/hemorragia) nos antecedentes ou queixas",
@@ -8149,13 +8149,13 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — DAC sem antiagregante/estatina
-  if (ativos.includes("DAC") && !meds.toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|ticagrelor|prasugrel/)) {
+  if (ativos.includes("DAC") && !(consulta.medicacoesTexto || "").toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|ticagrelor|prasugrel/)) {
     sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: DAC sem antiagregante", items: [
       "Doença arterial coronariana registrada sem AAS ou outro antiagregante identificado",
       "Prevenção secundária padrão inclui antiagregante — reavaliar indicação",
     ]});
   }
-  if (ativos.includes("DAC") && !meds.toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina|fluvastatina|pitavastatina/)) {
+  if (ativos.includes("DAC") && !(consulta.medicacoesTexto || "").toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina|fluvastatina|pitavastatina/)) {
     sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: DAC sem estatina", items: [
       "Doença arterial coronariana sem estatina identificada — indicação de alta intensidade em prevenção secundária",
       "Meta de LDL < 55 mg/dL (muito alto risco) — ver aba Exames",
@@ -8164,10 +8164,10 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
 
   // GAP TERAPÊUTICO — IC com FE reduzida sem terapia quádrupla
   if ((ativos.includes("Insuficiência cardíaca") || ativos.includes("IC"))) {
-    const temIECABRA = meds.toLowerCase().match(/captopril|enalapril|lisinopril|ramipril|losartana|valsartana|sacubitril/);
-    const temBetabloq = meds.toLowerCase().match(/metoprolol|carvedilol|bisoprolol|nebivolol/);
-    const temISGLT2 = meds.toLowerCase().match(/dapagliflozina|empagliflozina/);
-    const temAntiMineralo = meds.toLowerCase().match(/espironolactona|eplerenona/);
+    const temIECABRA = (consulta.medicacoesTexto || "").toLowerCase().match(/captopril|enalapril|lisinopril|ramipril|losartana|valsartana|sacubitril/);
+    const temBetabloq = (consulta.medicacoesTexto || "").toLowerCase().match(/metoprolol|carvedilol|bisoprolol|nebivolol/);
+    const temISGLT2 = (consulta.medicacoesTexto || "").toLowerCase().match(/dapagliflozina|empagliflozina/);
+    const temAntiMineralo = (consulta.medicacoesTexto || "").toLowerCase().match(/espironolactona|eplerenona/);
     const faltando = [];
     if (!temIECABRA) faltando.push("IECA/BRA ou sacubitril-valsartana");
     if (!temBetabloq) faltando.push("betabloqueador");
@@ -8183,7 +8183,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — DM2 sem estatina em prevenção primária (se >40 anos)
-  if (ativos.includes("DM2") && idade >= 40 && !meds.toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina/)) {
+  if (ativos.includes("DM2") && idade >= 40 && !(consulta.medicacoesTexto || "").toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: DM2 sem estatina", items: [
       "DM2 em paciente ≥ 40 anos sem estatina identificada",
       "Diretrizes recomendam estatina em DM2 para prevenção cardiovascular, salvo contraindicação ou expectativa de vida muito reduzida",
@@ -8191,7 +8191,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — Asma/DPOC sem broncodilatador
-  if ((ativos.includes("DPOC") || ativos.includes("Asma")) && !meds.toLowerCase().match(/salbutamol|formoterol|salmeterol|tiotrópio|budesonida|beclometasona|fluticasona|indacaterol|glicopirrônio/)) {
+  if ((ativos.includes("DPOC") || ativos.includes("Asma")) && !(consulta.medicacoesTexto || "").toLowerCase().match(/salbutamol|formoterol|salmeterol|tiotrópio|budesonida|beclometasona|fluticasona|indacaterol|glicopirrônio/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: DPOC/Asma sem broncodilatador/corticoide inalatório", items: [
       "Doença pulmonar obstrutiva registrada sem broncodilatador ou corticoide inalatório identificado",
       "Revisar necessidade de terapia inalatória de manutenção",
@@ -8199,7 +8199,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — Depressão sem tratamento
-  if (ativos.includes("Transtorno depressivo") && !meds.toLowerCase().match(/fluoxetina|sertralina|escitalopram|citalopram|paroxetina|venlafaxina|duloxetina|mirtazapina|bupropiona|trazodona/)) {
+  if (ativos.includes("Transtorno depressivo") && !(consulta.medicacoesTexto || "").toLowerCase().match(/fluoxetina|sertralina|escitalopram|citalopram|paroxetina|venlafaxina|duloxetina|mirtazapina|bupropiona|trazodona/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: Depressão sem antidepressivo", items: [
       "Transtorno depressivo registrado sem antidepressivo identificado nas medicações",
       "Avaliar se em tratamento não farmacológico exclusivo (psicoterapia) ou se há gap a corrigir",
@@ -8207,7 +8207,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — Hipotireoidismo sem levotiroxina
-  if (ativos.includes("Hipotireoidismo") && !meds.toLowerCase().match(/levotiroxina|puran|synthroid/)) {
+  if (ativos.includes("Hipotireoidismo") && !(consulta.medicacoesTexto || "").toLowerCase().match(/levotiroxina|puran|synthroid/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: Hipotireoidismo sem reposição", items: [
       "Hipotireoidismo registrado sem levotiroxina identificada nas medicações — verificar se é um erro de registro ou gap real",
     ]});
@@ -8216,7 +8216,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   // Hipertireoidismo não tratado
   const mTSH2 = labs.match(/(?:tsh)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
   const tsh2 = mTSH2 ? parseFloat(mTSH2[1].replace(",",".")) : null;
-  if (tsh2 !== null && tsh2 < 0.1 && !meds.toLowerCase().match(/metimazol|propiltiouracil|tireoidectomia/)) {
+  if (tsh2 !== null && tsh2 < 0.1 && !(consulta.medicacoesTexto || "").toLowerCase().match(/metimazol|propiltiouracil|tireoidectomia/)) {
     sugestoes.push({ cat: "Hipertireoidismo — avaliar tratamento", items: [
       `TSH ${tsh2} — suprimido`,
       "Dosar T3 e T4 livre para confirmar hipertireoidismo",
