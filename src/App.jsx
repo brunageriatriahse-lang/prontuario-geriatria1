@@ -843,6 +843,21 @@ const DOSES_MAXIMAS_DIARIAS = [
   { nome: "Losartana", regex: /losartana/i, doseUnitariaMg: 50, maxMg: 100, maxMgIdoso: 100, obs: "" },
   { nome: "Omeprazol", regex: /omeprazol/i, doseUnitariaMg: 20, maxMg: 40, maxMgIdoso: 40, obs: "" },
   { nome: "Sinvastatina", regex: /sinvastatina/i, doseUnitariaMg: 20, maxMg: 40, maxMgIdoso: 40, obs: "Dose > 40mg tem risco aumentado de miopatia — evitar" },
+  { nome: "Gabapentina", regex: /gabapentina/i, doseUnitariaMg: 300, maxMg: 3600, maxMgIdoso: 1800, obs: "Ajustar por TFG — risco de sedação e queda em doses altas" },
+  { nome: "Pregabalina", regex: /pregabalina/i, doseUnitariaMg: 75, maxMg: 600, maxMgIdoso: 300, obs: "Ajustar por TFG — risco de sedação, edema e queda" },
+  { nome: "Quetiapina", regex: /quetiapina/i, doseUnitariaMg: 25, maxMg: 800, maxMgIdoso: 200, obs: "Doses baixas (25-100mg) para uso geriátrico — doses altas raramente indicadas fora de psicose" },
+  { nome: "Risperidona", regex: /risperidona/i, doseUnitariaMg: 1, maxMg: 16, maxMgIdoso: 2, obs: "Beers 2023 — evitar em demência; se necessário, dose mínima eficaz" },
+  { nome: "Haloperidol", regex: /haloperidol/i, doseUnitariaMg: 1, maxMg: 100, maxMgIdoso: 3, obs: "Risco de EPS e prolongamento de QT — dose mínima em idosos" },
+  { nome: "Mirtazapina", regex: /mirtazapina/i, doseUnitariaMg: 15, maxMg: 45, maxMgIdoso: 45, obs: "" },
+  { nome: "Escitalopram", regex: /escitalopram/i, doseUnitariaMg: 10, maxMg: 20, maxMgIdoso: 10, obs: "Máximo 10mg/dia em idosos — risco de prolongamento de QT (FDA)" },
+  { nome: "Citalopram", regex: /citalopram/i, doseUnitariaMg: 20, maxMg: 40, maxMgIdoso: 20, obs: "Máximo 20mg/dia em idosos — risco de prolongamento de QT (FDA)" },
+  { nome: "Zolpidem", regex: /zolpidem/i, doseUnitariaMg: 10, maxMg: 10, maxMgIdoso: 5, obs: "Beers 2023 — evitar; se necessário, máximo 5mg" },
+  { nome: "Clonazepam", regex: /clonazepam/i, doseUnitariaMg: 0.5, maxMg: 4, maxMgIdoso: 1, obs: "Beers 2023 — evitar; risco de queda, sedação, dependência" },
+  { nome: "Alprazolam", regex: /alprazolam/i, doseUnitariaMg: 0.25, maxMg: 4, maxMgIdoso: 1, obs: "Beers 2023 — evitar; risco de queda e dependência" },
+  { nome: "Digoxina", regex: /digoxina/i, doseUnitariaMg: 0.125, maxMg: 0.25, maxMgIdoso: 0.125, obs: "Janela terapêutica estreita — ajustar por TFG, monitorar nível sérico" },
+  { nome: "Prednisona", regex: /prednisona/i, doseUnitariaMg: 5, maxMg: 60, maxMgIdoso: 20, obs: "Doses prolongadas > 5-7,5mg/dia aumentam risco de osteoporose e outros efeitos — usar menor dose eficaz" },
+  { nome: "Furosemida", regex: /furosemida/i, doseUnitariaMg: 40, maxMg: 600, maxMgIdoso: 160, obs: "Doses altas aumentam risco de distúrbio eletrolítico e lesão renal" },
+  { nome: "Colchicina", regex: /colchicina/i, doseUnitariaMg: 0.5, maxMg: 1.8, maxMgIdoso: 1, obs: "Ajustar por TFG — toxicidade neuromuscular em idosos" },
 ];
 
 function verificarDoseMaximaDiaria(texto) {
@@ -1659,6 +1674,15 @@ function DocFooter() {
 export default function App() {
   const [autenticado, setAutenticado] = useState(() => sessionStorage.getItem('auth') === '1');
   const [ambulatorio, setAmbulatorio] = useState(() => sessionStorage.getItem('ambulatorio') || null);
+  const [zoomNivel, setZoomNivel] = useState(() => parseFloat(localStorage.getItem('prontuario_zoom')) || 0.88);
+
+  function ajustarZoom(delta) {
+    setZoomNivel(prev => {
+      const novo = Math.min(1.15, Math.max(0.65, Math.round((prev + delta) * 100) / 100));
+      localStorage.setItem('prontuario_zoom', String(novo));
+      return novo;
+    });
+  }
   const [senhaDigitada, setSenhaDigitada] = useState('');
   const [erroSenha, setErroSenha] = useState(false);
   const [patients, setPatients] = useState(null);
@@ -2258,13 +2282,18 @@ export default function App() {
 
   return (
     <>
-    <div id="app-main-content" style={{ width: "100%", zoom: 0.88 }}>
+    <div id="app-main-content" style={{ width: "100%", zoom: zoomNivel }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem", flexWrap: "wrap", gap: "8px" }}>
         <div>
           <h1 style={{ margin: 0 }}>{ambulatorio === 'cempre' ? 'AMBULATÓRIO DE GERIATRIA — CEMPRE' : 'AMBULATÓRIO DE GERIATRIA — HSE'}</h1>
           <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-text-secondary)" }}>HSE-PE · dados salvos no Google Sheets</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "2px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "6px", padding: "2px" }}>
+            <button onClick={() => ajustarZoom(-0.05)} title="Diminuir tamanho da fonte" style={{ fontSize: "11px", padding: "2px 8px", border: "none", background: "transparent" }}>A-</button>
+            <span style={{ fontSize: "10px", color: "var(--color-text-tertiary)", minWidth: "32px", textAlign: "center" }}>{Math.round(zoomNivel * 100)}%</span>
+            <button onClick={() => ajustarZoom(0.05)} title="Aumentar tamanho da fonte" style={{ fontSize: "11px", padding: "2px 8px", border: "none", background: "transparent" }}>A+</button>
+          </div>
           {saveStatus === "saving" && <Pill color="info"><i className="ti ti-loader-2" aria-hidden="true"></i>Salvando...</Pill>}
           {saveStatus === "saved" && <Pill color="success"><i className="ti ti-check" aria-hidden="true"></i>Salvo</Pill>}
           {saveStatus === "idle" && lastSaved && <span style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>Salvo às {lastSaved.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>}
@@ -3405,13 +3434,67 @@ const MEDS_SUS_FARMACIA_POPULAR = {
   "prednisona": "SUS/RENAME", "dipirona": "SUS/RENAME",
 };
 
+// Nomes comerciais comuns → genérico disponível no SUS/Farmácia Popular
+const MARCA_PARA_GENERICO_SUS = {
+  "puran t4": { generico: "Levotiroxina", disponibilidade: "Farmácia Popular (gratuito)" },
+  "synthroid": { generico: "Levotiroxina", disponibilidade: "Farmácia Popular (gratuito)" },
+  "glifage": { generico: "Metformina", disponibilidade: "Farmácia Popular (gratuito)" },
+  "glucophage": { generico: "Metformina", disponibilidade: "Farmácia Popular (gratuito)" },
+  "amaryl": { generico: "Glimepirida", disponibilidade: "SUS/RENAME (verificar disponibilidade local)" },
+  "daonil": { generico: "Glibenclamida", disponibilidade: "Farmácia Popular (gratuito)" },
+  "cozaar": { generico: "Losartana", disponibilidade: "Farmácia Popular (gratuito)" },
+  "aradois": { generico: "Losartana", disponibilidade: "Farmácia Popular (gratuito)" },
+  "capoten": { generico: "Captopril", disponibilidade: "Farmácia Popular (gratuito)" },
+  "renitec": { generico: "Enalapril", disponibilidade: "Farmácia Popular (gratuito)" },
+  "tenormin": { generico: "Atenolol", disponibilidade: "Farmácia Popular (gratuito)" },
+  "inderal": { generico: "Propranolol", disponibilidade: "Farmácia Popular (gratuito)" },
+  "lasix": { generico: "Furosemida", disponibilidade: "SUS/RENAME" },
+  "aldactone": { generico: "Espironolactona", disponibilidade: "SUS/RENAME" },
+  "digoxina nova química": { generico: "Digoxina", disponibilidade: "SUS/RENAME" },
+  "marevan": { generico: "Varfarina", disponibilidade: "SUS/RENAME" },
+  "zocor": { generico: "Sinvastatina", disponibilidade: "Farmácia Popular (gratuito)" },
+  "aas infantil": { generico: "AAS", disponibilidade: "Farmácia Popular (gratuito)" },
+  "aspirina prevent": { generico: "AAS", disponibilidade: "Farmácia Popular (gratuito)" },
+  "prozac": { generico: "Fluoxetina", disponibilidade: "Farmácia Popular (gratuito)" },
+  "eutimil": { generico: "Fluoxetina", disponibilidade: "Farmácia Popular (gratuito)" },
+  "carbolim": { generico: "Carbamazepina", disponibilidade: "SUS/RENAME" },
+  "tegretol": { generico: "Carbamazepina", disponibilidade: "SUS/RENAME" },
+  "hidantal": { generico: "Fenitoína", disponibilidade: "SUS/RENAME" },
+  "haldol": { generico: "Haloperidol", disponibilidade: "SUS/RENAME" },
+  "amytril": { generico: "Amitriptilina", disponibilidade: "SUS/RENAME" },
+  "tramal": { generico: "Tramadol", disponibilidade: "não coberto — verificar alternativa" },
+  "losec": { generico: "Omeprazol", disponibilidade: "SUS/RENAME" },
+  "prilosec": { generico: "Omeprazol", disponibilidade: "SUS/RENAME" },
+  "predsim": { generico: "Prednisona", disponibilidade: "SUS/RENAME" },
+  "meral": { generico: "Prednisona", disponibilidade: "SUS/RENAME" },
+  "buscopan": { generico: "Escopolamina — verificar necessidade real", disponibilidade: "não coberto" },
+  "voltaren": { generico: "Diclofenaco", disponibilidade: "não coberto — considerar alternativa" },
+  "cataflam": { generico: "Diclofenaco", disponibilidade: "não coberto — considerar alternativa" },
+  "xanax": { generico: "Alprazolam", disponibilidade: "SUS/RENAME (evitar em idosos — Beers 2023)" },
+  "rivotril": { generico: "Clonazepam", disponibilidade: "SUS/RENAME (evitar em idosos — Beers 2023)" },
+  "lexapro": { generico: "Escitalopram", disponibilidade: "não coberto — considerar sertralina/fluoxetina (Farmácia Popular)" },
+  "zoloft": { generico: "Sertralina", disponibilidade: "não coberto — verificar Farmácia Popular local" },
+};
+
 function verificarDisponibilidadeSUS(texto) {
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
   const disponiveis = [];
   const naoEncontrados = [];
+  const sugestoesGenerico = [];
   linhas.forEach(linha => {
     const lower = linha.toLowerCase();
     let encontrado = false;
+
+    // Verifica se é nome de marca com genérico equivalente no SUS
+    for (const [marca, info] of Object.entries(MARCA_PARA_GENERICO_SUS)) {
+      if (lower.includes(marca)) {
+        sugestoesGenerico.push({ medicacao: linha, marca, ...info });
+        encontrado = true;
+        break;
+      }
+    }
+    if (encontrado) return;
+
     for (const [droga, disponibilidade] of Object.entries(MEDS_SUS_FARMACIA_POPULAR)) {
       if (lower.includes(droga)) {
         disponiveis.push({ medicacao: linha, droga, disponibilidade });
@@ -3421,7 +3504,7 @@ function verificarDisponibilidadeSUS(texto) {
     }
     if (!encontrado) naoEncontrados.push(linha);
   });
-  return { disponiveis, naoEncontrados };
+  return { disponiveis, naoEncontrados, sugestoesGenerico };
 }
 
 function MedicacoesTab({ consulta, updateConsulta }) {
@@ -3720,6 +3803,17 @@ function MedicacoesTab({ consulta, updateConsulta }) {
             </button>
             {showDisponibilidadeSUS && (
               <div style={{ marginTop: "8px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px", fontSize: "12px" }}>
+                {disponibilidadeSUS.sugestoesGenerico.length > 0 && (
+                  <div style={{ marginBottom: "8px" }}>
+                    <div style={{ fontWeight: 700, marginBottom: "4px", color: "var(--color-text-warning)" }}>💊 Sugestão de substituição por genérico:</div>
+                    {disponibilidadeSUS.sugestoesGenerico.map((s, i) => (
+                      <div key={i} style={{ marginBottom: "4px" }}>
+                        <div>{s.medicacao} → considerar <strong>{s.generico}</strong></div>
+                        <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)" }}>{s.disponibilidade}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {disponibilidadeSUS.disponiveis.length > 0 && (
                   <div style={{ marginBottom: "8px" }}>
                     <div style={{ fontWeight: 700, marginBottom: "4px", color: "var(--color-text-success)" }}>✓ Acesso facilitado identificado:</div>
@@ -5818,6 +5912,66 @@ function detectarPadroesMultissistemicos(consulta, patient) {
       titulo: "Síndrome de Fragilidade Cardiovascular (queda + polifarmácia)",
       achados: ["Quedas relatadas", "Tontura", `Polifarmácia (${numMeds} medicamentos)`],
       sugestao: "Investigar hipotensão ortostática (medir PA deitado/em pé), revisar anti-hipertensivos e psicotrópicos, considerar Holter se suspeita de arritmia.",
+    });
+  }
+
+  // Síndrome metabólica: obesidade + HAS + DM2 + dislipidemia
+  const temObesidade = tem("obesidade", "sobrepeso") || prob["Obesidade"];
+  const criteriosMetabolicos = [temObesidade, temHAS, temDM2, temDislipidemia].filter(Boolean).length;
+  if (criteriosMetabolicos >= 3) {
+    padroes.push({
+      titulo: "Síndrome Metabólica",
+      achados: [temObesidade && "Obesidade/sobrepeso", temHAS && "HAS", temDM2 && "DM2", temDislipidemia && "Dislipidemia"].filter(Boolean),
+      sugestao: "Combinação de 3+ componentes de síndrome metabólica — reforçar abordagem conjunta (dieta, atividade física) e rastrear esteatose hepática (USG abdome) e risco cardiovascular global.",
+    });
+  }
+
+  // Polifarmácia + declínio funcional: possível cascata iatrogênica
+  const aivdCount = Object.values(aga.aivd || {}).filter(Boolean).length;
+  const abvdCount = Object.values(aga.abvd || {}).filter(Boolean).length;
+  const temDeclinioFuncional = (aivdCount > 0 && aivdCount < 9) || (abvdCount > 0 && abvdCount < 6);
+  if (numMeds >= 8 && temDeclinioFuncional) {
+    padroes.push({
+      titulo: "Possível Cascata Iatrogênica (polifarmácia + declínio funcional)",
+      achados: [`Polimedicação (${numMeds} medicamentos)`, `AIVD ${aivdCount}/9`, `ABVD ${abvdCount}/6`],
+      sugestao: "Polifarmácia acentuada associada a perda de funcionalidade — revisar criticamente cada medicação (critérios STOPP/START), investigar se algum efeito adverso está sendo tratado com nova medicação em vez de suspender a causadora.",
+    });
+  }
+
+  // Sarcopenia + desnutrição + fragilidade: síndrome de exaustão
+  const forcaNum = parseFloat(aga.testeForca);
+  const circNum = parseFloat(aga.circPanturrilha);
+  const sexoPacientePadrao = patient?.ident?.sexo || "";
+  const temSarcopenia = (!isNaN(forcaNum) && (sexoPacientePadrao === "M" ? forcaNum < 27 : forcaNum < 16)) || (!isNaN(circNum) && circNum < 31);
+  const imcCalc = parseFloat(calcIMC(aga.peso, aga.altura));
+  const temBaixoPeso = !isNaN(imcCalc) && imcCalc <= 22;
+  const frailScorePad = Object.values(aga.frail || {}).filter(Boolean).length;
+  if (temSarcopenia && temBaixoPeso && frailScorePad >= 3) {
+    padroes.push({
+      titulo: "Síndrome de Exaustão Geriátrica (sarcopenia + desnutrição + fragilidade)",
+      achados: ["Sarcopenia provável", `IMC baixo (${imcCalc})`, "Fragilidade (FRAIL ≥3)"],
+      sugestao: "Combinação de alto risco para desfechos adversos — priorizar avaliação nutricional urgente, suporte proteico-calórico, fisioterapia motora e investigar causas reversíveis de perda de peso (disfagia, depressão, neoplasia oculta).",
+    });
+  }
+
+  // Anemia + DRC + fadiga: possível anemia da doença renal crônica
+  const temDRC = prob["DRC"];
+  if (temDRC && hbVal && hbVal < 11 && temFraqueza) {
+    padroes.push({
+      titulo: "Possível Anemia da Doença Renal Crônica",
+      achados: [`DRC conhecida`, `Anemia (Hb ${hbVal})`, "Fadiga"],
+      sugestao: "Investigar ferritina, saturação de transferrina e considerar eritropoetina se anemia normocítica normocrômica sem outra causa identificada — comum em DRC estágio 3b+.",
+    });
+  }
+
+  // Confusão aguda + febre + sintomas urinários: delirium por ITU
+  const temFebre = tem("febre", "febril");
+  const temSintomaUrinario = tem("disúria", "urina turva", "urina com odor", "polaciúria", "urgência urinária");
+  if (temConfusao && (temFebre || temSintomaUrinario)) {
+    padroes.push({
+      titulo: "Possível Delirium Secundário a ITU",
+      achados: ["Confusão aguda", temFebre ? "Febre" : "Sintomas urinários"],
+      sugestao: "ITU é causa muito comum de delirium em idosos, podendo cursar sem sintomas urinários típicos — solicitar EAS/urocultura e avaliar outras causas de delirium concomitantemente (fármacos, retenção urinária, constipação).",
     });
   }
 
