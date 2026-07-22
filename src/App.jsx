@@ -4595,6 +4595,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
 
             {/* CDR */}
             {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"]) && (
+              <>
               <SectionCard title="CDR — Clinical Dementia Rating" icon="ti-chart-line" defaultOpen={false}>
                 {(() => {
                   const dominios = [
@@ -4694,6 +4695,58 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
                   );
                 })()}
               </SectionCard>
+
+              {/* FAST — Functional Assessment Staging Tool */}
+              <SectionCard title="FAST — Estadiamento Funcional da Demência" icon="ti-stairs" defaultOpen={false}>
+                {(() => {
+                  const ESTAGIOS_FAST = [
+                    { value: "1", label: "1 — Sem dificuldades, objetivas ou subjetivas" },
+                    { value: "2", label: "2 — Queixa subjetiva de esquecimento (ex: onde colocou objetos); sem prejuízo funcional evidente" },
+                    { value: "3", label: "3 — Dificuldade em tarefas ocupacionais complexas, percebida por colegas; dificuldade para viajar a locais novos" },
+                    { value: "4", label: "4 — Dificuldade em tarefas complexas do dia a dia (planejar jantar para visitas, lidar com finanças, fazer compras) — demência leve" },
+                    { value: "5", label: "5 — Necessita de ajuda para escolher roupa adequada à ocasião/clima; pode precisar de estímulo para tomar banho — demência moderada" },
+                    { value: "6a", label: "6a — Veste-se incorretamente sem assistência/estímulo (ex: veste roupas na ordem errada)" },
+                    { value: "6b", label: "6b — Incapaz de tomar banho corretamente sem assistência (ex: temperatura da água incorreta)" },
+                    { value: "6c", label: "6c — Incapaz de lidar com mecânica do banheiro (descarga, limpeza, papel higiênico) sem assistência" },
+                    { value: "6d", label: "6d — Incontinência urinária (ocasional ou mais frequente)" },
+                    { value: "6e", label: "6e — Incontinência fecal (ocasional ou mais frequente) — demência moderadamente grave" },
+                    { value: "7a", label: "7a — Capacidade de fala limitada a cerca de 6 palavras inteligíveis ou menos no dia" },
+                    { value: "7b", label: "7b — Capacidade de fala limitada a uma única palavra inteligível em um dia típico" },
+                    { value: "7c", label: "7c — Perda da capacidade de deambular (não anda sem assistência pessoal)" },
+                    { value: "7d", label: "7d — Incapaz de sentar-se sem assistência" },
+                    { value: "7e", label: "7e — Incapaz de sorrir" },
+                    { value: "7f", label: "7f — Incapaz de sustentar a cabeça ereta — demência muito grave" },
+                  ];
+                  const fastAtual = aga.fastEstagio || "";
+                  const grupoAtual = ESTAGIOS_FAST.find(e => e.value === fastAtual);
+                  const numero = fastAtual ? parseInt(fastAtual) : null;
+                  const elegivelPaliativo = fastAtual && ["7a","7b","7c","7d","7e","7f"].includes(fastAtual);
+                  return (
+                    <div>
+                      <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "10px" }}>
+                        Reisberg (1988) — mede o declínio funcional progressivo na Doença de Alzheimer, especialmente útil nos estágios avançados (7) para decisões de cuidados paliativos e elegibilidade para hospice.
+                      </div>
+                      <Field label="Estágio FAST atual">
+                        <select value={fastAtual} onChange={e => set("fastEstagio", e.target.value)}>
+                          <option value="">Selecione...</option>
+                          {ESTAGIOS_FAST.map(e => <option key={e.value} value={e.value}>{e.label}</option>)}
+                        </select>
+                      </Field>
+                      {fastAtual && (
+                        <Alert type={numero <= 3 ? "success" : numero <= 5 ? "info" : numero === 6 ? "warning" : "danger"}>
+                          FAST {fastAtual} — {numero <= 3 ? "Envelhecimento normal / Comprometimento muito leve" : numero === 4 ? "Demência leve" : numero === 5 ? "Demência moderada" : numero === 6 ? "Demência moderadamente grave" : "Demência muito grave"}
+                          {elegivelPaliativo && (
+                            <div style={{ marginTop: "6px", fontWeight: 700 }}>
+                              ⚕ FAST ≥ 7a: critério funcional compatível com elegibilidade para cuidados paliativos/hospice (junto a outros critérios clínicos, ex: complicações no último ano — pneumonia aspirativa, ITU de repetição, sepse, úlceras de pressão estágio 3-4, perda ponderal significativa).
+                            </div>
+                          )}
+                        </Alert>
+                      )}
+                    </div>
+                  );
+                })()}
+              </SectionCard>
+              </>
             )}
 
         {/* NPI — se demência na lista de problemas OU queixa cognitiva presente nesta consulta */}
