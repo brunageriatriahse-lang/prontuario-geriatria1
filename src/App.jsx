@@ -245,13 +245,10 @@ const PREVENCAO_ESPECIFICA = {
   "Osteoporose": ["Densitometria mineral óssea (a cada 1–2 anos)","RX de coluna (se dor ou suspeita de fratura)"],
   "Osteoartrose": ["RX das articulações acometidas","USG articular (se derrame articular)"],
   "Hipotireoidismo": ["TSH e T4 livre (a cada 6–12 meses ou após ajuste de dose)","ECG"],
-  "Transtorno depressivo": ["PHQ-9 (toda consulta)"],
-  "TAG": ["PHQ-9 (toda consulta)"],
   "Insônia": ["Polissonografia (se suspeita de SAOS ou SPI)"],
-  "Síndrome demencial": ["MEEM e/ou MoCA (toda consulta)","RNM de crânio s/ contraste","Vitamina B12, ácido fólico, TSH, VDRL"],
-  "Doença de Alzheimer": ["MEEM e/ou MoCA (toda consulta)","RNM de crânio s/ contraste","Vitamina B12, ácido fólico, TSH, VDRL"],
-  "Doença de Parkinson": ["RNM de crânio s/ contraste","Avaliação neuropsicológica"],
-  "Neoplasia": ["Seguimento com oncologista"],
+  "Síndrome demencial": ["RNM de crânio s/ contraste"],
+  "Doença de Alzheimer": ["RNM de crânio s/ contraste"],
+  "Doença de Parkinson": ["RNM de crânio s/ contraste"],
   "Insuficiência venosa crônica": ["USG Doppler venoso de MMII"],
   "DAOP": ["USG Doppler arterial de MMII","ITB (índice tornozelo-braquial)","ECG"],
   "Catarata": ["Avaliação oftalmológica anual"],
@@ -1274,6 +1271,7 @@ const TABS = [
   { id: "queixas", label: "Queixas", icon: "ti-message" },
   { id: "aga", label: "AGA", icon: "ti-clipboard-heart" },
   { id: "prevencao", label: "Prevenção", icon: "ti-shield-check" },
+  { id: "vacinas", label: "Vacinas", icon: "ti-vaccine" },
   { id: "exame", label: "Exame físico", icon: "ti-stethoscope" },
   { id: "exames", label: "Exames", icon: "ti-flask" },
   { id: "plano", label: "Plano", icon: "ti-target-arrow" },
@@ -2941,8 +2939,9 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "antecedentes" && <AntecedentesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
-      {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} sexoPaciente={patient.ident.sexo || ""} />}
+      {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} sexoPaciente={patient.ident.sexo || ""} patient={patient} />}
       {activeTab === "prevencao" && <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "vacinas" && <VacinasTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} todasConsultas={patient?.consultas || []} />}
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "plano" && <PlanoTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
@@ -2969,6 +2968,33 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
   );
 }
 
+const NIVEIS_ESCOLARIDADE = [
+  { label: "Analfabeto", anos: 0 },
+  { label: "Fundamental I incompleto", anos: 2 },
+  { label: "Fundamental I completo", anos: 4 },
+  { label: "Fundamental II incompleto", anos: 6 },
+  { label: "Fundamental II completo", anos: 8 },
+  { label: "Médio incompleto", anos: 10 },
+  { label: "Médio completo", anos: 11 },
+  { label: "Superior incompleto", anos: 13 },
+  { label: "Superior completo", anos: 16 },
+  { label: "Pós-graduação", anos: 18 },
+];
+
+function anosEscolaridade(nivel) {
+  const item = NIVEIS_ESCOLARIDADE.find(n => n.label === nivel);
+  return item ? item.anos : null;
+}
+
+// Ponto de corte do MEEM por anos de escolaridade (Bertolucci et al., adaptado)
+function cutoffMEEM(anos) {
+  if (anos === null || anos === undefined) return 24;
+  if (anos === 0) return 13;
+  if (anos <= 4) return 18;
+  if (anos <= 11) return 24;
+  return 26;
+}
+
 function IdentTab({ patient, updatePatient }) {
   const i = patient.ident;
   const set = (k, v) => updatePatient(p => ({ ...p, ident: { ...p.ident, [k]: v } }));
@@ -2993,7 +3019,17 @@ function IdentTab({ patient, updatePatient }) {
         <Field label="Naturalidade"><input value={i.natural || ""} onChange={e => set("natural", e.target.value)} /></Field>
         <Field label="Procedência"><input value={i.procedente || ""} onChange={e => set("procedente", e.target.value)} /></Field>
         <Field label="Profissão"><input value={i.profissao || ""} onChange={e => set("profissao", e.target.value)} /></Field>
-        <Field label="Escolaridade"><input value={i.escolaridade || ""} onChange={e => set("escolaridade", e.target.value)} /></Field>
+        <Field label="Escolaridade">
+          <select value={i.escolaridade || ""} onChange={e => set("escolaridade", e.target.value)}>
+            <option value="">Selecione...</option>
+            {NIVEIS_ESCOLARIDADE.map(n => <option key={n.label} value={n.label}>{n.label}</option>)}
+          </select>
+          {i.escolaridade && (
+            <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "3px" }}>
+              ≈ {anosEscolaridade(i.escolaridade)} anos de estudo formal — usado para calibrar ponto de corte do MEEM/MoCA
+            </div>
+          )}
+        </Field>
         <Field label="Estado civil">
           <select value={i.estadoCivil || ""} onChange={e => set("estadoCivil", e.target.value)}>
             <option value="">Selecione</option>
@@ -4182,7 +4218,7 @@ function QueixasTab({ consulta, updateConsulta, patient }) {
   );
 }
 
-function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
+function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
   const aga = consulta.aga || {};
   // Campos que são radio/toggle e devem ser deletados quando desmarcados
   const CAMPOS_RADIO_AGA = new Set([
@@ -4334,7 +4370,8 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
             {/* MEEM estruturado */}
             <SectionCard title="MEEM — Mini Exame do Estado Mental" icon="ti-clipboard-list" defaultOpen={false}>
               {(() => {
-                const escolaridade = consulta._escolaridade || "";
+                const escolaridade = patient?.ident?.escolaridade || "";
+                const anosEscol = anosEscolaridade(escolaridade);
                 const itens = [
                   { key: "meemOrientacaoTempo", label: "Orientação no tempo (ano, estação, mês, dia, dia da semana)", max: 5 },
                   { key: "meemOrientacaoEspaco", label: "Orientação no espaço (país, estado, cidade, local, andar)", max: 5 },
@@ -4351,7 +4388,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
                 const total = itens.reduce((s, it) => s + (parseInt(aga[it.key]) || 0), 0);
                 const maxTotal = 30;
                 // Pontos de corte por escolaridade (Bertolucci et al.)
-                const cutoff = !escolaridade ? 24 : escolaridade.includes("Analfabeto") ? 13 : escolaridade.includes("1") || escolaridade.includes("Fundamental I") ? 18 : escolaridade.includes("Fundamental") || escolaridade.includes("Médio") ? 24 : 26;
+                const cutoff = cutoffMEEM(anosEscol);
                 const alterado = total < cutoff;
                 return (
                   <div>
@@ -4368,7 +4405,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
                       <span style={{ fontWeight: 700, color: alterado ? "var(--color-text-warning)" : "var(--color-text-success)" }}>
                         MEEM Total: {total}/{maxTotal} {alterado ? "⚠ Abaixo do ponto de corte" : "✓ Dentro do esperado"}
                       </span>
-                      <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>Ponto de corte: {cutoff}</span>
+                      <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>Ponto de corte: {cutoff} {escolaridade ? `(${escolaridade}, ~${anosEscol} anos)` : "(escolaridade não informada — usando padrão)"}</span>
                     </div>
                     {total !== (parseInt(aga.meem) || 0) && (
                       <button onClick={() => set("meem", String(total))} style={{ marginTop: "6px", fontSize: "12px" }}>
@@ -4430,9 +4467,10 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
                   { key: "mocaOrientacao", label: "Orientação (data, mês, ano, dia, local, cidade)", max: 6 },
                 ];
                 const total = itensMoca.reduce((s, it) => s + (parseInt(aga[it.key]) || 0), 0);
-                // +1 ponto se escolaridade ≤ 12 anos
-                const escolaridade = consulta._escolaridade || "";
-                const bonus = (!escolaridade || escolaridade.includes("Fundamental") || escolaridade.includes("Médio")) ? 1 : 0;
+                // +1 ponto se escolaridade ≤ 12 anos (correção padrão do MoCA)
+                const escolaridadeMoca = patient?.ident?.escolaridade || "";
+                const anosEscolMoca = anosEscolaridade(escolaridadeMoca);
+                const bonus = (anosEscolMoca === null || anosEscolMoca <= 12) ? 1 : 0;
                 const totalCorrigido = Math.min(total + bonus, 30);
                 const alterado = totalCorrigido < 26;
                 return (
@@ -4466,35 +4504,91 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente }) {
               <SectionCard title="CDR — Clinical Dementia Rating" icon="ti-chart-line" defaultOpen={false}>
                 {(() => {
                   const dominios = [
-                    { key: "cdrMemoria", label: "Memória" },
-                    { key: "cdrOrientacao", label: "Orientação" },
-                    { key: "cdrJulgamento", label: "Julgamento e resolução de problemas" },
-                    { key: "cdrComunidade", label: "Atividades na comunidade" },
-                    { key: "cdrLar", label: "Lar e hobbies" },
-                    { key: "cdrCuidado", label: "Cuidados pessoais" },
+                    {
+                      key: "cdrMemoria", label: "Memória",
+                      opts: [
+                        { value: "0", label: "0 — Sem perda de memória ou esquecimento leve inconsistente" },
+                        { value: "0.5", label: "0,5 — Esquecimento leve consistente; lembrança parcial de eventos" },
+                        { value: "1", label: "1 — Perda moderada, mais acentuada para fatos recentes; interfere em atividades" },
+                        { value: "2", label: "2 — Perda grave; só retém material muito aprendido; esquece rapidamente" },
+                        { value: "3", label: "3 — Perda grave; apenas fragmentos de memória" },
+                      ]
+                    },
+                    {
+                      key: "cdrOrientacao", label: "Orientação",
+                      opts: [
+                        { value: "0", label: "0 — Totalmente orientado" },
+                        { value: "0.5", label: "0,5 — Dificuldade leve com relações temporais" },
+                        { value: "1", label: "1 — Dificuldade moderada com tempo; orientado no exame, mas pode se perder em locais" },
+                        { value: "2", label: "2 — Dificuldade grave com tempo; geralmente desorientado no tempo, frequentemente no local" },
+                        { value: "3", label: "3 — Orientado apenas para pessoa" },
+                      ]
+                    },
+                    {
+                      key: "cdrJulgamento", label: "Julgamento e resolução de problemas",
+                      opts: [
+                        { value: "0", label: "0 — Resolve bem problemas do dia a dia; julgamento bom" },
+                        { value: "0.5", label: "0,5 — Dificuldade leve com problemas complexos" },
+                        { value: "1", label: "1 — Dificuldade moderada; julgamento social geralmente mantido" },
+                        { value: "2", label: "2 — Dificuldade grave; julgamento social comprometido" },
+                        { value: "3", label: "3 — Incapaz de julgar ou resolver problemas" },
+                      ]
+                    },
+                    {
+                      key: "cdrComunidade", label: "Atividades na comunidade",
+                      opts: [
+                        { value: "0", label: "0 — Função independente no nível habitual (trabalho, compras, finanças)" },
+                        { value: "0.5", label: "0,5 — Dificuldade leve nessas atividades" },
+                        { value: "1", label: "1 — Incapaz de funcionar independentemente, mas ainda pode participar de algumas atividades" },
+                        { value: "2", label: "2 — Nenhuma pretensão de função independente fora de casa" },
+                        { value: "3", label: "3 — Nenhuma pretensão de função independente fora de casa" },
+                      ]
+                    },
+                    {
+                      key: "cdrLar", label: "Lar e hobbies",
+                      opts: [
+                        { value: "0", label: "0 — Vida em casa, hobbies e interesses intelectuais bem mantidos" },
+                        { value: "0.5", label: "0,5 — Vida em casa, hobbies levemente prejudicados" },
+                        { value: "1", label: "1 — Prejuízo leve mas definido na função em casa; hobbies mais complexos abandonados" },
+                        { value: "2", label: "2 — Apenas tarefas simples preservadas; interesses muito restritos" },
+                        { value: "3", label: "3 — Nenhuma função significativa em casa" },
+                      ]
+                    },
+                    {
+                      key: "cdrCuidado", label: "Cuidados pessoais",
+                      opts: [
+                        { value: "0", label: "0 — Totalmente capaz de autocuidado" },
+                        { value: "1", label: "1 — Necessita de estímulo ocasional" },
+                        { value: "2", label: "2 — Necessita de ajuda para se vestir, higiene, cuidar de pertences" },
+                        { value: "3", label: "3 — Necessita de muita ajuda para cuidado pessoal; frequentemente incontinente" },
+                      ]
+                    },
                   ];
-                  const opts = [
+                  const optsGlobal = [
                     { value: "0", label: "0 — Normal" },
-                    { value: "0.5", label: "0,5 — Questionável" },
-                    { value: "1", label: "1 — Leve" },
-                    { value: "2", label: "2 — Moderada" },
-                    { value: "3", label: "3 — Grave" },
+                    { value: "0.5", label: "0,5 — Questionável (CCL)" },
+                    { value: "1", label: "1 — Demência leve" },
+                    { value: "2", label: "2 — Demência moderada" },
+                    { value: "3", label: "3 — Demência grave" },
                   ];
                   const cdrGlobal = aga.cdrGlobal || "";
                   return (
                     <div>
+                      <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "10px" }}>
+                        Escala original de Hughes et al. (1982) — cada domínio tem descrição comportamental específica. Selecione a opção mais compatível com o quadro atual do paciente.
+                      </div>
                       {dominios.map(d => (
                         <Field key={d.key} label={d.label}>
                           <select value={aga[d.key] || ""} onChange={e => set(d.key, e.target.value)}>
                             <option value="">Selecione...</option>
-                            {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            {d.opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                           </select>
                         </Field>
                       ))}
-                      <Field label="CDR Global (clínico)">
+                      <Field label="CDR Global (julgamento clínico final)" hint="Ponderado principalmente por memória, com ajuste pelos demais domínios (algoritmo de Hughes)">
                         <select value={cdrGlobal} onChange={e => set("cdrGlobal", e.target.value)}>
                           <option value="">Selecione...</option>
-                          {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          {optsGlobal.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                       </Field>
                       {cdrGlobal && (
@@ -5214,6 +5308,27 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
           );
         })()}
       </SectionCard>
+
+    </div>
+  );
+}
+
+function VacinasTab({ patient, consulta, updateConsulta }) {
+  const vac = consulta.vacinas || {};
+  const setVacField = (nome, campo, v) => {
+    updateConsulta(p => {
+      const vacinaAtual = { ...((p.vacinas || {})[nome] || {}), [campo]: v };
+      const sugestao = VACINA_SUGESTOES[nome] && VACINA_SUGESTOES[nome][campo];
+      const dataValida = v && /^\d{4}-\d{2}-\d{2}$/.test(v) && parseInt(v.slice(0, 4), 10) >= 2015;
+      if (sugestao && dataValida && !vacinaAtual[sugestao.campoDestino]) {
+        const sugerida = addMonths(v, sugestao.meses);
+        if (sugerida) vacinaAtual[sugestao.campoDestino] = sugerida;
+      }
+      return { ...p, vacinas: { ...p.vacinas, [nome]: vacinaAtual } };
+    });
+  };
+  return (
+    <div>
       <SectionCard title="Situação vacinal" icon="ti-vaccine">
         {(() => {
           const hoje = new Date();
@@ -6432,16 +6547,27 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
   // Opções de Solicito (itens 5)
   const SOLICITO_OPTS = [
     { label: "Laboratório", sempre: true },
+    { label: "EAS", sempre: true },
+    { label: "RAC (Relação albumina/creatinina)", sempre: true },
+    { label: "Urocultura", sempre: true },
     { label: "Colonoscopia", sempre: true },
-    { label: "EDA", sempre: true },
-    { label: "PSO (Pesquisa de sangue oculto)", sempre: true },
+    { label: "Endoscopia", sempre: true },
+    { label: "Pesquisa de sangue oculto nas fezes", sempre: true },
     { label: "DMO (Densitometria mineral óssea)", sempre: true },
-    { label: "MMG (Mamografia)", cond: F },
-    { label: "USG mamas", cond: F },
-    { label: "CCO (Citopatológico cervical)", cond: F },
-    { label: "PSA (Antígeno prostático específico)", cond: M },
-    { label: "TC de tórax de baixa dose", cond: tabagista },
-    { label: "USG de aorta abdominal", cond: tabagista },
+    { label: "Mamografia", cond: F },
+    { label: "Citologia oncótica", cond: F },
+    { label: "PSA T e L", cond: M },
+    { label: "ECOTT", sempre: true },
+    { label: "MAPA 24h", sempre: true },
+    { label: "ECG", sempre: true },
+    { label: "BNP", sempre: true },
+    { label: "Teste ergométrico", sempre: true },
+    { label: "Cintilografia miocárdica com estresse farmacológico", sempre: true },
+    { label: "Polissonografia", sempre: true },
+    { label: "RX tórax", sempre: true },
+    { label: "TC tórax", sempre: true },
+    { label: "RNM crânio s/c", sempre: true },
+    { label: "Espirometria", sempre: true },
   ].filter(o => o.sempre || o.cond);
 
   // Opções de Orientações (item 6)
