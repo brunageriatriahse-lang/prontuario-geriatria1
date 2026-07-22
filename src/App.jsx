@@ -850,7 +850,7 @@ const DOSES_MAXIMAS_DIARIAS = [
   { nome: "Haloperidol", regex: /haloperidol/i, doseUnitariaMg: 1, maxMg: 100, maxMgIdoso: 3, obs: "Risco de EPS e prolongamento de QT — dose mínima em idosos" },
   { nome: "Mirtazapina", regex: /mirtazapina/i, doseUnitariaMg: 15, maxMg: 45, maxMgIdoso: 45, obs: "" },
   { nome: "Escitalopram", regex: /escitalopram/i, doseUnitariaMg: 10, maxMg: 20, maxMgIdoso: 10, obs: "Máximo 10mg/dia em idosos — risco de prolongamento de QT (FDA)" },
-  { nome: "Citalopram", regex: /citalopram/i, doseUnitariaMg: 20, maxMg: 40, maxMgIdoso: 20, obs: "Máximo 20mg/dia em idosos — risco de prolongamento de QT (FDA)" },
+  { nome: "Citalopram", regex: /(?<!es)citalopram/i, doseUnitariaMg: 20, maxMg: 40, maxMgIdoso: 20, obs: "Máximo 20mg/dia em idosos — risco de prolongamento de QT (FDA)" },
   { nome: "Zolpidem", regex: /zolpidem/i, doseUnitariaMg: 10, maxMg: 10, maxMgIdoso: 5, obs: "Beers 2023 — evitar; se necessário, máximo 5mg" },
   { nome: "Clonazepam", regex: /clonazepam/i, doseUnitariaMg: 0.5, maxMg: 4, maxMgIdoso: 1, obs: "Beers 2023 — evitar; risco de queda, sedação, dependência" },
   { nome: "Alprazolam", regex: /alprazolam/i, doseUnitariaMg: 0.25, maxMg: 4, maxMgIdoso: 1, obs: "Beers 2023 — evitar; risco de queda e dependência" },
@@ -3934,6 +3934,34 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   );
 }
 
+// ============================================================
+// DETECÇÃO DE NEGAÇÃO — evita falsos positivos em texto livre
+// ============================================================
+// Verifica se um termo aparece no texto SEM estar negado (ex: "nega tontura", "sem febre")
+function temSemNegacao(texto, termo) {
+  if (!texto) return false;
+  const lower = texto.toLowerCase();
+  const termoLower = termo.toLowerCase();
+  // Divide o texto em cláusulas — a negação não deve "vazar" através de conjunções
+  // adversativas ou verbos de afirmação para outra parte da frase
+  const clausulas = lower.split(/[.;]|(?:\bmas\b)|(?:\bporém\b)|(?:\bporem\b)|(?:\btodavia\b)|(?:\bcontudo\b)|(?:\bentretanto\b)|(?:\brefere\b)|(?:\bapresenta\b)|(?:\brelata\b)|(?:\bqueixa-se de\b)|(?:\bqueixa se de\b)/);
+
+  for (const clausula of clausulas) {
+    if (!clausula.includes(termoLower)) continue;
+    // Dentro da cláusula, verifica se há palavra de negação antes do termo
+    const idxTermo = clausula.indexOf(termoLower);
+    const antes = clausula.slice(0, idxTermo);
+    const negado = /\b(nega|negando|sem|ausência de|ausencia de|não apresenta|nao apresenta|não tem|nao tem|não refere|nao refere|nunca teve|negativo para|exclui|descarta)\s*(?:\w+\s+){0,3}$/.test(antes);
+    if (!negado) return true; // achou ocorrência não negada em alguma cláusula
+  }
+  return false;
+}
+
+// Verifica se QUALQUER um dos termos aparece sem negação
+function temAlgumSemNegacao(texto, ...termos) {
+  return termos.some(t => temSemNegacao(texto, t));
+}
+
 function gerarHipotesesDiagnosticas(consulta, patient) {
   const queixas = (consulta.queixas || "").toLowerCase();
   const labs = (consulta.labsTexto || "").toLowerCase();
@@ -3948,7 +3976,7 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
   const hipoteses = [];
 
   function tem(...termos) {
-    return termos.some(t => queixas.includes(t) || labs.includes(t));
+    return termos.some(t => temSemNegacao(consulta.queixas || "", t) || labs.includes(t));
   }
   function temMed(...termos) { return termos.some(t => meds.includes(t)); }
   function temProb(...termos) { return termos.some(t => prob[t]); }
@@ -4149,6 +4177,76 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
     hipoteses.push({ diag: "Polimiosite / Polimialgia reumática", prob: "Baixa", cor: "info", motivo: "Fraqueza proximal + dor — verificar CPK, VHS" });
   }
 
+  // ============================================================
+  // PONDERAÇÃO POR COMBINAÇÃO DE SINTOMAS
+  // ============================================================
+  // Quando múltiplos sintomas relacionados co-ocorrem na mesma queixa,
+  // reforça hipóteses específicas em vez de apenas somar hipóteses isoladas de cada termo.
+  const combinacoes = [
+    {
+      // Tontura + palpitação → prioriza causa arrítmica
+      condicao: tem("tontura", "tonto") && tem("palpitação", "palpitacao", "coração acelerado", "coracao acelerado"),
+      diagPromover: "Fibrilação atrial / Flutter",
+      novaProb: "Alta",
+      motivoExtra: " — combinação com palpitação reforça hipótese arrítmica",
+    },
+    {
+      // Tontura + síncope → prioriza causa cardiovascular grave
+      condicao: tem("tontura") && tem("síncope", "sincope", "desmaio", "apagou"),
+      diagPromover: "Hipotensão ortostática",
+      novaProb: "Alta",
+      motivoExtra: " — combinação com síncope aumenta gravidade da investigação",
+    },
+    {
+      // Dispneia + edema → prioriza IC
+      condicao: tem("dispneia", "falta de ar") && tem("edema", "inchaço", "inchaco"),
+      diagPromover: "Descompensação de IC",
+      novaProb: "Alta",
+      motivoExtra: " — combinação com edema reforça quadro de congestão",
+    },
+    {
+      // Dispneia + dor torácica → prioriza síndrome coronariana
+      condicao: tem("dispneia") && tem("dor no peito", "dor torácica", "dor toracica", "precordial"),
+      diagPromover: "Síndrome coronariana aguda",
+      novaProb: "Alta",
+      motivoExtra: " — combinação com dor torácica é bandeira vermelha",
+    },
+    {
+      // Cefaleia + alteração visual → prioriza urgência
+      condicao: tem("cefaleia", "dor de cabeça") && tem("visão", "visao", "enxergar"),
+      diagPromover: "Arterite temporal / Glaucoma agudo",
+      novaProb: "Alta",
+      motivoExtra: " — combinação com alteração visual é urgência oftalmo/neurológica",
+    },
+    {
+      // Perda de peso + febre → prioriza investigação oncológica/infecciosa
+      condicao: tem("perda de peso", "emagrecimento") && tem("febre", "febril"),
+      diagPromover: "Investigar neoplasia oculta",
+      novaProb: "Alta",
+      motivoExtra: " — combinação com febre amplia diferencial para infecção crônica/neoplasia",
+    },
+    {
+      // Confusão + febre → prioriza delirium infeccioso
+      condicao: tem("confusão", "confusao", "desorientação", "desorientacao") && tem("febre", "febril"),
+      diagPromover: "Delirium — buscar causa precipitante",
+      novaProb: "Alta",
+      motivoExtra: " — febre associada aponta fortemente para causa infecciosa do delirium",
+    },
+  ];
+
+  combinacoes.forEach(c => {
+    if (!c.condicao) return;
+    const idx = hipoteses.findIndex(h => h.diag === c.diagPromover);
+    if (idx >= 0) {
+      hipoteses[idx] = {
+        ...hipoteses[idx],
+        prob: c.novaProb,
+        cor: c.novaProb === "Alta" ? "danger" : hipoteses[idx].cor,
+        motivo: hipoteses[idx].motivo + c.motivoExtra,
+      };
+    }
+  });
+
   // Deduplicar por diagnóstico
   const vistos = new Set();
   return hipoteses.filter(h => {
@@ -4164,18 +4262,61 @@ function sugerirExamePorSintomaTempo(consulta) {
   const queixas = (consulta.queixas || "").toLowerCase();
   const sugestoes = [];
 
-  // Extrai tempo de evolução mencionado (dias/semanas/meses/anos)
+  // Extrai tempo de evolução mencionado (dias/semanas/meses/anos) — reconhece números
+  // e também expressões em palavras/aproximadas comuns na linguagem clínica
   function extrairTempo(termoBusca) {
-    const regex = new RegExp("(?:" + termoBusca + ")[^.]{0,60}?(\\d+)\\s*(dia|dias|semana|semanas|m[êe]s|meses|ano|anos)", "i");
-    const m = queixas.match(regex);
-    if (!m || !m[1] || !m[2]) return null;
-    const valor = parseInt(m[1]);
-    const unidade = m[2].toLowerCase();
-    let dias = valor;
-    if (unidade.startsWith("semana")) dias = valor * 7;
-    else if (unidade.startsWith("m")) dias = valor * 30;
-    else if (unidade.startsWith("ano")) dias = valor * 365;
-    return { valor, unidade, dias };
+    const regexBase = "(?:" + termoBusca + ")[^.]{0,60}?";
+
+    // 1. Padrão numérico direto: "3 dias", "2 meses"
+    const regexNumerico = new RegExp(regexBase + "(\\d+)\\s*(dia|dias|semana|semanas|m[êe]s|meses|ano|anos)", "i");
+    const mNum = queixas.match(regexNumerico);
+    if (mNum && mNum[1] && mNum[2]) {
+      const valor = parseInt(mNum[1]);
+      const unidade = mNum[2].toLowerCase();
+      let dias = valor;
+      if (unidade.startsWith("semana")) dias = valor * 7;
+      else if (unidade.startsWith("m")) dias = valor * 30;
+      else if (unidade.startsWith("ano")) dias = valor * 365;
+      return { valor, unidade, dias };
+    }
+
+    // 2. Números por extenso: "um mês", "uma semana", "dois dias"
+    const numerosExtenso = { "um":1,"uma":1,"dois":2,"duas":2,"três":3,"tres":3,"quatro":4,"cinco":5,"seis":6,"sete":7,"oito":8,"dez":10 };
+    const regexExtenso = new RegExp(regexBase + "(um|uma|dois|duas|três|tres|quatro|cinco|seis|sete|oito|dez)\\s*(dia|dias|semana|semanas|m[êe]s|meses|ano|anos)", "i");
+    const mExt = queixas.match(regexExtenso);
+    if (mExt) {
+      const valor = numerosExtenso[mExt[1].toLowerCase()] || 1;
+      const unidade = mExt[2].toLowerCase();
+      let dias = valor;
+      if (unidade.startsWith("semana")) dias = valor * 7;
+      else if (unidade.startsWith("m")) dias = valor * 30;
+      else if (unidade.startsWith("ano")) dias = valor * 365;
+      return { valor, unidade, dias };
+    }
+
+    // 3. Expressões aproximadas: "desde ontem", "recentemente", "há alguns dias", "faz tempo"
+    const regexOntem = new RegExp(regexBase + "(desde ontem|ontem)", "i");
+    if (regexOntem.test(queixas)) return { valor: 1, unidade: "dia", dias: 1, aproximado: true };
+
+    const regexHoje = new RegExp(regexBase + "(hoje|hoje pela manh[ãa]|neste momento)", "i");
+    if (regexHoje.test(queixas)) return { valor: 0, unidade: "dia", dias: 0, aproximado: true };
+
+    const regexAlgunsDias = new RegExp(regexBase + "(alguns dias|poucos dias)", "i");
+    if (regexAlgunsDias.test(queixas)) return { valor: 3, unidade: "dias", dias: 3, aproximado: true };
+
+    const regexRecente = new RegExp(regexBase + "(recentemente|recente|há pouco|ha pouco)", "i");
+    if (regexRecente.test(queixas)) return { valor: 5, unidade: "dias", dias: 5, aproximado: true };
+
+    const regexFazTempo = new RegExp(regexBase + "(faz tempo|há tempos|ha tempos|de longa data|há muito tempo|ha muito tempo|cr[ôo]nic[ao])", "i");
+    if (regexFazTempo.test(queixas)) return { valor: 6, unidade: "meses", dias: 180, aproximado: true };
+
+    const regexSemanaPassada = new RegExp(regexBase + "(semana passada)", "i");
+    if (regexSemanaPassada.test(queixas)) return { valor: 1, unidade: "semana", dias: 7, aproximado: true };
+
+    const regexMesPassado = new RegExp(regexBase + "(mês passado|mes passado)", "i");
+    if (regexMesPassado.test(queixas)) return { valor: 1, unidade: "mês", dias: 30, aproximado: true };
+
+    return null;
   }
 
   // Cefaleia
@@ -4183,7 +4324,7 @@ function sugerirExamePorSintomaTempo(consulta) {
     const tempo = extrairTempo("cefaleia|dor de cabeça");
     if (tempo && tempo.dias <= 7) {
       sugestoes.push({ sintoma: "Cefaleia aguda (< 7 dias)", exame: "TC de crânio sem contraste", motivo: "Cefaleia de início recente em idoso — excluir causa estrutural/hemorrágica antes de tratamento sintomático" });
-    } else if (tempo && tempo.dias > 30) {
+    } else if (tempo && tempo.dias >= 30) {
       sugestoes.push({ sintoma: `Cefaleia crônica (${tempo.valor} ${tempo.unidade})`, exame: "VHS/PCR + RNM de crânio se sinais de alarme", motivo: "Cefaleia crônica em idoso — rastrear arterite de células gigantes e causas estruturais" });
     }
   }
@@ -4193,7 +4334,7 @@ function sugerirExamePorSintomaTempo(consulta) {
     const tempo = extrairTempo("dispneia|falta de ar");
     if (tempo && tempo.dias <= 3) {
       sugestoes.push({ sintoma: "Dispneia aguda (≤ 3 dias)", exame: "ECG + RX tórax + BNP/troponina se disponível", motivo: "Dispneia aguda — excluir síndrome coronariana, IC descompensada ou TEP" });
-    } else if (tempo && tempo.dias > 30) {
+    } else if (tempo && tempo.dias >= 30) {
       sugestoes.push({ sintoma: `Dispneia crônica (${tempo.valor} ${tempo.unidade})`, exame: "Ecocardiograma + espirometria", motivo: "Dispneia crônica — diferenciar causa cardíaca vs. pulmonar" });
     }
   }
@@ -4203,7 +4344,7 @@ function sugerirExamePorSintomaTempo(consulta) {
     const tempo = extrairTempo("dor abdominal|dor na barriga");
     if (tempo && tempo.dias <= 2) {
       sugestoes.push({ sintoma: "Dor abdominal aguda (≤ 2 dias)", exame: "USG de abdome + hemograma + PCR", motivo: "Dor abdominal aguda em idoso — maior risco de abdome cirúrgico, menor sensibilidade ao exame físico clássico" });
-    } else if (tempo && tempo.dias > 30) {
+    } else if (tempo && tempo.dias >= 30) {
       sugestoes.push({ sintoma: `Dor abdominal crônica (${tempo.valor} ${tempo.unidade})`, exame: "USG abdome + EDA/colonoscopia conforme localização", motivo: "Dor abdominal crônica — investigar causa estrutural, incluindo rastreio oncológico se indicado" });
     }
   }
@@ -4213,7 +4354,7 @@ function sugerirExamePorSintomaTempo(consulta) {
     const tempo = extrairTempo("tontura|vertigem");
     if (tempo && tempo.dias <= 7) {
       sugestoes.push({ sintoma: "Tontura aguda (≤ 7 dias)", exame: "PA ortostática + ECG + glicemia capilar", motivo: "Tontura aguda — descartar causa cardiovascular ou metabólica antes de rotular como labiríntica" });
-    } else if (tempo && tempo.dias > 30) {
+    } else if (tempo && tempo.dias >= 30) {
       sugestoes.push({ sintoma: `Tontura crônica (${tempo.valor} ${tempo.unidade})`, exame: "Avaliação otoneurológica + revisão de medicações", motivo: "Tontura crônica — frequentemente multifatorial e relacionada a polifarmácia em idosos" });
     }
   }
@@ -4231,7 +4372,7 @@ function sugerirExamePorSintomaTempo(consulta) {
   // Fadiga/cansaço
   if ((queixas.includes("fadiga") || queixas.includes("cansaço")) && !queixas.includes("dispneia")) {
     const tempo = extrairTempo("fadiga|cansaço");
-    if (tempo && tempo.dias > 30) {
+    if (tempo && tempo.dias >= 30) {
       sugestoes.push({ sintoma: `Fadiga crônica (${tempo.valor} ${tempo.unidade})`, exame: "Hemograma + TSH + B12/folato + glicemia + função renal/hepática", motivo: "Fadiga crônica — painel básico custo-efetivo para causas reversíveis mais comuns" });
     }
   }
@@ -5883,7 +6024,7 @@ function detectarPadroesMultissistemicos(consulta, patient) {
   const aga = consulta.aga || {};
   const queixas = (consulta.queixas || "").toLowerCase();
 
-  function tem(...termos) { return termos.some(t => labs.includes(t) || queixas.includes(t)); }
+  function tem(...termos) { return termos.some(t => labs.includes(t) || temSemNegacao(consulta.queixas || "", t)); }
   function temValorBaixo(regex, limite) {
     const m = labs.match(regex);
     if (!m) return false;
@@ -7848,6 +7989,7 @@ function GraficoEvolucao({ patient }) {
 // SUGESTÕES DE CONDUTA — baseadas nos dados da consulta
 // ============================================================
 function SugestoesCondutaIA({ patient, consulta, onClose }) {
+  const [expandidoPorque, setExpandidoPorque] = useState({});
   const i = patient.ident;
   const idade = calcIdade(i.dn);
   const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
@@ -7939,7 +8081,8 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   // Vitamina D
   const mVitD2 = labs.match(/(?:vit(?:amina)?\s*d|25-oh|calcidiol)[^\d]*(\d+)/i);
   const vitD2 = mVitD2 ? parseInt(mVitD2[1]) : null;
-  if (vitD2 !== null && vitD2 < 30) sugestoes.push({ cat: "Vitamina D", items: [
+  const jaTratandoVitD = /colecalciferol|vitamina d/i.test((consulta.plano || {}).ajuste || "");
+  if (vitD2 !== null && vitD2 < 30 && !jaTratandoVitD) sugestoes.push({ cat: "Vitamina D", items: [
     `25-OH vitamina D ${vitD2} ng/mL — ${vitD2 < 20 ? "deficiência" : "insuficiência"}`,
     vitD2 < 20 ? "Repor: colecalciferol 50.000 UI/semana por 8 semanas" : "Repor: colecalciferol 10.000–14.000 UI/semana",
     "Manter manutenção: 10.000 UI/semana após correção",
@@ -7950,7 +8093,8 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   const mHb2 = labs.match(/(?:hb|hemoglobina|hgb)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)(?!\s*a1c|\s*glicada)/i);
   const hb2 = mHb2 ? parseFloat(mHb2[1].replace(",",".")) : null;
   const sexoPac2 = patient?.ident?.sexo || "";
-  if (hb2 && hb2 < (sexoPac2 === "F" ? 12 : 13)) sugestoes.push({ cat: "Anemia", items: [
+  const jaInvestigandoAnemia = /ferritina|reticuloc|investiga.{0,15}anemia|ferro s[ée]rico/i.test((consulta.plano || {}).solicito || "");
+  if (hb2 && hb2 < (sexoPac2 === "F" ? 12 : 13) && !jaInvestigandoAnemia) sugestoes.push({ cat: "Anemia", items: [
     `Hb ${hb2} g/dL — anemia ${hb2 < 8 ? "grave" : hb2 < 10 ? "moderada" : "leve"}`,
     "Solicitar: ferritina, ferro sérico, TIBC, reticulócitos, B12, folato",
     hb2 < 10 ? "Investigar sangramento oculto (PSO, EDA, colonoscopia)" : "Monitorar evolução",
@@ -7960,7 +8104,8 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   // Hiponatremia
   const mNa2 = labs.match(/(?:na|s[oó]dio|na\+)(?:\s*[:=]?\s*)(\d+)/i);
   const na2 = mNa2 ? parseInt(mNa2[1]) : null;
-  if (na2 && na2 < 135) sugestoes.push({ cat: "Hiponatremia", items: [
+  const jaInvestigandoNa = /osmolalidade|s[oó]dio urin[aá]rio/i.test((consulta.plano || {}).solicito || "");
+  if (na2 && na2 < 135 && !jaInvestigandoNa) sugestoes.push({ cat: "Hiponatremia", items: [
     `Sódio ${na2} mEq/L — ${na2 < 125 ? "grave" : na2 < 130 ? "moderada" : "leve"}`,
     "Investigar: osmolalidade sérica e urinária, sódio urinário, TSH, função adrenal",
     "Revisar diuréticos tiazídicos, ISRS, desmopressina",
@@ -7977,14 +8122,30 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
     ]});
   }
 
-  // GAP TERAPÊUTICO — FA sem anticoagulante
+  // GAP TERAPÊUTICO — FA sem anticoagulante (verifica contraindicação antes de alertar)
+  const temContraindicacaoAnticoagulacao = (() => {
+    const textoCompleto = ((consulta.antecedentes || {}).cirurgias || "") + " " +
+      ((consulta.antecedentes || {}).internamentos || "") + " " +
+      (consulta.queixas || "") + " " +
+      (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome).join(" ");
+    return temAlgumSemNegacao(textoCompleto, "sangramento ativo", "hemorragia ativa", "sangramento digestivo ativo",
+      "hemorragia digestiva ativa", "AVC hemorrágico", "trombocitopenia grave", "varizes esofágicas sangrantes");
+  })();
   if ((ativos.includes("FA") || ativos.includes("Flutter atrial")) && !meds.toLowerCase().match(/varfarina|warfarina|acenocumarol|rivaroxabana|apixabana|dabigatrana|edoxabana/)) {
-    sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: FA sem anticoagulante", items: [
-      "Fibrilação/Flutter atrial registrado sem anticoagulante oral identificado",
-      "Calcular CHA₂DS₂-VASc (disponível na aba Lista de Problemas) para confirmar indicação",
-      "Se indicado e sem contraindicação: considerar apixabana, rivaroxabana ou varfarina",
-      "Se não anticoagulado por decisão clínica (ex: sangramento prévio), documentar motivo explicitamente",
-    ]});
+    if (temContraindicacaoAnticoagulacao) {
+      sugestoes.push({ cat: "FA sem anticoagulante — possível contraindicação identificada", items: [
+        "Fibrilação/Flutter atrial sem anticoagulante, MAS foi identificado texto sugestivo de contraindicação (sangramento/hemorragia) nos antecedentes ou queixas",
+        "Confirmar se a não-anticoagulação é decisão clínica deliberada — se sim, apenas documentar formalmente",
+        "Se a contraindicação não for mais atual, reavaliar anticoagulação com HAS-BLED",
+      ]});
+    } else {
+      sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: FA sem anticoagulante", items: [
+        "Fibrilação/Flutter atrial registrado sem anticoagulante oral identificado",
+        "Calcular CHA₂DS₂-VASc (disponível na aba Lista de Problemas) para confirmar indicação",
+        "Se indicado e sem contraindicação: considerar apixabana, rivaroxabana ou varfarina",
+        "Se não anticoagulado por decisão clínica (ex: sangramento prévio), documentar motivo explicitamente",
+      ]});
+    }
   }
 
   // GAP TERAPÊUTICO — DAC sem antiagregante/estatina
@@ -8064,6 +8225,21 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
     ]});
   }
 
+  // ============================================================
+  // PRIORIZAÇÃO POR GRAVIDADE — ordena sugestões da mais crítica à menos urgente
+  // ============================================================
+  function classificarGravidade(cat) {
+    const catLower = cat.toLowerCase();
+    // Nível 1 — Crítico/urgente
+    if (/gap terapêutico|⚠|grave|hiponatremia|hipercalemia|delirium|urgência|urgencia|contraindicad/i.test(cat)) return 1;
+    // Nível 2 — Importante, requer ação na consulta
+    if (/hipertireoidismo|hipotireoidismo|anemia|desnutrição|desnutricao|sarcopenia|fragilidade/i.test(cat)) return 2;
+    // Nível 3 — Recomendação de rotina/manutenção
+    return 3;
+  }
+
+  sugestoes.sort((a, b) => classificarGravidade(a.cat) - classificarGravidade(b.cat));
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "24px 12px", overflowY: "auto" }}>
       <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "680px", padding: "24px" }}>
@@ -8089,9 +8265,20 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
         <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
           {sugestoes.map((s, i) => (
             <div key={i} style={{ marginBottom: "12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", overflow: "hidden" }}>
-              <div style={{ background: "var(--color-background-info)", padding: "8px 12px", fontWeight: 600, fontSize: "13px", color: "var(--color-text-info)" }}>
-                {s.cat}
+              <div style={{ background: "var(--color-background-info)", padding: "8px 12px", fontWeight: 600, fontSize: "13px", color: "var(--color-text-info)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>{s.cat}</span>
+                <button
+                  onClick={() => setExpandidoPorque(prev => ({ ...prev, [i]: !prev[i] }))}
+                  style={{ fontSize: "10px", padding: "2px 8px", background: "transparent", border: "0.5px solid var(--color-border-info)", color: "var(--color-text-info)" }}
+                >
+                  {expandidoPorque[i] ? "Ocultar dados" : "Por quê?"}
+                </button>
               </div>
+              {expandidoPorque[i] && (
+                <div style={{ padding: "8px 12px", background: "var(--color-background-secondary)", fontSize: "11px", color: "var(--color-text-tertiary)", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                  <strong>Dados usados nesta análise:</strong> idade {idade ?? "não informada"}, {frailClass.toLowerCase()} (FRAIL {frailScore}/5), diagnósticos ativos: {[...ativos, ...customAtivos.map(c => c.nome)].join(", ") || "nenhum"}, medicações em uso: {numMeds}. Cada item acima traz o valor específico (exame/queixa) que motivou a sugestão.
+                </div>
+              )}
               <div style={{ padding: "10px 12px" }}>
                 {s.items.map((item, j) => (
                   <div key={j} style={{ fontSize: "13px", padding: "3px 0", display: "flex", gap: "8px" }}>
