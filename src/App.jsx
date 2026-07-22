@@ -2258,7 +2258,7 @@ export default function App() {
 
   return (
     <>
-    <div id="app-main-content" style={{ width: "100%" }}>
+    <div id="app-main-content" style={{ width: "100%", zoom: 0.88 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem", flexWrap: "wrap", gap: "8px" }}>
         <div>
           <h1 style={{ margin: 0 }}>{ambulatorio === 'cempre' ? 'AMBULATÓRIO DE GERIATRIA — CEMPRE' : 'AMBULATÓRIO DE GERIATRIA — HSE'}</h1>
@@ -2920,16 +2920,16 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
           <i className="ti ti-emergency-bed" aria-hidden="true"></i>Modo Emergência/Intercorrência
         </button>
       </div>
-      <div style={{ display: "flex", gap: "6px", overflowX: "auto", paddingBottom: "8px", marginBottom: "14px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", paddingBottom: "8px", marginBottom: "14px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-            whiteSpace: "nowrap", fontSize: "13px", padding: "6px 12px",
+            whiteSpace: "nowrap", fontSize: "11px", padding: "4px 8px",
             border: activeTab === t.id ? "0.5px solid var(--color-border-info)" : "0.5px solid transparent",
             background: activeTab === t.id ? "var(--color-background-info)" : "transparent",
             color: activeTab === t.id ? "var(--color-text-info)" : "var(--color-text-secondary)",
-            borderRadius: "8px", display: "flex", alignItems: "center", gap: "5px"
+            borderRadius: "6px", display: "flex", alignItems: "center", gap: "4px"
           }}>
-            <i className={"ti " + t.icon} aria-hidden="true" style={{ fontSize: "14px" }}></i>{t.label}
+            <i className={"ti " + t.icon} aria-hidden="true" style={{ fontSize: "12px" }}></i>{t.label}
           </button>
         ))}
       </div>
