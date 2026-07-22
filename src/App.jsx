@@ -5917,6 +5917,8 @@ function detectarPadroesMultissistemicos(consulta, patient) {
 
   // Síndrome metabólica: obesidade + HAS + DM2 + dislipidemia
   const temObesidade = tem("obesidade", "sobrepeso") || prob["Obesidade"];
+  const temHAS = prob["HAS"];
+  const temDM2 = prob["DM2"];
   const criteriosMetabolicos = [temObesidade, temHAS, temDM2, temDislipidemia].filter(Boolean).length;
   if (criteriosMetabolicos >= 3) {
     padroes.push({
