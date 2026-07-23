@@ -1,8 +1,71 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, Component } from 'react';
 import { listPatients, savePatient, deletePatient as apiDeletePatient, purgePatient, listarFavoritosMedicacoes, salvarFavoritoMedicacao, removerFavoritoMedicacao } from './api.js';
 import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
 import { preencherExcel } from './excelPreencher.js';
+
+// ============================================================
+// ERROR BOUNDARY — captura erros de renderização sem derrubar
+// toda a tela; mostra mensagem amigável e permite continuar usando
+// o resto do prontuário (ex: trocar de aba, voltar à lista).
+// ============================================================
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { temErro: false, erro: null, info: null };
+  }
+
+  static getDerivedStateFromError(erro) {
+    return { temErro: true, erro };
+  }
+
+  componentDidCatch(erro, info) {
+    console.error("ErrorBoundary capturou um erro:", erro, info);
+    this.setState({ info });
+  }
+
+  render() {
+    if (this.state.temErro) {
+      return (
+        <div style={{
+          margin: "16px 0", padding: "20px", borderRadius: "12px",
+          border: "1px solid var(--color-border-danger, #f5c2c7)",
+          background: "var(--color-background-danger, #f8d7da)",
+          color: "var(--color-text-danger, #842029)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 700, fontSize: "15px", marginBottom: "8px" }}>
+            <i className="ti ti-alert-triangle" aria-hidden="true"></i>
+            Ocorreu um erro nesta seção
+          </div>
+          <div style={{ fontSize: "13px", marginBottom: "12px" }}>
+            Uma parte do prontuário encontrou um problema inesperado e não pôde ser exibida.
+            O restante do sistema continua funcionando normalmente — seus dados já salvos não foram afetados.
+          </div>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              onClick={() => this.setState({ temErro: false, erro: null, info: null })}
+              style={{ fontSize: "13px", padding: "6px 14px" }}
+            >
+              <i className="ti ti-refresh" aria-hidden="true"></i> Tentar novamente
+            </button>
+            {this.props.onVoltar && (
+              <button onClick={this.props.onVoltar} style={{ fontSize: "13px", padding: "6px 14px" }}>
+                Voltar à lista de pacientes
+              </button>
+            )}
+          </div>
+          {this.state.erro && (
+            <details style={{ marginTop: "12px", fontSize: "11px", color: "var(--color-text-tertiary, #6c757d)" }}>
+              <summary style={{ cursor: "pointer" }}>Detalhes técnicos (para reportar o problema)</summary>
+              <pre style={{ whiteSpace: "pre-wrap", marginTop: "6px" }}>{String(this.state.erro?.message || this.state.erro)}</pre>
+            </details>
+          )}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ============================================================
 // GOOGLE DRIVE OAUTH2 — Upload direto sem intermediário
@@ -1037,6 +1100,28 @@ function RadioToggle({ value, onChange, options }) {
 }
 
 
+// ============================================================
+// VALIDAÇÃO DE TIPOS EM RUNTIME — checagens leves nos pontos de
+// entrada de dados mais propensos a erro (string vs array, etc.)
+// ============================================================
+function garantirString(valor, fallback = "") {
+  if (typeof valor === "string") return valor;
+  if (Array.isArray(valor)) return valor.join("\n"); // recupera de forma segura se vier array por engano
+  if (valor === null || valor === undefined) return fallback;
+  return String(valor);
+}
+
+function garantirArray(valor, fallback = []) {
+  if (Array.isArray(valor)) return valor;
+  if (typeof valor === "string" && valor.trim()) return valor.split("\n").filter(l => l.trim());
+  return fallback;
+}
+
+function garantirObjeto(valor, fallback = {}) {
+  if (valor && typeof valor === "object" && !Array.isArray(valor)) return valor;
+  return fallback;
+}
+
 function calcIMC(peso, altura) {
   const p = parseFloat(peso);
   const a = parseFloat(altura);
@@ -1186,6 +1271,67 @@ const EXAMES_LABORATORIAIS_PADRAO = [
   "PSA LIVRE E TOTAL","SUMÁRIO DE URINA","RELAÇÃO ALBUMINA CREATININA - URINA ISOLADA","UROCULTURA"
 ];
 
+// ============================================================
+// VERSIONAMENTO DE SCHEMA — evita que consultas antigas quebrem
+// quando novos campos/estruturas são adicionados ao sistema.
+// ============================================================
+// Aumentar SCHEMA_VERSION_ATUAL sempre que um campo mudar de tipo/formato
+// (ex: string → array) e adicionar uma migração correspondente abaixo.
+const SCHEMA_VERSION_ATUAL = 2;
+
+// Cada migração recebe a consulta e retorna a versão corrigida.
+// Migrações são aplicadas em sequência a partir da versão salva nos dados.
+const MIGRACOES_CONSULTA = {
+  // v0/v1 → v2: rastreioGeral/rastreioEspecifico passaram de "registro único"
+  // para "array de registros" (permitindo múltiplos exames do mesmo tipo)
+  2: (c) => {
+    function paraArray(obj) {
+      if (!obj) return obj;
+      const novo = {};
+      Object.keys(obj).forEach(k => {
+        const v = obj[k];
+        novo[k] = Array.isArray(v) ? v : (v && (v.data || v.resultado) ? [{ id: uid(), ...v }] : []);
+      });
+      return novo;
+    }
+    if (c.rastreioGeral && Object.values(c.rastreioGeral).some(v => v && !Array.isArray(v))) {
+      c.rastreioGeral = paraArray(c.rastreioGeral);
+    }
+    if (c.rastreioEspecifico && Object.values(c.rastreioEspecifico).some(v => v && !Array.isArray(v))) {
+      c.rastreioEspecifico = paraArray(c.rastreioEspecifico);
+    }
+    return c;
+  },
+};
+
+// Aplica todas as migrações pendentes numa consulta, na ordem, e atualiza a versão salva.
+function migrarConsulta(consulta) {
+  if (!consulta || typeof consulta !== 'object') return consulta;
+  let versaoAtual = consulta._schemaVersion || 0;
+  let c = consulta;
+  while (versaoAtual < SCHEMA_VERSION_ATUAL) {
+    versaoAtual++;
+    const migracao = MIGRACOES_CONSULTA[versaoAtual];
+    if (migracao) {
+      try {
+        c = migracao(c);
+      } catch (e) {
+        console.error(`Falha na migração de schema v${versaoAtual}`, e);
+      }
+    }
+  }
+  c._schemaVersion = SCHEMA_VERSION_ATUAL;
+  return c;
+}
+
+// Aplica a migração em todas as consultas de um paciente
+function migrarPaciente(patient) {
+  if (!patient || !Array.isArray(patient.consultas)) return patient;
+  const precisaMigrar = patient.consultas.some(c => (c._schemaVersion || 0) < SCHEMA_VERSION_ATUAL);
+  if (!precisaMigrar) return patient;
+  return { ...patient, consultas: patient.consultas.map(migrarConsulta) };
+}
+
 function emptyConsulta(base) {
   if (base) {
     const copy = JSON.parse(JSON.stringify(base));
@@ -1198,6 +1344,7 @@ function emptyConsulta(base) {
     copy.createdAt = new Date().toISOString();
     copy.updatedAt = new Date().toISOString();
     copy.pendenciasConsultaAtual = "";
+    copy._schemaVersion = SCHEMA_VERSION_ATUAL; // nova consulta já nasce na versão mais atual
     // Zera apenas os sinais vitais — mantém o restante do exame físico
     if (copy.exameFisico) {
       copy.exameFisico.paSentado = "";
@@ -1213,6 +1360,7 @@ function emptyConsulta(base) {
   }
   return {
     id: uid(),
+
     data: new Date().toISOString().slice(0, 10),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -1672,9 +1820,23 @@ function DocFooter() {
 }
 
 export default function App() {
+  // ============================================================
+  // REGISTRO DO SERVICE WORKER — habilita visualização offline de
+  // prontuários já abertos anteriormente (não permite edição offline
+  // além do que a fila de sincronização já cobre).
+  // ============================================================
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch((e) => {
+        console.warn('Service Worker não pôde ser registrado (visualização offline indisponível):', e.message);
+      });
+    }
+  }, []);
+
   const [autenticado, setAutenticado] = useState(() => sessionStorage.getItem('auth') === '1');
   const [ambulatorio, setAmbulatorio] = useState(() => sessionStorage.getItem('ambulatorio') || null);
   const [zoomNivel, setZoomNivel] = useState(() => parseFloat(localStorage.getItem('prontuario_zoom')) || 0.88);
+  const [avisoInatividade, setAvisoInatividade] = useState(false);
 
   function ajustarZoom(delta) {
     setZoomNivel(prev => {
@@ -1683,6 +1845,44 @@ export default function App() {
       return novo;
     });
   }
+
+  // ============================================================
+  // TIMEOUT DE SESSÃO POR INATIVIDADE — relevante em computador
+  // compartilhado (ex: estação de trabalho da enfermaria/ambulatório)
+  // ============================================================
+  const TEMPO_AVISO_MS = 10 * 60 * 1000;      // avisa após 10 min parado
+  const TEMPO_LOGOUT_MS = 15 * 60 * 1000;     // desloga após 15 min parado
+  const ultimaAtividade = useRef(Date.now());
+
+  useEffect(() => {
+    if (!autenticado) return;
+
+    function registrarAtividade() {
+      ultimaAtividade.current = Date.now();
+      setAvisoInatividade(false);
+    }
+
+    const eventos = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    eventos.forEach(ev => window.addEventListener(ev, registrarAtividade, { passive: true }));
+
+    const intervalo = setInterval(() => {
+      const inativoHa = Date.now() - ultimaAtividade.current;
+      if (inativoHa >= TEMPO_LOGOUT_MS) {
+        sessionStorage.removeItem('auth');
+        sessionStorage.removeItem('ambulatorio');
+        setAutenticado(false);
+        setAmbulatorio(null);
+        setAvisoInatividade(false);
+      } else if (inativoHa >= TEMPO_AVISO_MS) {
+        setAvisoInatividade(true);
+      }
+    }, 15000); // checa a cada 15s
+
+    return () => {
+      eventos.forEach(ev => window.removeEventListener(ev, registrarAtividade));
+      clearInterval(intervalo);
+    };
+  }, [autenticado]);
   const [senhaDigitada, setSenhaDigitada] = useState('');
   const [erroSenha, setErroSenha] = useState(false);
   const [patients, setPatients] = useState(null);
@@ -1706,7 +1906,9 @@ export default function App() {
     setPatients(null); // reset ao trocar ambulatório
     (async () => {
       try {
-        const list = await listPatients(ambulatorio);
+        const listBruta = await listPatients(ambulatorio);
+        // Aplica migração de schema formal (versionada) antes de qualquer outra migração ad-hoc
+        const list = listBruta.map(migrarPaciente);
         let anyMigrated = false;
         const migrated = list.map(p => {
           if (p.consultas) return p;
@@ -1925,6 +2127,79 @@ export default function App() {
   }, [autenticado, ambulatorio]);
 
   const [lastSaved, setLastSaved] = useState(null);
+  const [filaSincronizacaoQtd, setFilaSincronizacaoQtd] = useState(0);
+  const [statusConexao, setStatusConexao] = useState(() => (typeof navigator !== 'undefined' && navigator.onLine === false) ? 'offline' : 'online');
+
+  // ============================================================
+  // FILA DE SINCRONIZAÇÃO — se o save falhar (sem internet), guarda a
+  // mudança no localStorage e tenta reenviar quando a conexão voltar.
+  // ============================================================
+  const FILA_KEY = 'prontuario_fila_sincronizacao';
+
+  function lerFila() {
+    try {
+      const raw = localStorage.getItem(FILA_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  }
+
+  function gravarFila(fila) {
+    try {
+      localStorage.setItem(FILA_KEY, JSON.stringify(fila));
+      setFilaSincronizacaoQtd(fila.length);
+    } catch (e) { console.error('Falha ao gravar fila de sincronização', e); }
+  }
+
+  function adicionarNaFila(patient, amb) {
+    const fila = lerFila();
+    // Substitui entrada anterior do mesmo paciente (mantém só a versão mais recente)
+    const semAntiga = fila.filter(item => item.patient.id !== patient.id);
+    semAntiga.push({ patient, ambulatorio: amb, timestamp: Date.now() });
+    gravarFila(semAntiga);
+  }
+
+  const sincronizandoRef = useRef(false);
+  async function processarFilaSincronizacao() {
+    if (sincronizandoRef.current) return;
+    const fila = lerFila();
+    if (fila.length === 0) return;
+    sincronizandoRef.current = true;
+    const restantes = [];
+    for (const item of fila) {
+      try {
+        await savePatient(item.patient, item.ambulatorio);
+      } catch (e) {
+        restantes.push(item); // mantém na fila se ainda falhar
+      }
+    }
+    gravarFila(restantes);
+    sincronizandoRef.current = false;
+    if (restantes.length === 0 && fila.length > 0) {
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+      setTimeout(() => setSaveStatus('idle'), 1500);
+    }
+  }
+
+  // Detecta mudança de status de conexão e tenta sincronizar ao voltar
+  useEffect(() => {
+    function aoFicarOnline() {
+      setStatusConexao('online');
+      processarFilaSincronizacao();
+    }
+    function aoFicarOffline() {
+      setStatusConexao('offline');
+    }
+    window.addEventListener('online', aoFicarOnline);
+    window.addEventListener('offline', aoFicarOffline);
+    // Ao carregar a página, já tenta processar qualquer fila pendente de sessão anterior
+    setFilaSincronizacaoQtd(lerFila().length);
+    if (navigator.onLine) processarFilaSincronizacao();
+    return () => {
+      window.removeEventListener('online', aoFicarOnline);
+      window.removeEventListener('offline', aoFicarOffline);
+    };
+  }, []);
 
   const persistPatient = useCallback((patient) => {
     clearTimeout(saveTimers.current[patient.id]);
@@ -1937,7 +2212,10 @@ export default function App() {
         setTimeout(() => setSaveStatus("idle"), 1200);
       } catch (e) {
         console.error(e);
-        setSaveStatus("error");
+        // Sem conexão (ou falha de rede) — guarda na fila local para sincronizar depois,
+        // em vez de simplesmente perder a alteração do usuário.
+        adicionarNaFila(patient, ambulatorio);
+        setSaveStatus("offline");
       }
     }, 700);
   }, [ambulatorio]);
@@ -2283,6 +2561,23 @@ export default function App() {
   return (
     <>
     <div id="app-main-content" style={{ width: "100%", zoom: zoomNivel }}>
+      {avisoInatividade && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", padding: "24px", maxWidth: "380px", textAlign: "center" }}>
+            <i className="ti ti-clock-exclamation" style={{ fontSize: "32px", color: "var(--color-text-warning)" }} aria-hidden="true"></i>
+            <div style={{ fontWeight: 700, fontSize: "15px", marginTop: "10px" }}>Sessão prestes a expirar</div>
+            <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: "6px" }}>
+              Você ficou inativo por alguns minutos. Por segurança, a sessão será encerrada automaticamente em breve — clique abaixo para continuar.
+            </div>
+            <button
+              onClick={() => { ultimaAtividade.current = Date.now(); setAvisoInatividade(false); }}
+              style={{ marginTop: "16px", fontSize: "13px", padding: "8px 20px" }}
+            >
+              Continuar sessão
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem", flexWrap: "wrap", gap: "8px" }}>
         <div>
           <h1 style={{ margin: 0 }}>{ambulatorio === 'cempre' ? 'AMBULATÓRIO DE GERIATRIA — CEMPRE' : 'AMBULATÓRIO DE GERIATRIA — HSE'}</h1>
@@ -2298,6 +2593,15 @@ export default function App() {
           {saveStatus === "saved" && <Pill color="success"><i className="ti ti-check" aria-hidden="true"></i>Salvo</Pill>}
           {saveStatus === "idle" && lastSaved && <span style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }}>Salvo às {lastSaved.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>}
           {saveStatus === "error" && <Pill color="danger"><i className="ti ti-alert-triangle" aria-hidden="true"></i>Erro ao salvar</Pill>}
+          {saveStatus === "offline" && <Pill color="warning"><i className="ti ti-cloud-off" aria-hidden="true"></i>Sem conexão — salvo localmente</Pill>}
+          {statusConexao === "offline" && saveStatus !== "offline" && (
+            <Pill color="warning"><i className="ti ti-wifi-off" aria-hidden="true"></i>Offline</Pill>
+          )}
+          {filaSincronizacaoQtd > 0 && (
+            <span title="Alterações aguardando conexão para sincronizar" style={{ fontSize: "11px", color: "var(--color-text-warning)", display: "flex", alignItems: "center", gap: "3px" }}>
+              <i className="ti ti-clock-hour-4" aria-hidden="true"></i>{filaSincronizacaoQtd} pendente(s)
+            </span>
+          )}
           <button onClick={() => { sessionStorage.removeItem('ambulatorio'); setAmbulatorio(null); setPatients(null); setActiveId(null); setView("list"); }} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
             <i className="ti ti-switch-horizontal" aria-hidden="true"></i>Trocar
           </button>
@@ -2400,13 +2704,19 @@ export default function App() {
           </div>
 
           {mode === "prontuario" && (
-            <RecordView patient={activePatient} updatePatient={updateActivePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeTab={activeTab} setActiveTab={setActiveTab} onPrint={setPrintDoc} onSave={() => activePatient && persistPatient(activePatient)} />
+            <ErrorBoundary onVoltar={() => { setView("list"); setActiveId(null); }}>
+              <RecordView patient={activePatient} updatePatient={updateActivePatient} consulta={activeConsulta} updateConsulta={updateActiveConsulta} activeTab={activeTab} setActiveTab={setActiveTab} onPrint={setPrintDoc} onSave={() => activePatient && persistPatient(activePatient)} />
+            </ErrorBoundary>
           )}
         </div>
       )}
     </div>
 
-      {printDoc && <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} ambulatorio={ambulatorio} />}
+      {printDoc && (
+        <ErrorBoundary onVoltar={() => setPrintDoc(null)}>
+          <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} ambulatorio={ambulatorio} />
+        </ErrorBoundary>
+      )}
 
       {showPrescricaoHeader && activePatient && (
         <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", overflowY: "auto" }}>
@@ -2716,6 +3026,8 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
   const [filtroComorbidade, setFiltroComorbidade] = useState("");
   const [filtroFragilidade, setFiltroFragilidade] = useState("");
   const [showDashboard, setShowDashboard] = useState(false);
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const PACIENTES_POR_PAGINA = 25;
 
   const filtrados = patients.filter(p => {
     if (filtroComorbidade) {
@@ -2735,6 +3047,16 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
     }
     return true;
   });
+
+  // Reseta para a primeira página quando busca ou filtros mudam
+  useEffect(() => {
+    setPaginaAtual(1);
+  }, [search, filtroComorbidade, filtroFragilidade]);
+
+  const totalPaginas = Math.max(1, Math.ceil(filtrados.length / PACIENTES_POR_PAGINA));
+  const paginaSegura = Math.min(paginaAtual, totalPaginas);
+  const inicioFatia = (paginaSegura - 1) * PACIENTES_POR_PAGINA;
+  const filtradosPaginados = filtrados.slice(inicioFatia, inicioFatia + PACIENTES_POR_PAGINA);
 
   return (
     <div>
@@ -2771,7 +3093,9 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
 
       {showDashboard && (
         <div style={{ marginBottom: "20px" }}>
-          <Dashboard patients={allPatients} />
+          <ErrorBoundary>
+            <Dashboard patients={allPatients} />
+          </ErrorBoundary>
         </div>
       )}
 
@@ -2783,7 +3107,7 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
       )}
 
       <div style={{ display: "grid", gap: "8px" }}>
-        {filtrados.map(p => {
+        {filtradosPaginados.map(p => {
           const idade = calcIdade(p.ident.dn);
           const numConsultas = (p.consultas || []).filter(c => !c.deletedAt).length;
           const ult = [...(p.consultas || [])].filter(c => !c.deletedAt).sort((a, b) => new Date(b.data) - new Date(a.data))[0];
@@ -2811,6 +3135,28 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
           );
         })}
       </div>
+
+      {totalPaginas > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", marginTop: "16px", fontSize: "13px" }}>
+          <button
+            onClick={() => setPaginaAtual(p => Math.max(1, p - 1))}
+            disabled={paginaSegura <= 1}
+            style={{ padding: "4px 10px", opacity: paginaSegura <= 1 ? 0.5 : 1 }}
+          >
+            <i className="ti ti-chevron-left" aria-hidden="true"></i> Anterior
+          </button>
+          <span style={{ color: "var(--color-text-secondary)" }}>
+            Página {paginaSegura} de {totalPaginas} · {filtrados.length} paciente(s) no total
+          </span>
+          <button
+            onClick={() => setPaginaAtual(p => Math.min(totalPaginas, p + 1))}
+            disabled={paginaSegura >= totalPaginas}
+            style={{ padding: "4px 10px", opacity: paginaSegura >= totalPaginas ? 0.5 : 1 }}
+          >
+            Próxima <i className="ti ti-chevron-right" aria-hidden="true"></i>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2824,7 +3170,7 @@ function ModoEmergencia({ patient, consulta, updateConsulta, onSair, onSave }) {
   const idade = calcIdade(i.dn);
   const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
   const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
-  const meds = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim());
+  const meds = garantirString(consulta.medicacoesTexto).split("\n").filter(l => l.trim());
   const alergias = (consulta.antecedentes || {}).alergias || "";
   const ef = consulta.exameFisico || {};
 
@@ -3315,7 +3661,7 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
         const mPA = (ef.paSentado || "").match(/(\d+)/);
         const PAS = mPA ? parseInt(mPA[1]) : null;
         const labs = consulta.labsTexto || "";
-        const meds = (consulta.medicacoesTexto || "").toLowerCase();
+        const meds = garantirString(consulta.medicacoesTexto).toLowerCase();
         const hasBledItens = [
           { label: "HAS não controlada (PA sistólica >160)", pts: 1, val: PAS && PAS > 160 },
           { label: "Disfunção renal ou hepática", pts: 1, val: prob["DRC"] || custom.some(c => c.includes("hepatopatia") || c.includes("cirrose")) },
@@ -3648,7 +3994,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   }
 
   // Metformina em contraste (já planejado)
-  const temContraste = (consulta.plano?.solicito || "").toLowerCase().includes("contraste") || (consulta.labsTexto || "").toLowerCase().includes("contraste");
+  const temContraste = (consulta.plano?.solicito || "").toLowerCase().includes("contraste") || garantirString(consulta.labsTexto).toLowerCase().includes("contraste");
   if (temContraste && temMedComorb("metformina")) {
     alertasComorbidade.push({ tipo: "warning", msg: "⚠ Metformina + Contraste iodado planejado: suspender 48h antes e 48h após o exame — risco de acidose lática" });
   }
@@ -3733,7 +4079,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   // 1. IBP sem indicação clara (uso crônico)
   const temIBP = linhas.some(l => /omeprazol|pantoprazol|lansoprazol|rabeprazol|esomeprazol/i.test(l));
   const temIndicacaoIBP = (consulta.problemas?.["DRGE"] || consulta.problemas?.["Úlcera péptica"] || consulta.problemas?.["Esofagite"] ||
-    (consulta.medicacoesTexto || "").toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|varfarina|ibuprofeno|diclofenaco|prednisona|dexametasona|corticoide/));
+    garantirString(consulta.medicacoesTexto).toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|varfarina|ibuprofeno|diclofenaco|prednisona|dexametasona|corticoide/));
   if (temIBP && !temIndicacaoIBP) {
     alertasDesprescricao.push({
       titulo: "⚠ IBP sem indicação clara — sugerir tentativa de desmame",
@@ -3963,9 +4309,9 @@ function temAlgumSemNegacao(texto, ...termos) {
 }
 
 function gerarHipotesesDiagnosticas(consulta, patient) {
-  const queixas = (consulta.queixas || "").toLowerCase();
-  const labs = (consulta.labsTexto || "").toLowerCase();
-  const meds = (consulta.medicacoesTexto || "").toLowerCase();
+  const queixas = garantirString(consulta.queixas).toLowerCase();
+  const labs = garantirString(consulta.labsTexto).toLowerCase();
+  const meds = garantirString(consulta.medicacoesTexto).toLowerCase();
   const prob = consulta.problemas || {};
   const ef = consulta.exameFisico || {};
   const aga = consulta.aga || {};
@@ -4259,7 +4605,7 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
 // Sugere exame específico mais custo-efetivo baseado em sintoma-chave + tempo de evolução
 function sugerirExamePorSintomaTempo(consulta) {
   try {
-  const queixas = (consulta.queixas || "").toLowerCase();
+  const queixas = garantirString(consulta.queixas).toLowerCase();
   const sugestoes = [];
 
   // Extrai tempo de evolução mencionado (dias/semanas/meses/anos) — reconhece números
@@ -5343,7 +5689,7 @@ function sugerirRetorno(consulta, patient) {
   const prob = consulta.problemas || {};
   const aga = consulta.aga || {};
   const ef = consulta.exameFisico || {};
-  const labs = (consulta.labsTexto || "").toLowerCase();
+  const labs = garantirString(consulta.labsTexto).toLowerCase();
   const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
   const ehFragil = frailScore >= 3;
 
@@ -5832,7 +6178,7 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
     const peso = parseFloat(aga.peso || e.peso || 0);
     const altura = parseFloat(aga.altura || 0);
     const imc = peso && altura ? peso / (altura * altura) : null;
-    const meds = (consulta.medicacoesTexto || "").toLowerCase();
+    const meds = garantirString(consulta.medicacoesTexto).toLowerCase();
     const temFA = prob["FA"] || prob["Flutter atrial"];
     const temHAS = prob["HAS"];
     const numAntihiper = (meds.match(/losartana|enalapril|captopril|ramipril|valsartana|anlodipino|hidroclorotiazida|furosemida|indapamida|metoprolol|atenolol|carvedilol|bisoprolol|amlodipino/g) || []).length;
@@ -6018,11 +6364,11 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
 // RACIOCÍNIO CLÍNICO ASSISTIDO — padrões multissistêmicos
 // ============================================================
 function detectarPadroesMultissistemicos(consulta, patient) {
-  const labs = (consulta.labsTexto || "").toLowerCase();
+  const labs = garantirString(consulta.labsTexto).toLowerCase();
   const prob = consulta.problemas || {};
   const custom = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome.toLowerCase());
   const aga = consulta.aga || {};
-  const queixas = (consulta.queixas || "").toLowerCase();
+  const queixas = garantirString(consulta.queixas).toLowerCase();
 
   function tem(...termos) { return termos.some(t => labs.includes(t) || temSemNegacao(consulta.queixas || "", t)); }
   function temValorBaixo(regex, limite) {
@@ -6099,7 +6445,7 @@ function detectarPadroesMultissistemicos(consulta, patient) {
   }
 
   // Quedas + hipotensão ortostática + polifarmácia + tontura: síndrome de fragilidade cardiovascular
-  const numMeds = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim()).length;
+  const numMeds = garantirString(consulta.medicacoesTexto).split("\n").filter(l => l.trim()).length;
   const temTontura = tem("tontura", "tonto", "vertigem");
   if (aga.quedas === "sim" && temTontura && numMeds >= 5) {
     padroes.push({
@@ -6317,7 +6663,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   // Alertas de medicações contraindicadas/ajuste por TFG
   const alertasTFGMeds = (() => {
     if (!tfg) return [];
-    const meds = (consulta.medicacoesTexto || "").toLowerCase();
+    const meds = garantirString(consulta.medicacoesTexto).toLowerCase();
     const alertas = [];
 
     if (tfg < 30 && meds.includes("metformina")) {
@@ -6384,7 +6730,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
 
     // Alerta geral se nenhum iSGLT2 em uso mas DRC + proteinúria identificada
     if (!temDapa && !temEmpa && !temCana && temDRC) {
-      const mLabs = (consulta.labsTexto || "").toLowerCase();
+      const mLabs = garantirString(consulta.labsTexto).toLowerCase();
       const temProteinuria = /proteín|albumin.*urin|rac|microalbumin/i.test(mLabs);
       if (temProteinuria && tfg >= 20) {
         alertas.push({ tipo: "info", msg: `ℹ DRC com proteinúria: considerar iSGLT2 (dapagliflozina ou empagliflozina) para nefroproteção — evidência de grau A para TFG ≥ 20–25 mL/min.` });
@@ -6852,7 +7198,7 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
   const [medicacoesAdicionais, setMedicacoesAdicionais] = useState("");
 
   // Meds da consulta para prescrição
-  const medsLista = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim());
+  const medsLista = garantirString(consulta.medicacoesTexto).split("\n").filter(l => l.trim());
 
   function toggleMed(med) {
     setMedicacoesSelecionadas(prev =>
@@ -7994,7 +8340,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   const idade = calcIdade(i.dn);
   const ativos = PROBLEMAS.filter(p => consulta.problemas && consulta.problemas[p]);
   const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked);
-  const meds = (consulta.medicacoesTexto || "").split("\n").filter(l => l.trim());
+  const meds = garantirString(consulta.medicacoesTexto).split("\n").filter(l => l.trim());
   const aga = consulta.aga || {};
   const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
   const frailClass = frailScore === 0 ? "Robusto" : frailScore <= 2 ? "Pré-frágil" : "Frágil";
@@ -8113,7 +8459,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   ]});
 
   // Osteoporose sem tratamento
-  if (ativos.includes("Osteoporose") && !(consulta.medicacoesTexto || "").toLowerCase().match(/alendronato|risedronato|ibandronato|zoledronato|denosumabe|teriparatida|romosozumabe/)) {
+  if (ativos.includes("Osteoporose") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/alendronato|risedronato|ibandronato|zoledronato|denosumabe|teriparatida|romosozumabe/)) {
     sugestoes.push({ cat: "Osteoporose sem tratamento antirreabsortivo", items: [
       "Nenhum bisfosfonato ou outro antirreabsortivo identificado nas medicações",
       "Avaliar indicação de alendronato 70mg/semana (1ª linha) ou risedronato",
@@ -8131,7 +8477,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
     return temAlgumSemNegacao(textoCompleto, "sangramento ativo", "hemorragia ativa", "sangramento digestivo ativo",
       "hemorragia digestiva ativa", "AVC hemorrágico", "trombocitopenia grave", "varizes esofágicas sangrantes");
   })();
-  if ((ativos.includes("FA") || ativos.includes("Flutter atrial")) && !(consulta.medicacoesTexto || "").toLowerCase().match(/varfarina|warfarina|acenocumarol|rivaroxabana|apixabana|dabigatrana|edoxabana/)) {
+  if ((ativos.includes("FA") || ativos.includes("Flutter atrial")) && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/varfarina|warfarina|acenocumarol|rivaroxabana|apixabana|dabigatrana|edoxabana/)) {
     if (temContraindicacaoAnticoagulacao) {
       sugestoes.push({ cat: "FA sem anticoagulante — possível contraindicação identificada", items: [
         "Fibrilação/Flutter atrial sem anticoagulante, MAS foi identificado texto sugestivo de contraindicação (sangramento/hemorragia) nos antecedentes ou queixas",
@@ -8149,13 +8495,13 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — DAC sem antiagregante/estatina
-  if (ativos.includes("DAC") && !(consulta.medicacoesTexto || "").toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|ticagrelor|prasugrel/)) {
+  if (ativos.includes("DAC") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|ticagrelor|prasugrel/)) {
     sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: DAC sem antiagregante", items: [
       "Doença arterial coronariana registrada sem AAS ou outro antiagregante identificado",
       "Prevenção secundária padrão inclui antiagregante — reavaliar indicação",
     ]});
   }
-  if (ativos.includes("DAC") && !(consulta.medicacoesTexto || "").toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina|fluvastatina|pitavastatina/)) {
+  if (ativos.includes("DAC") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina|fluvastatina|pitavastatina/)) {
     sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: DAC sem estatina", items: [
       "Doença arterial coronariana sem estatina identificada — indicação de alta intensidade em prevenção secundária",
       "Meta de LDL < 55 mg/dL (muito alto risco) — ver aba Exames",
@@ -8164,10 +8510,10 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
 
   // GAP TERAPÊUTICO — IC com FE reduzida sem terapia quádrupla
   if ((ativos.includes("Insuficiência cardíaca") || ativos.includes("IC"))) {
-    const temIECABRA = (consulta.medicacoesTexto || "").toLowerCase().match(/captopril|enalapril|lisinopril|ramipril|losartana|valsartana|sacubitril/);
-    const temBetabloq = (consulta.medicacoesTexto || "").toLowerCase().match(/metoprolol|carvedilol|bisoprolol|nebivolol/);
-    const temISGLT2 = (consulta.medicacoesTexto || "").toLowerCase().match(/dapagliflozina|empagliflozina/);
-    const temAntiMineralo = (consulta.medicacoesTexto || "").toLowerCase().match(/espironolactona|eplerenona/);
+    const temIECABRA = garantirString(consulta.medicacoesTexto).toLowerCase().match(/captopril|enalapril|lisinopril|ramipril|losartana|valsartana|sacubitril/);
+    const temBetabloq = garantirString(consulta.medicacoesTexto).toLowerCase().match(/metoprolol|carvedilol|bisoprolol|nebivolol/);
+    const temISGLT2 = garantirString(consulta.medicacoesTexto).toLowerCase().match(/dapagliflozina|empagliflozina/);
+    const temAntiMineralo = garantirString(consulta.medicacoesTexto).toLowerCase().match(/espironolactona|eplerenona/);
     const faltando = [];
     if (!temIECABRA) faltando.push("IECA/BRA ou sacubitril-valsartana");
     if (!temBetabloq) faltando.push("betabloqueador");
@@ -8183,7 +8529,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — DM2 sem estatina em prevenção primária (se >40 anos)
-  if (ativos.includes("DM2") && idade >= 40 && !(consulta.medicacoesTexto || "").toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina/)) {
+  if (ativos.includes("DM2") && idade >= 40 && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: DM2 sem estatina", items: [
       "DM2 em paciente ≥ 40 anos sem estatina identificada",
       "Diretrizes recomendam estatina em DM2 para prevenção cardiovascular, salvo contraindicação ou expectativa de vida muito reduzida",
@@ -8191,7 +8537,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — Asma/DPOC sem broncodilatador
-  if ((ativos.includes("DPOC") || ativos.includes("Asma")) && !(consulta.medicacoesTexto || "").toLowerCase().match(/salbutamol|formoterol|salmeterol|tiotrópio|budesonida|beclometasona|fluticasona|indacaterol|glicopirrônio/)) {
+  if ((ativos.includes("DPOC") || ativos.includes("Asma")) && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/salbutamol|formoterol|salmeterol|tiotrópio|budesonida|beclometasona|fluticasona|indacaterol|glicopirrônio/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: DPOC/Asma sem broncodilatador/corticoide inalatório", items: [
       "Doença pulmonar obstrutiva registrada sem broncodilatador ou corticoide inalatório identificado",
       "Revisar necessidade de terapia inalatória de manutenção",
@@ -8199,7 +8545,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — Depressão sem tratamento
-  if (ativos.includes("Transtorno depressivo") && !(consulta.medicacoesTexto || "").toLowerCase().match(/fluoxetina|sertralina|escitalopram|citalopram|paroxetina|venlafaxina|duloxetina|mirtazapina|bupropiona|trazodona/)) {
+  if (ativos.includes("Transtorno depressivo") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/fluoxetina|sertralina|escitalopram|citalopram|paroxetina|venlafaxina|duloxetina|mirtazapina|bupropiona|trazodona/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: Depressão sem antidepressivo", items: [
       "Transtorno depressivo registrado sem antidepressivo identificado nas medicações",
       "Avaliar se em tratamento não farmacológico exclusivo (psicoterapia) ou se há gap a corrigir",
@@ -8207,7 +8553,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — Hipotireoidismo sem levotiroxina
-  if (ativos.includes("Hipotireoidismo") && !(consulta.medicacoesTexto || "").toLowerCase().match(/levotiroxina|puran|synthroid/)) {
+  if (ativos.includes("Hipotireoidismo") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/levotiroxina|puran|synthroid/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: Hipotireoidismo sem reposição", items: [
       "Hipotireoidismo registrado sem levotiroxina identificada nas medicações — verificar se é um erro de registro ou gap real",
     ]});
@@ -8216,7 +8562,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   // Hipertireoidismo não tratado
   const mTSH2 = labs.match(/(?:tsh)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
   const tsh2 = mTSH2 ? parseFloat(mTSH2[1].replace(",",".")) : null;
-  if (tsh2 !== null && tsh2 < 0.1 && !(consulta.medicacoesTexto || "").toLowerCase().match(/metimazol|propiltiouracil|tireoidectomia/)) {
+  if (tsh2 !== null && tsh2 < 0.1 && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/metimazol|propiltiouracil|tireoidectomia/)) {
     sugestoes.push({ cat: "Hipertireoidismo — avaliar tratamento", items: [
       `TSH ${tsh2} — suprimido`,
       "Dosar T3 e T4 livre para confirmar hipertireoidismo",
