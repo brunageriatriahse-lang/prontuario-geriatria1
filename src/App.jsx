@@ -1122,6 +1122,37 @@ function garantirObjeto(valor, fallback = {}) {
   return fallback;
 }
 
+// ============================================================
+// ACESSO SEGURO A STORAGE — navegadores em modo privado, políticas
+// corporativas ou iframes restritos podem bloquear localStorage/
+// sessionStorage, lançando erro. Essas funções nunca derrubam o app.
+// ============================================================
+function storageGet(storage, key, fallback = null) {
+  try {
+    const v = storage.getItem(key);
+    return v !== null ? v : fallback;
+  } catch (e) {
+    console.warn(`Storage indisponível (getItem ${key}):`, e.message);
+    return fallback;
+  }
+}
+function storageSet(storage, key, value) {
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch (e) {
+    console.warn(`Storage indisponível (setItem ${key}):`, e.message);
+    return false;
+  }
+}
+function storageRemove(storage, key) {
+  try {
+    storage.removeItem(key);
+  } catch (e) {
+    console.warn(`Storage indisponível (removeItem ${key}):`, e.message);
+  }
+}
+
 function calcIMC(peso, altura) {
   const p = parseFloat(peso);
   const a = parseFloat(altura);
@@ -1833,15 +1864,15 @@ export default function App() {
     }
   }, []);
 
-  const [autenticado, setAutenticado] = useState(() => sessionStorage.getItem('auth') === '1');
-  const [ambulatorio, setAmbulatorio] = useState(() => sessionStorage.getItem('ambulatorio') || null);
-  const [zoomNivel, setZoomNivel] = useState(() => parseFloat(localStorage.getItem('prontuario_zoom')) || 0.88);
+  const [autenticado, setAutenticado] = useState(() => storageGet(sessionStorage, 'auth') === '1');
+  const [ambulatorio, setAmbulatorio] = useState(() => storageGet(sessionStorage, 'ambulatorio', null));
+  const [zoomNivel, setZoomNivel] = useState(() => parseFloat(storageGet(localStorage, 'prontuario_zoom')) || 0.88);
   const [avisoInatividade, setAvisoInatividade] = useState(false);
 
   function ajustarZoom(delta) {
     setZoomNivel(prev => {
       const novo = Math.min(1.15, Math.max(0.65, Math.round((prev + delta) * 100) / 100));
-      localStorage.setItem('prontuario_zoom', String(novo));
+      storageSet(localStorage, 'prontuario_zoom', String(novo));
       return novo;
     });
   }
@@ -1868,8 +1899,8 @@ export default function App() {
     const intervalo = setInterval(() => {
       const inativoHa = Date.now() - ultimaAtividade.current;
       if (inativoHa >= TEMPO_LOGOUT_MS) {
-        sessionStorage.removeItem('auth');
-        sessionStorage.removeItem('ambulatorio');
+        storageRemove(sessionStorage, 'auth');
+        storageRemove(sessionStorage, 'ambulatorio');
         setAutenticado(false);
         setAmbulatorio(null);
         setAvisoInatividade(false);
@@ -2259,7 +2290,7 @@ export default function App() {
   function tentarLogin(e) {
     e.preventDefault();
     if (senhaDigitada === '2266') {
-      sessionStorage.setItem('auth', '1');
+      storageSet(sessionStorage, 'auth', '1');
       setAutenticado(true);
       setErroSenha(false);
     } else {
@@ -2269,7 +2300,7 @@ export default function App() {
   }
 
   function selecionarAmbulatorio(amb) {
-    sessionStorage.setItem('ambulatorio', amb);
+    storageSet(sessionStorage, 'ambulatorio', amb);
     setAmbulatorio(amb);
     setPatients(null);
     setActiveId(null);
@@ -2363,7 +2394,7 @@ export default function App() {
           </div>
           <div style={{ textAlign: 'center', marginTop: '20px' }}>
             <button
-              onClick={() => { sessionStorage.removeItem('auth'); sessionStorage.removeItem('ambulatorio'); setAutenticado(false); setAmbulatorio(null); }}
+              onClick={() => { storageRemove(sessionStorage, 'auth'); storageRemove(sessionStorage, 'ambulatorio'); setAutenticado(false); setAmbulatorio(null); }}
               style={{ fontSize: '12px', color: 'var(--color-text-tertiary)', background: 'transparent', border: 'none', cursor: 'pointer' }}
             >
               Sair
@@ -2602,7 +2633,7 @@ export default function App() {
               <i className="ti ti-clock-hour-4" aria-hidden="true"></i>{filaSincronizacaoQtd} pendente(s)
             </span>
           )}
-          <button onClick={() => { sessionStorage.removeItem('ambulatorio'); setAmbulatorio(null); setPatients(null); setActiveId(null); setView("list"); }} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+          <button onClick={() => { storageRemove(sessionStorage, 'ambulatorio'); setAmbulatorio(null); setPatients(null); setActiveId(null); setView("list"); }} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
             <i className="ti ti-switch-horizontal" aria-hidden="true"></i>Trocar
           </button>
           {view === "list" && (trashedPatients.length > 0 || trashedConsultasCount > 0) && (
@@ -3557,7 +3588,7 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
           { nome: "Hemiplegia", pts: 2, cond: has("hemiplegia") },
           { nome: "DRC moderada/grave (Cr >3,0 ou diálise)", pts: 2, cond: has("diálise") || has("hemodiálise") },
           { nome: "Diabetes com complicações (neuropatia, nefropatia, retinopatia)", pts: 2, cond: has("nefropatia diabética") || has("retinopatia") || has("neuropatia diabética") },
-          { nome: "Neoplasia maligna sem metástase", pts: 2, cond: has("neoplasia") || has("câncer") || has("ca ") || has("ca de") },
+          { nome: "Neoplasia maligna sem metástase", pts: 2, cond: has("neoplasia") || has("câncer") || has("cancer") || has("carcinoma") || has("tumor maligno") || /\bca\s+de\s+(mama|próstata|prostata|pulmão|pulmao|cólon|colon|estômago|estomago|bexiga|rim|fígado|figado|pele|ovário|ovario|útero|utero|colo\s+uterino|tireoide|pâncreas|pancreas|esôfago|esofago)\b/i.test(custom.join(" ")) },
           { nome: "Leucemia", pts: 2, cond: has("leucemia") },
           { nome: "Linfoma", pts: 2, cond: has("linfoma") },
           { nome: "Hepatopatia moderada/grave (cirrose, HTP)", pts: 3, cond: has("cirrose") || has("hepatopatia") },
@@ -3669,7 +3700,7 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
           { label: "Sangramento prévio ou predisposição", pts: 1, val: custom.some(c => c.includes("sangramento") || c.includes("hemorragia")) },
           { label: "INR lábil (se em uso de varfarina)", pts: 1, val: meds.includes("varfarina") || meds.includes("warfarina") },
           { label: "Idade > 65 anos", pts: 1, val: idade > 65 },
-          { label: "Drogas (AINE, antiplaquetário) ou álcool", pts: 1, val: meds.includes("ibuprofeno") || meds.includes("diclofenaco") || meds.includes("aas") || meds.includes("clopidogrel") },
+          { label: "Drogas (AINE, antiplaquetário) ou álcool", pts: 1, val: meds.includes("ibuprofeno") || meds.includes("diclofenaco") || /\baas\b/i.test(meds) || meds.includes("clopidogrel") },
         ];
         const hasBledTotal = hasBledItens.filter(it => it.val).reduce((s, it) => s + it.pts, 0);
 
@@ -3921,7 +3952,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
 
   // IECA/BRA em hipercalemia
   const labs = consulta.labsTexto || "";
-  const mK = labs.match(/(?:k|pot[aá]ssio)[^\d]*(\d+[,.]\d+|\d+)/i);
+  const mK = labs.match(/\b(?:k|pot[aá]ssio)\b[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const kVal = mK ? parseFloat(mK[1].replace(",",".")) : null;
   if (kVal && kVal > 5.5 && temMedComorb("captopril","enalapril","lisinopril","ramipril","losartana","valsartana","irbesartana","espironolactona","eplerenona")) {
     alertasComorbidade.push({ tipo: "danger", msg: `⚠ IECA/BRA/POUPADOR DE K em hipercalemia (K ${kVal} mEq/L): risco de arritmia — reduzir dose ou suspender, monitorar ECG` });
@@ -4012,7 +4043,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   }
 
   // Bifosfonato em hipocalcemia
-  const mCa = labs.match(/(?:ca|cálcio)[^\d]*(\d+[,.]\d+|\d+)/i);
+  const mCa = labs.match(/(?:\bca\b(?!\s*[-\s]?(?:125|19-9|15-3|72-4|72\.4))|cálcio)[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const caVal = mCa ? parseFloat(mCa[1].replace(",",".")) : null;
   if (caVal && caVal < 8.5 && temMedComorb("alendronato","risedronato","ibandronato","zoledronato","ácido zoledrônico")) {
     alertasComorbidade.push({ tipo: "danger", msg: `⚠ Bisfosfonato em hipocalcemia (Ca ${caVal} mg/dL): contraindicado — corrigir cálcio e vitamina D antes de iniciar` });
@@ -4079,7 +4110,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   // 1. IBP sem indicação clara (uso crônico)
   const temIBP = linhas.some(l => /omeprazol|pantoprazol|lansoprazol|rabeprazol|esomeprazol/i.test(l));
   const temIndicacaoIBP = (consulta.problemas?.["DRGE"] || consulta.problemas?.["Úlcera péptica"] || consulta.problemas?.["Esofagite"] ||
-    garantirString(consulta.medicacoesTexto).toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|varfarina|ibuprofeno|diclofenaco|prednisona|dexametasona|corticoide/));
+    garantirString(consulta.medicacoesTexto).toLowerCase().match(/\baas\b|ácido acetilsalicílico|aspirina|clopidogrel|varfarina|ibuprofeno|diclofenaco|prednisona|dexametasona|corticoide/));
   if (temIBP && !temIndicacaoIBP) {
     alertasDesprescricao.push({
       titulo: "⚠ IBP sem indicação clara — sugerir tentativa de desmame",
@@ -4297,7 +4328,10 @@ function temSemNegacao(texto, termo) {
     // Dentro da cláusula, verifica se há palavra de negação antes do termo
     const idxTermo = clausula.indexOf(termoLower);
     const antes = clausula.slice(0, idxTermo);
-    const negado = /\b(nega|negando|sem|ausência de|ausencia de|não apresenta|nao apresenta|não tem|nao tem|não refere|nao refere|nunca teve|negativo para|exclui|descarta)\s*(?:\w+\s+){0,3}$/.test(antes);
+    // Permite vírgulas, conectores (e/ou/nem) e acentos entre a palavra de negação e o
+    // termo, já que é comum negar uma LISTA de sintomas: "nega tontura, dispneia ou palpitação".
+    // Usa classe de caracteres com acentos (á-ö,ø-ÿ) em vez de \w, que não reconhece acentuação.
+    const negado = /\b(nega|negando|sem|ausência de|ausencia de|não apresenta|nao apresenta|não tem|nao tem|não refere|nao refere|nunca teve|negativo para|exclui|descarta)\s*(?:[a-zà-öø-ÿ,]+\s+){0,6}$/.test(antes);
     if (!negado) return true; // achou ocorrência não negada em alguma cláusula
   }
   return false;
@@ -4666,7 +4700,7 @@ function sugerirExamePorSintomaTempo(consulta) {
   }
 
   // Cefaleia
-  if (queixas.includes("cefaleia") || queixas.includes("dor de cabeça")) {
+  if (temAlgumSemNegacao(consulta.queixas, "cefaleia", "dor de cabeça")) {
     const tempo = extrairTempo("cefaleia|dor de cabeça");
     if (tempo && tempo.dias <= 7) {
       sugestoes.push({ sintoma: "Cefaleia aguda (< 7 dias)", exame: "TC de crânio sem contraste", motivo: "Cefaleia de início recente em idoso — excluir causa estrutural/hemorrágica antes de tratamento sintomático" });
@@ -4676,7 +4710,7 @@ function sugerirExamePorSintomaTempo(consulta) {
   }
 
   // Dispneia
-  if (queixas.includes("dispneia") || queixas.includes("falta de ar")) {
+  if (temAlgumSemNegacao(consulta.queixas, "dispneia", "falta de ar")) {
     const tempo = extrairTempo("dispneia|falta de ar");
     if (tempo && tempo.dias <= 3) {
       sugestoes.push({ sintoma: "Dispneia aguda (≤ 3 dias)", exame: "ECG + RX tórax + BNP/troponina se disponível", motivo: "Dispneia aguda — excluir síndrome coronariana, IC descompensada ou TEP" });
@@ -4686,7 +4720,7 @@ function sugerirExamePorSintomaTempo(consulta) {
   }
 
   // Dor abdominal
-  if (queixas.includes("dor abdominal") || queixas.includes("dor na barriga")) {
+  if (temAlgumSemNegacao(consulta.queixas, "dor abdominal", "dor na barriga")) {
     const tempo = extrairTempo("dor abdominal|dor na barriga");
     if (tempo && tempo.dias <= 2) {
       sugestoes.push({ sintoma: "Dor abdominal aguda (≤ 2 dias)", exame: "USG de abdome + hemograma + PCR", motivo: "Dor abdominal aguda em idoso — maior risco de abdome cirúrgico, menor sensibilidade ao exame físico clássico" });
@@ -4696,7 +4730,7 @@ function sugerirExamePorSintomaTempo(consulta) {
   }
 
   // Tontura/vertigem
-  if (queixas.includes("tontura") || queixas.includes("vertigem")) {
+  if (temAlgumSemNegacao(consulta.queixas, "tontura", "vertigem")) {
     const tempo = extrairTempo("tontura|vertigem");
     if (tempo && tempo.dias <= 7) {
       sugestoes.push({ sintoma: "Tontura aguda (≤ 7 dias)", exame: "PA ortostática + ECG + glicemia capilar", motivo: "Tontura aguda — descartar causa cardiovascular ou metabólica antes de rotular como labiríntica" });
@@ -4706,7 +4740,7 @@ function sugerirExamePorSintomaTempo(consulta) {
   }
 
   // Perda de peso
-  if (queixas.includes("perda de peso") || queixas.includes("emagrecimento")) {
+  if (temAlgumSemNegacao(consulta.queixas, "perda de peso", "emagrecimento")) {
     const tempo = extrairTempo("perda de peso|emagrecimento");
     sugestoes.push({
       sintoma: tempo ? `Perda de peso (${tempo.valor} ${tempo.unidade})` : "Perda de peso não intencional",
@@ -4716,7 +4750,7 @@ function sugerirExamePorSintomaTempo(consulta) {
   }
 
   // Fadiga/cansaço
-  if ((queixas.includes("fadiga") || queixas.includes("cansaço")) && !queixas.includes("dispneia")) {
+  if (temAlgumSemNegacao(consulta.queixas, "fadiga", "cansaço") && !temSemNegacao(consulta.queixas, "dispneia")) {
     const tempo = extrairTempo("fadiga|cansaço");
     if (tempo && tempo.dias >= 30) {
       sugestoes.push({ sintoma: `Fadiga crônica (${tempo.valor} ${tempo.unidade})`, exame: "Hemograma + TSH + B12/folato + glicemia + função renal/hepática", motivo: "Fadiga crônica — painel básico custo-efetivo para causas reversíveis mais comuns" });
@@ -4724,7 +4758,7 @@ function sugerirExamePorSintomaTempo(consulta) {
   }
 
   // Febre
-  if (queixas.includes("febre")) {
+  if (temSemNegacao(consulta.queixas, "febre")) {
     const tempo = extrairTempo("febre");
     if (tempo && tempo.dias <= 3) {
       sugestoes.push({ sintoma: "Febre aguda (≤ 3 dias)", exame: "Hemograma + PCR + EAS/urocultura + RX tórax se sintomas respiratórios", motivo: "Febre aguda em idoso — rastreio direcionado (ITU e pneumonia são as causas mais comuns e podem ter apresentação atípica)" });
@@ -5535,7 +5569,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
           const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
           const temDRC = consulta.problemas?.["DRC"];
           const labs = consulta.labsTexto || "";
-          const mTFG2 = labs.match(/(?:tfg|tgf|egfr)[^\d]*(\d+)/i);
+          const mTFG2 = labs.match(/(?:tfg|tgf|egfr)[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
           const tfgNutri = mTFG2 ? parseInt(mTFG2[1]) : null;
           if (!peso || isNaN(peso)) return null;
 
@@ -5695,7 +5729,7 @@ function sugerirRetorno(consulta, patient) {
 
   // DM2 descompensado — HbA1c alta ou glicemia alta
   if (prob["DM2"]) {
-    const mHbA1c = labs.match(/(?:hba1c|glicada)[^\d]*(\d+[,.]\d+|\d+)/i);
+    const mHbA1c = labs.match(/(?:hba1c|glicada)[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
     const hba1c = mHbA1c ? parseFloat(mHbA1c[1].replace(",", ".")) : null;
     if (hba1c && hba1c > 9) return { dias: 30, motivo: "DM2 descompensado (HbA1c > 9%)" };
   }
@@ -6383,7 +6417,7 @@ function detectarPadroesMultissistemicos(consulta, patient) {
   const temHipotireoidismo = prob["Hipotireoidismo"];
   const temConstipacao = aga.constipacao === "sim" || tem("constipação", "constipacao");
   const temFraqueza = tem("fraqueza", "cansaço", "fadiga", "astenia");
-  const temHiponatremia = temValorBaixo(/(?:na|s[oó]dio)[^\d]*(\d+)/i, 135);
+  const temHiponatremia = temValorBaixo(/\b(?:na|s[oó]dio)\b[^\d]*(\d+)/i, 135);
   if (temHipotireoidismo && temConstipacao && temFraqueza && temHiponatremia) {
     padroes.push({
       titulo: "Possível Insuficiência Adrenal",
@@ -6393,7 +6427,7 @@ function detectarPadroesMultissistemicos(consulta, patient) {
   }
 
   // Hipercalcemia + confusão + constipação + poliúria: síndrome hipercalcêmica
-  const mCa = labs.match(/(?:ca|cálcio)[^\d]*(\d+[,.]\d+|\d+)/i);
+  const mCa = labs.match(/(?:\bca\b(?!\s*[-\s]?(?:125|19-9|15-3|72-4|72\.4))|cálcio)[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const caVal = mCa ? parseFloat(mCa[1].replace(",",".")) : null;
   const temConfusao = tem("confusão", "confusao", "desorientação", "desorientacao");
   const temPoliuria = tem("poliúria", "poliuria", "urina muito", "sede excessiva");
@@ -6406,10 +6440,10 @@ function detectarPadroesMultissistemicos(consulta, patient) {
   }
 
   // Anemia + macrocitose + declínio cognitivo: deficiência de B12
-  const mB12 = labs.match(/(?:b12|vitamina\s*b12)[^\d]*(\d+)/i);
+  const mB12 = labs.match(/(?:b12|vitamina\s*b12)[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const b12Val = mB12 ? parseInt(mB12[1]) : null;
   const temDeclinioCognitivo = !aga.semQueixasCognitivas || tem("memória", "memoria", "esquecimento");
-  const mHb = labs.match(/(?:hb|hemoglobina)[^\d]*(\d+[,.]\d+|\d+)(?!\s*a1c)/i);
+  const mHb = labs.match(/\b(?:hb|hemoglobina)\b[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*a1c)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const hbVal = mHb ? parseFloat(mHb[1].replace(",",".")) : null;
   if (b12Val && b12Val < 300 && hbVal && hbVal < 12 && temDeclinioCognitivo) {
     padroes.push({
@@ -6421,7 +6455,7 @@ function detectarPadroesMultissistemicos(consulta, patient) {
 
   // Hipotireoidismo + dislipidemia refratária + fraqueza muscular
   const temDislipidemia = prob["Dislipidemia"];
-  const mCK = labs.match(/(?:cpk|ck)[^\d]*(\d+)/i);
+  const mCK = labs.match(/\b(?:cpk|ck)\b[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const ckVal = mCK ? parseInt(mCK[1]) : null;
   if (temHipotireoidismo && temDislipidemia && temFraqueza && ckVal && ckVal > 200) {
     padroes.push({
@@ -6432,7 +6466,7 @@ function detectarPadroesMultissistemicos(consulta, patient) {
   }
 
   // Depressão refratária + fadiga + constipação + intolerância ao frio: hipotireoidismo não diagnosticado
-  const mTSH = labs.match(/(?:tsh)[^\d]*(\d+[,.]\d+|\d+)/i);
+  const mTSH = labs.match(/(?:tsh)[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const tshVal = mTSH ? parseFloat(mTSH[1].replace(",",".")) : null;
   const temDepressao = prob["Transtorno depressivo"] || tem("tristeza", "depressão", "depressao");
   const temIntoleranciaFrio = tem("frio", "intolerância ao frio");
@@ -6543,12 +6577,12 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   const temDislipi = ativos.includes("Dislipidemia");
 
   // Extrai TFG dos labs — ou calcula por CKD-EPI se tiver creatinina
-  const mTFG = labs.match(/(?:tfg|tgf|egfr|taxa de filtra)[^\d]*(\d+)/i);
+  const mTFG = labs.match(/(?:tfg|tgf|egfr|taxa de filtra)[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   let tfg = mTFG ? parseInt(mTFG[1]) : null;
 
   // CKD-EPI 2021 a partir da creatinina se TFG não estiver nos labs
   if (!tfg && idade) {
-    const mCr = labs.match(/(?:cr(?:eatinina)?)[^\d]*(\d+[,.]\d+|\d+)/i);
+    const mCr = labs.match(/\b(?:cr(?:eatinina)?)\b[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
     if (mCr) {
       const cr = parseFloat(mCr[1].replace(',', '.'));
       const sexo = patient?.ident?.sexo || "";
@@ -6568,11 +6602,11 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   }
 
   // Extrai LDL dos labs
-  const mLDL = labs.match(/(?:ldl|ld)[^\d]*(\d+)/i);
+  const mLDL = labs.match(/\b(?:ldl|ld)\b[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const ldlValor = mLDL ? parseInt(mLDL[1]) : null;
 
   // Extrai CT dos labs
-  const mCT = labs.match(/(?:ct|col(?:esterol)?\s*total)[^\d]*(\d+)/i);
+  const mCT = labs.match(/\b(?:ct|col(?:esterol)?\s*total)\b[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const ctValor = mCT ? parseInt(mCT[1]) : null;
 
   // Extrai PA sistólica
@@ -6835,7 +6869,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   }
 
   // Sódio — hiponatremia
-  const mNa = labs.match(/(?:na|s[oó]dio|na\+)(?:\s*[:=]?\s*)(\d+)/i);
+  const mNa = labs.match(/\b(?:na\+|na|s[oó]dio)(?:\s*[:=]?\s*)(\d+)/i);
   if (mNa) {
     const na = parseInt(mNa[1]);
     if (na < 135) {
@@ -6853,7 +6887,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   }
 
   // Potássio — hipercalemia e hipocalemia
-  const mK = labs.match(/(?:k|pot[aá]ssio|k\+)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
+  const mK = labs.match(/\b(?:k|pot[aá]ssio|k\+)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
   if (mK) {
     const k = parseFloat(mK[1].replace(',', '.'));
     if (k > 5.5) {
@@ -6942,7 +6976,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   }
 
   // Albumina
-  const mAlb = labs.match(/(?:albumina)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
+  const mAlb = labs.match(/(?:albumina)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   if (mAlb) {
     const alb = parseFloat(mAlb[1].replace(',', '.'));
     if (alb < 3.5) {
@@ -7431,8 +7465,8 @@ function CardiovascularRisk({ consulta, patient }) {
   const tabagista = tabagismo === "Tabagista atual";
 
   // Extrai CT e HDL dos labs
-  const matchCT = labs.match(/(?:ct|col(?:esterol)?\s*total)[^\d]*(\d+)/i);
-  const matchHDL = labs.match(/(?:hdl)[^\d]*(\d+)/i);
+  const matchCT = labs.match(/\b(?:ct|col(?:esterol)?\s*total)\b[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
+  const matchHDL = labs.match(/(?:hdl)[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const matchPA = (ef.paSentado || "").match(/(\d+)/);
 
   const CT = matchCT ? parseInt(matchCT[1]) : null;
@@ -7808,7 +7842,7 @@ function Dashboard({ patients }) {
     const retornoVencido = retorno && new Date(retorno) < new Date();
     const labs = (ult.labsTexto || "").toLowerCase();
     // Extrai HbA1c
-    const mHbA1c = labs.match(/(?:hba1c|glicada|hemoglobina glicada)[^\d]*(\d+[,.]\d+|\d+)/i);
+    const mHbA1c = labs.match(/(?:hba1c|glicada|hemoglobina glicada)[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
     const hba1c = mHbA1c ? parseFloat(mHbA1c[1].replace(",", ".")) : null;
     // Extrai PA sistólica
     const ef = ult.exameFisico || {};
@@ -7816,10 +7850,10 @@ function Dashboard({ patients }) {
     const pas = mPA ? parseInt(mPA[1]) : null;
     const pad = mPA ? parseInt(mPA[2]) : null;
     // Extrai TFG (calculada ou nos labs)
-    const mTFG = labs.match(/(?:tfg|tgf|egfr|taxa de filtra)[^\d]*(\d+)/i);
+    const mTFG = labs.match(/(?:tfg|tgf|egfr|taxa de filtra)[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
     let tfgVal = mTFG ? parseInt(mTFG[1]) : null;
     if (!tfgVal && idade) {
-      const mCr = labs.match(/(?:cr(?:eatinina)?)[^\d]*(\d+[,.]\d+|\d+)/i);
+      const mCr = labs.match(/\b(?:cr(?:eatinina)?)\b[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
       if (mCr) {
         const cr = parseFloat(mCr[1].replace(",", "."));
         if (cr > 0 && cr < 20) {
@@ -8372,7 +8406,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   const hba1cAcimaMeta = hba1c && hba1c > metaHbA1c;
 
   // Vit D
-  const mVitD = labs.match(/(?:vit(?:amina)?\s*d)[^\d]*(\d+)/i);
+  const mVitD = labs.match(/(?:vit(?:amina)?\s*d)[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const vitD = mVitD ? parseInt(mVitD[1]) : null;
 
   // Constrói sugestões automaticamente
@@ -8420,12 +8454,12 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   if (vacsAusar.length > 0) sugestoes.push({ cat: "Vacinação", items: [`Vacinas pendentes: ${vacsAusar.join(", ")}`, "Verificar calendário de vacinação do idoso"] });
 
   // Dislipidemia
-  const mLDL = labs.match(/(?:ldl|ld)[^\d]*(\d+)/i);
+  const mLDL = labs.match(/\b(?:ldl|ld)\b[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const ldl = mLDL ? parseInt(mLDL[1]) : null;
   if (temDislipidemia && ldl !== null && ldl > 70) sugestoes.push({ cat: "Dislipidemia", items: [`LDL ${ldl} mg/dL — verificar meta conforme risco cardiovascular`, "Confirmar uso de estatina e adesão"] });
 
   // Vitamina D
-  const mVitD2 = labs.match(/(?:vit(?:amina)?\s*d|25-oh|calcidiol)[^\d]*(\d+)/i);
+  const mVitD2 = labs.match(/(?:vit(?:amina)?\s*d|25-oh|calcidiol)[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   const vitD2 = mVitD2 ? parseInt(mVitD2[1]) : null;
   const jaTratandoVitD = /colecalciferol|vitamina d/i.test((consulta.plano || {}).ajuste || "");
   if (vitD2 !== null && vitD2 < 30 && !jaTratandoVitD) sugestoes.push({ cat: "Vitamina D", items: [
@@ -8448,7 +8482,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   ]});
 
   // Hiponatremia
-  const mNa2 = labs.match(/(?:na|s[oó]dio|na\+)(?:\s*[:=]?\s*)(\d+)/i);
+  const mNa2 = labs.match(/\b(?:na\+|na|s[oó]dio)(?:\s*[:=]?\s*)(\d+)/i);
   const na2 = mNa2 ? parseInt(mNa2[1]) : null;
   const jaInvestigandoNa = /osmolalidade|s[oó]dio urin[aá]rio/i.test((consulta.plano || {}).solicito || "");
   if (na2 && na2 < 135 && !jaInvestigandoNa) sugestoes.push({ cat: "Hiponatremia", items: [
@@ -8495,7 +8529,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — DAC sem antiagregante/estatina
-  if (ativos.includes("DAC") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/aas|ácido acetilsalicílico|aspirina|clopidogrel|ticagrelor|prasugrel/)) {
+  if (ativos.includes("DAC") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/\baas\b|ácido acetilsalicílico|aspirina|clopidogrel|ticagrelor|prasugrel/)) {
     sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: DAC sem antiagregante", items: [
       "Doença arterial coronariana registrada sem AAS ou outro antiagregante identificado",
       "Prevenção secundária padrão inclui antiagregante — reavaliar indicação",
@@ -9133,7 +9167,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
         <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
-        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>{getNomeAmbulatorio(ambulatorio || sessionStorage.getItem("ambulatorio") || "cempre")}</div>
+        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>{getNomeAmbulatorio(ambulatorio || storageGet(sessionStorage, "ambulatorio") || "cempre")}</div>
         <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
       </div>
       <div style={{ marginBottom: "4px" }}><span style={label}>Paciente:</span> {i.nome || "—"}</div>
