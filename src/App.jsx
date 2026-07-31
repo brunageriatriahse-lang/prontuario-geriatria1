@@ -3453,14 +3453,21 @@ function IdentTab({ patient, updatePatient }) {
   );
 }
 
-function ComorbidadeItem({ nome, checked, onToggle, nota, onNotaChange, onRemove }) {
+function ComorbidadeItem({ nome, checked, onToggle, nota, onNotaChange, onRemove, onNomeChange }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(nota || "");
+  const [editingNome, setEditingNome] = useState(false);
+  const [draftNome, setDraftNome] = useState(nome || "");
   const inputRef = useRef(null);
+  const inputNomeRef = useRef(null);
 
   useEffect(() => {
     if (editing && inputRef.current) inputRef.current.focus();
   }, [editing]);
+
+  useEffect(() => {
+    if (editingNome && inputNomeRef.current) inputNomeRef.current.focus();
+  }, [editingNome]);
 
   function startEditing(e) {
     e.preventDefault();
@@ -3474,9 +3481,36 @@ function ComorbidadeItem({ nome, checked, onToggle, nota, onNotaChange, onRemove
     setEditing(false);
   }
 
+  function startEditingNome(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraftNome(nome || "");
+    setEditingNome(true);
+  }
+
+  function commitNome() {
+    if (draftNome.trim()) onNomeChange(draftNome.trim());
+    setEditingNome(false);
+  }
+
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 0" }}>
       <input type="checkbox" checked={!!checked} onChange={onToggle} style={{ width: "16px", height: "16px", flexShrink: 0 }} />
+      {editingNome ? (
+        <input
+          ref={inputNomeRef}
+          value={draftNome}
+          onChange={e => setDraftNome(e.target.value)}
+          onBlur={commitNome}
+          onKeyDown={e => { if (e.key === "Enter") commitNome(); if (e.key === "Escape") setEditingNome(false); }}
+          placeholder="Nome da comorbidade"
+          style={{ fontSize: "14px", fontWeight: 600, flex: editing ? "0 0 auto" : 1, minWidth: "120px" }}
+        />
+      ) : onNomeChange ? (
+        <span onClick={startEditingNome} style={{ fontSize: "14px", fontWeight: 600, cursor: "pointer", flexShrink: 0 }} title="Clique para editar o nome">
+          {nome}
+        </span>
+      ) : null}
       {editing ? (
         <input
           ref={inputRef}
@@ -3488,8 +3522,8 @@ function ComorbidadeItem({ nome, checked, onToggle, nota, onNotaChange, onRemove
           style={{ fontSize: "14px", flex: 1 }}
         />
       ) : (
-        <span onClick={startEditing} style={{ fontSize: "14px", cursor: "pointer", flex: 1, borderBottom: "1px dashed var(--color-border-secondary)" }} title="Clique para editar">
-          {nome}{nota ? ` - ${nota}` : ""}
+        <span onClick={startEditing} style={{ fontSize: "14px", cursor: "pointer", flex: 1, borderBottom: "1px dashed var(--color-border-secondary)" }} title="Clique para editar detalhes">
+          {onNomeChange ? (nota ? ` - ${nota}` : " - adicionar detalhes") : `${nome}${nota ? ` - ${nota}` : ""}`}
         </span>
       )}
       {onRemove && (
@@ -3510,6 +3544,7 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
 
   const toggleCustom = (id) => updateConsulta(p => ({ ...p, problemasCustom: (p.problemasCustom || []).map(c => c.id === id ? { ...c, checked: !c.checked } : c) }));
   const setNotaCustom = (id, valor) => updateConsulta(p => ({ ...p, problemasCustom: (p.problemasCustom || []).map(c => c.id === id ? { ...c, nota: valor } : c) }));
+  const setNomeCustom = (id, valor) => updateConsulta(p => ({ ...p, problemasCustom: (p.problemasCustom || []).map(c => c.id === id ? { ...c, nome: valor } : c) }));
   const removeCustom = (id) => updateConsulta(p => ({ ...p, problemasCustom: (p.problemasCustom || []).filter(c => c.id !== id) }));
   const addCustom = () => {
     if (!novoNome.trim()) return;
@@ -3520,8 +3555,74 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
   const ativos = PROBLEMAS.filter(p => problemas[p]);
   const comPrevencao = ativos.filter(p => PREVENCAO_ESPECIFICA[p]);
 
+  // ============================================================
+  // ORDENAÇÃO POR PRIORIDADE/GRAVIDADE — lista de problemas ativos
+  // ============================================================
+  // Cada item ativo (fixo ou customizado) é identificado por uma chave única:
+  // o próprio nome para itens fixos, ou "custom:<id>" para customizados.
+  const customAtivos = custom.filter(c => c.checked);
+  const chaveFixa = (nome) => nome;
+  const chaveCustom = (c) => `custom:${c.id}`;
+
+  const todosAtivos = [
+    ...ativos.map(nome => ({ chave: chaveFixa(nome), nome, nota: notas[nome], tipo: "fixo" })),
+    ...customAtivos.map(c => ({ chave: chaveCustom(c), nome: c.nome, nota: c.nota, tipo: "custom", id: c.id })),
+  ];
+
+  const ordemSalva = consulta.problemasOrdem || [];
+  // Ordena: itens com ordem salva primeiro (na ordem definida), depois os demais na ordem padrão
+  const itensOrdenados = [...todosAtivos].sort((a, b) => {
+    const idxA = ordemSalva.indexOf(a.chave);
+    const idxB = ordemSalva.indexOf(b.chave);
+    if (idxA === -1 && idxB === -1) return 0;
+    if (idxA === -1) return 1;
+    if (idxB === -1) return -1;
+    return idxA - idxB;
+  });
+
+  function moverPrioridade(chave, direcao) {
+    const chavesAtuais = itensOrdenados.map(it => it.chave);
+    const idx = chavesAtuais.indexOf(chave);
+    const novoIdx = idx + direcao;
+    if (novoIdx < 0 || novoIdx >= chavesAtuais.length) return;
+    const novaOrdem = [...chavesAtuais];
+    [novaOrdem[idx], novaOrdem[novoIdx]] = [novaOrdem[novoIdx], novaOrdem[idx]];
+    updateConsulta(p => ({ ...p, problemasOrdem: novaOrdem }));
+  }
+
   return (
     <div>
+      {itensOrdenados.length > 0 && (
+        <SectionCard title={`Comorbidades ativas — ordenar por prioridade/gravidade (${itensOrdenados.length})`} icon="ti-sort-descending" defaultOpen={true}>
+          <p style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: 0, marginBottom: "10px" }}>
+            Use as setas para ordenar as comorbidades da mais para a menos prioritária/grave. Essa ordem é usada na lista de problemas impressa e em outros documentos do prontuário.
+          </p>
+          <div style={{ display: "grid", gap: "4px" }}>
+            {itensOrdenados.map((item, i) => (
+              <div key={item.chave} style={{
+                display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px",
+                background: "var(--color-background-secondary)", borderRadius: "6px", fontSize: "13px",
+              }}>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  minWidth: "22px", height: "22px", borderRadius: "50%",
+                  background: i === 0 ? "var(--color-background-danger)" : i < 3 ? "var(--color-background-warning)" : "var(--color-background-info)",
+                  color: i === 0 ? "var(--color-text-danger)" : i < 3 ? "var(--color-text-warning)" : "var(--color-text-info)",
+                  fontWeight: 700, fontSize: "11px", flexShrink: 0,
+                }}>{i + 1}</span>
+                <span style={{ flex: 1 }}>{item.nome}{item.nota ? ` — ${item.nota}` : ""}</span>
+                <button onClick={() => moverPrioridade(item.chave, -1)} disabled={i === 0} title="Aumentar prioridade" style={{ padding: "2px 6px", opacity: i === 0 ? 0.3 : 1 }}>
+                  <i className="ti ti-chevron-up" aria-hidden="true"></i>
+                </button>
+                <button onClick={() => moverPrioridade(item.chave, 1)} disabled={i === itensOrdenados.length - 1} title="Diminuir prioridade" style={{ padding: "2px 6px", opacity: i === itensOrdenados.length - 1 ? 0.3 : 1 }}>
+                  <i className="ti ti-chevron-down" aria-hidden="true"></i>
+                </button>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
       <SectionCard title="Lista de problemas" icon="ti-list-check">
         <p style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginTop: 0 }}>Marque as comorbidades ativas. Clique no nome de uma comorbidade marcada para adicionar detalhes (ex: "HAS - diagnóstico há 3 anos"). Os itens de prevenção específica correspondentes aparecem automaticamente na aba "Prevenção".</p>
         <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
@@ -3553,6 +3654,7 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
               onToggle={() => toggleCustom(c.id)}
               nota={c.nota}
               onNotaChange={(v) => setNotaCustom(c.id, v)}
+              onNomeChange={(v) => setNomeCustom(c.id, v)}
               onRemove={() => removeCustom(c.id)}
             />
           ))}
@@ -3579,7 +3681,7 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
           { nome: "Insuficiência cardíaca", pts: 1, cond: prob["Insuficiência cardíaca"] || prob["IC"] },
           { nome: "DAOP / Doença vascular periférica", pts: 1, cond: prob["DAOP"] },
           { nome: "AVC / AIT", pts: 1, cond: prob["AVC"] || prob["AIT"] },
-          { nome: "Demência", pts: 1, cond: prob["Demência"] || prob["Doença de Alzheimer"] || prob["Síndrome demencial"] },
+          { nome: "Demência", pts: 1, cond: temDiagnosticoDemencia(consulta) },
           { nome: "DPOC", pts: 1, cond: prob["DPOC"] },
           { nome: "Doença do tecido conjuntivo", pts: 1, cond: prob["Artrite reumatoide"] || prob["LES"] || prob["Esclerodermia"] },
           { nome: "Úlcera péptica", pts: 1, cond: has("úlcera") },
@@ -4031,7 +4133,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   }
 
   // Antipsicótico em demência sem justificativa
-  if ((prob["Demência"] || prob["Doença de Alzheimer"] || prob["Síndrome demencial"]) &&
+  if (temDiagnosticoDemencia(consulta) &&
       temMedComorb("haloperidol","risperidona","olanzapina","quetiapina","aripiprazol","ziprasidona")) {
     alertasComorbidade.push({ tipo: "warning", msg: "⚠ Antipsicótico em Demência: aumenta risco de AVC e mortalidade — reavaliar a cada 3 meses; esgotar medidas não farmacológicas" });
   }
@@ -4056,7 +4158,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   }
 
   // Anticolinérgico em demência
-  if ((prob["Demência"] || prob["Doença de Alzheimer"] || prob["Síndrome demencial"]) &&
+  if (temDiagnosticoDemencia(consulta) &&
       temMedComorb("oxibutinina","solifenacina","tolterodina","darifenacina","fesoterodina","flavoxato","trospio","difenidramina","hidroxizina","amitriptilina","nortriptilina","biperideno","triexifenidil")) {
     alertasComorbidade.push({ tipo: "danger", msg: "⚠ Anticolinérgico em Demência: piora cognitiva, delirium e risco de queda — contraindicado; usar mirabegrom para bexiga hiperativa" });
   }
@@ -4150,7 +4252,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
 
   // 3. Antipsicótico para demência
   const temAntipsicótico = linhas.some(l => /haloperidol|risperidona|quetiapina|olanzapina|aripiprazol|ziprasidona|clozapina|clorpromazina/i.test(l));
-  const temDemência = consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"];
+  const temDemência = temDiagnosticoDemencia(consulta);
   if (temAntipsicótico && temDemência) {
     alertasDesprescricao.push({
       titulo: "⚠ Antipsicótico em demência — reavaliar e tentar redução de dose",
@@ -4315,6 +4417,16 @@ function MedicacoesTab({ consulta, updateConsulta }) {
 // DETECÇÃO DE NEGAÇÃO — evita falsos positivos em texto livre
 // ============================================================
 // Verifica se um termo aparece no texto SEM estar negado (ex: "nega tontura", "sem febre")
+// Detecta diagnóstico de demência tanto na lista fixa ("Síndrome demencial")
+// quanto em comorbidades customizadas (ex: paciente digitou "Demência" ou
+// "Doença de Alzheimer" como item livre em vez de usar o item fixo).
+function temDiagnosticoDemencia(consulta) {
+  const prob = consulta?.problemas || {};
+  if (prob["Síndrome demencial"] || prob["Demência"] || prob["Doença de Alzheimer"]) return true;
+  const custom = (consulta?.problemasCustom || []).filter(c => c.checked).map(c => (c.nome || "").toLowerCase());
+  return custom.some(nome => /\bdem[eê]ncia\b|\balzheimer\b/i.test(nome));
+}
+
 function temSemNegacao(texto, termo) {
   if (!texto) return false;
   const lower = texto.toLowerCase();
@@ -4788,6 +4900,83 @@ function QueixasTab({ consulta, updateConsulta, patient }) {
         </div>
       </SectionCard>
 
+      <SectionCard title="Interrogatório sintomatológico por sistemas (ISDA)" icon="ti-clipboard-list" defaultOpen={true}>
+        <p style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: 0, marginBottom: "10px" }}>
+          Marque os sintomas presentes em cada sistema. Sistemas sem nenhum item marcado podem ser considerados "sem queixas" para fins de registro.
+        </p>
+        {(() => {
+          const isda = consulta.isda || {};
+          const setIsda = (sistema, item, valor) => updateConsulta(p => ({
+            ...p,
+            isda: { ...(p.isda || {}), [sistema]: { ...((p.isda || {})[sistema] || {}), [item]: valor } },
+          }));
+          const setIsdaObs = (sistema, valor) => updateConsulta(p => ({
+            ...p,
+            isda: { ...(p.isda || {}), [sistema]: { ...((p.isda || {})[sistema] || {}), _obs: valor } },
+          }));
+
+          const SISTEMAS = [
+            { chave: "geral", label: "Geral", icone: "ti-user", itens: ["Febre", "Calafrios", "Sudorese noturna", "Fadiga", "Perda de peso", "Ganho de peso", "Anorexia", "Astenia"] },
+            { chave: "pele", label: "Pele e faneras", icone: "ti-hand-finger", itens: ["Prurido", "Lesões de pele", "Alteração de cor", "Alopecia", "Alteração ungueal", "Ressecamento"] },
+            { chave: "cabeca", label: "Cabeça e pescoço", icone: "ti-face-id", itens: ["Cefaleia", "Tontura/vertigem", "Alteração visual", "Alteração auditiva", "Zumbido", "Odinofagia", "Disfagia", "Rouquidão", "Nódulos cervicais"] },
+            { chave: "cardio", label: "Cardiovascular", icone: "ti-heartbeat", itens: ["Dor torácica", "Palpitações", "Dispneia aos esforços", "Dispneia em repouso", "Ortopneia", "Dispneia paroxística noturna", "Edema de MMII", "Síncope/pré-síncope", "Claudicação intermitente"] },
+            { chave: "respiratorio", label: "Respiratório", icone: "ti-lungs", itens: ["Tosse", "Expectoração", "Hemoptise", "Sibilância", "Dor pleurítica"] },
+            { chave: "gastro", label: "Gastrointestinal", icone: "ti-stomach", itens: ["Náusea", "Vômito", "Dor abdominal", "Pirose", "Constipação", "Diarreia", "Melena", "Hematoquezia", "Icterícia", "Distensão abdominal"] },
+            { chave: "urinario", label: "Geniturinário", icone: "ti-droplet", itens: ["Disúria", "Polaciúria", "Urgência urinária", "Incontinência urinária", "Hematúria", "Noctúria", "Jato urinário fraco", "Corrimento/sangramento vaginal"] },
+            { chave: "musculo", label: "Musculoesquelético", icone: "ti-bone", itens: ["Dor articular", "Edema articular", "Limitação de movimento", "Dor lombar", "Fraqueza muscular", "Mialgia"] },
+            { chave: "neuro", label: "Neurológico", icone: "ti-brain", itens: ["Fraqueza focal", "Alteração de sensibilidade", "Tremor", "Alteração de marcha", "Convulsão", "Alteração de memória", "Alteração de linguagem", "Perda de consciência"] },
+            { chave: "psiquiatrico", label: "Psiquiátrico", icone: "ti-mood-sad", itens: ["Humor deprimido", "Ansiedade", "Insônia", "Hipersonia", "Ideação suicida", "Alucinações", "Alterações de comportamento"] },
+            { chave: "hemato", label: "Hematológico/Endócrino", icone: "ti-vaccine", itens: ["Sangramentos fáceis", "Equimoses", "Linfadenopatia", "Intolerância ao calor", "Intolerância ao frio", "Polidipsia", "Polifagia"] },
+          ];
+
+          return (
+            <div style={{ display: "grid", gap: "8px" }}>
+              {SISTEMAS.map(sis => {
+                const dadosSistema = isda[sis.chave] || {};
+                const marcados = sis.itens.filter(it => dadosSistema[it]).length;
+                return (
+                  <div key={sis.chave} style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "8px", padding: "10px 12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px", fontWeight: 600, fontSize: "13px" }}>
+                      <i className={"ti " + sis.icone} aria-hidden="true"></i>
+                      {sis.label}
+                      {marcados > 0 && (
+                        <span style={{ fontSize: "10px", padding: "1px 7px", borderRadius: "8px", background: "var(--color-background-warning)", color: "var(--color-text-warning)", fontWeight: 700 }}>
+                          {marcados} positivo(s)
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: "6px" }}>
+                      {sis.itens.map(item => {
+                        const sel = !!dadosSistema[item];
+                        return (
+                          <label key={item} onClick={e => { e.preventDefault(); setIsda(sis.chave, item, !sel); }}
+                            style={{
+                              fontSize: "12px", cursor: "pointer", padding: "3px 9px", borderRadius: "14px",
+                              background: sel ? "var(--color-background-warning)" : "var(--color-background-secondary)",
+                              border: `1px solid ${sel ? "var(--color-border-warning)" : "var(--color-border-tertiary)"}`,
+                              color: sel ? "var(--color-text-warning)" : "var(--color-text-primary)", userSelect: "none",
+                            }}>
+                            {item}
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {marcados > 0 && (
+                      <input
+                        value={dadosSistema._obs || ""}
+                        onChange={e => setIsdaObs(sis.chave, e.target.value)}
+                        placeholder="Detalhes adicionais deste sistema (opcional)..."
+                        style={{ fontSize: "12px" }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </SectionCard>
+
       {examesSugeridos.length > 0 && (
         <SectionCard title={`Exames sugeridos por sintoma (${examesSugeridos.length})`} icon="ti-flask" defaultOpen={true}>
           <Alert type="info">Sugestões de exames mais custo-efetivos baseadas no sintoma-chave e tempo de evolução mencionados nas queixas.</Alert>
@@ -4928,6 +5117,11 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
 
       <SectionCard title="Mobilidade" icon="ti-wheelchair">
         <Field label="Marcha"><RadioGroup name="marcha" value={aga.marcha} onChange={v => set("marcha", v)} options={[{value:"preservada",label:"Preservada"},{value:"lentificada",label:"Lentificada"},{value:"auxilio",label:"Com auxílio"}]} /></Field>
+        {aga.marcha === "auxilio" && (
+          <Field label="Detalhes do auxílio na marcha">
+            <input value={aga.marchaAuxilioDescricao || ""} onChange={e => set("marchaAuxilioDescricao", e.target.value)} placeholder="Ex: auxílio de acompanhante, apoio unilateral, uso de bengala canadense..." />
+          </Field>
+        )}
         <Field label="Dispositivo"><RadioGroup name="disp" value={aga.dispositivo} onChange={v => set("dispositivo", v)} options={[{value:"nenhum",label:"Nenhum"},{value:"bengala",label:"Bengala"},{value:"andador",label:"Andador"},{value:"cadeira",label:"Cadeira de rodas"}]} /></Field>
         <Field label="Queda no último ano">
           <RadioGroup name="quedas" value={aga.quedas} onChange={v => set("quedas", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} />
@@ -5115,7 +5309,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
             </SectionCard>
 
             {/* CDR */}
-            {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"]) && (
+            {temDiagnosticoDemencia(consulta) && (
               <>
               <SectionCard title="CDR — Clinical Dementia Rating" icon="ti-chart-line" defaultOpen={false}>
                 {(() => {
@@ -5271,7 +5465,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
             )}
 
         {/* NPI — se demência na lista de problemas OU queixa cognitiva presente nesta consulta */}
-        {(consulta.problemas?.["Demência"] || consulta.problemas?.["Doença de Alzheimer"] || consulta.problemas?.["Síndrome demencial"] || !aga.semQueixasCognitivas) && (
+        {(temDiagnosticoDemencia(consulta) || !aga.semQueixasCognitivas) && (
           <SectionCard title="NPI — Inventário Neuropsiquiátrico (simplificado)" icon="ti-brain" defaultOpen={false}>
             {(() => {
               const NPI_SINTOMAS = [
@@ -5646,8 +5840,12 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
         </SectionCard>
         <Row cols="repeat(4, 1fr)">
           <Field label="Peso atual (kg)">
-            <input type="number" value={aga.peso || ""} onChange={e => set("peso", e.target.value)} />
+            <input type="number" value={aga.peso || ""} onChange={e => {
+              const v = e.target.value;
+              updateConsulta(p => ({ ...p, aga: { ...p.aga, peso: v }, exameFisico: { ...p.exameFisico, peso: v } }));
+            }} />
             {(() => { const a = verificarPlausibilidade("peso", aga.peso); return a ? <div style={{ fontSize: "11px", color: "var(--color-text-danger)", marginTop: "3px" }}>{a}</div> : null; })()}
+            <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>Sincronizado automaticamente com o Exame Físico</div>
           </Field>
           <Field label="Peso habitual (kg)"><input type="number" value={aga.pesoHabitual || ""} onChange={e => set("pesoHabitual", e.target.value)} /></Field>
           <Field label="Altura (m)"><input type="number" step="0.01" value={aga.altura || ""} onChange={e => set("altura", e.target.value)} /></Field>
@@ -5696,6 +5894,15 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
             ⚠ <strong>Possível sarcopenia:</strong> {alertaForca ? `Força de preensão palmar abaixo do ponto de corte (${sexoPaciente === "M" ? "< 27 kgf em homens" : "< 16 kgf em mulheres"})` : ""}{alertaForca && alertaCirc ? " · " : ""}{alertaCirc ? "Circunferência de panturrilha < 31 cm" : ""}. Considere avaliação complementar (velocidade de marcha, SPPB, BIA).
           </div>
         )}
+      </SectionCard>
+
+      <SectionCard title="Sexualidade" icon="ti-heart">
+        <textarea
+          rows={3}
+          value={aga.sexualidade || ""}
+          onChange={e => set("sexualidade", e.target.value)}
+          placeholder="Registre livremente: atividade sexual, disfunções, preocupações, uso de terapias/dispositivos, orientações fornecidas..."
+        />
       </SectionCard>
     </div>
   );
@@ -6322,8 +6529,11 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
           <Field label="Temp (°C)"><input value={e.temp || ""} onChange={ev => set("temp", ev.target.value)} /></Field>
         </Row>
         <Row cols="repeat(2, 1fr)">
-          <Field label="Peso (kg)" hint="Aferido na consulta">
-            <input value={e.peso || ""} onChange={ev => set("peso", ev.target.value)} />
+          <Field label="Peso (kg)" hint="Aferido na consulta — sincronizado automaticamente com a AGA">
+            <input value={e.peso || ""} onChange={ev => {
+              const v = ev.target.value;
+              updateConsulta(p => ({ ...p, exameFisico: { ...p.exameFisico, peso: v }, aga: { ...p.aga, peso: v } }));
+            }} />
             {(() => { const a = verificarPlausibilidade("peso", e.peso); return a ? <div style={{ fontSize: "11px", color: "var(--color-text-danger)", marginTop: "3px" }}>{a}</div> : null; })()}
           </Field>
           <Field label="HGT (mg/dL)"><input value={e.hgt || ""} onChange={ev => set("hgt", ev.target.value)} /></Field>
@@ -9183,18 +9393,28 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
         [JSON.stringify(consulta.problemas || {}), JSON.stringify(probHerdado)],
         [JSON.stringify((consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome)), JSON.stringify(customHerdado)],
       ]} /></div>
-      {ativos.length === 0 && customAtivos.length === 0 ? <div>Nenhuma comorbidade ativa registrada.</div> : (
-        <ul style={{ margin: 0, paddingLeft: "18px" }}>
-          {ativos.map(p => {
-            const ehNova = herdado && !probHerdado[p];
-            return <li key={p}>{p}{notas[p] ? ` - ${notas[p]}` : ""}{ehNova && <span style={{ fontSize: "9px", marginLeft: "6px", padding: "1px 6px", borderRadius: "8px", background: "#e6f4ea", color: "#1e7e34", fontWeight: 600 }}>NOVO</span>}</li>;
-          })}
-          {customAtivos.map(c => {
-            const ehNova = herdado && !customHerdado.includes(c.nome);
-            return <li key={c.id}>{c.nome}{c.nota ? ` - ${c.nota}` : ""}{ehNova && <span style={{ fontSize: "9px", marginLeft: "6px", padding: "1px 6px", borderRadius: "8px", background: "#e6f4ea", color: "#1e7e34", fontWeight: 600 }}>NOVO</span>}</li>;
-          })}
-        </ul>
-      )}
+      {ativos.length === 0 && customAtivos.length === 0 ? <div>Nenhuma comorbidade ativa registrada.</div> : (() => {
+        const ordemSalvaImpressao = consulta.problemasOrdem || [];
+        const itensParaImprimir = [
+          ...ativos.map(p => ({ chave: p, nome: p, nota: notas[p], ehNova: herdado && !probHerdado[p], key: p })),
+          ...customAtivos.map(c => ({ chave: `custom:${c.id}`, nome: c.nome, nota: c.nota, ehNova: herdado && !customHerdado.includes(c.nome), key: c.id })),
+        ];
+        itensParaImprimir.sort((a, b) => {
+          const idxA = ordemSalvaImpressao.indexOf(a.chave);
+          const idxB = ordemSalvaImpressao.indexOf(b.chave);
+          if (idxA === -1 && idxB === -1) return 0;
+          if (idxA === -1) return 1;
+          if (idxB === -1) return -1;
+          return idxA - idxB;
+        });
+        return (
+          <ol style={{ margin: 0, paddingLeft: "18px" }}>
+            {itensParaImprimir.map(item => (
+              <li key={item.key}>{item.nome}{item.nota ? ` - ${item.nota}` : ""}{item.ehNova && <span style={{ fontSize: "9px", marginLeft: "6px", padding: "1px 6px", borderRadius: "8px", background: "#e6f4ea", color: "#1e7e34", fontWeight: 600 }}>NOVO</span>}</li>
+            ))}
+          </ol>
+        );
+      })()}
 
       <div style={sectionTitle}>ANTECEDENTES<SeloSecao campos={[
         [a.tabagismo, aHerdado.tabagismo], [a.etilismo, aHerdado.etilismo],
