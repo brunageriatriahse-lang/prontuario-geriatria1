@@ -3453,6 +3453,32 @@ function IdentTab({ patient, updatePatient }) {
   );
 }
 
+// ============================================================
+// CHIPS DE SUGESTÃO — insere termos comuns em campos de texto livre
+// ============================================================
+function ChipsSugestao({ valor, onChange, opcoes }) {
+  function inserir(termo) {
+    const atual = valor || "";
+    if (atual.toLowerCase().includes(termo.toLowerCase())) return; // evita duplicar
+    const separador = atual.trim() ? (atual.trim().endsWith(",") ? " " : ", ") : "";
+    onChange(atual + separador + termo);
+  }
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "6px" }}>
+      {opcoes.map(termo => (
+        <button
+          key={termo}
+          type="button"
+          onClick={() => inserir(termo)}
+          style={{ fontSize: "11px", padding: "3px 9px", borderRadius: "14px", background: "var(--color-background-secondary)", border: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}
+        >
+          + {termo}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ComorbidadeItem({ nome, checked, onToggle, nota, onNotaChange, onRemove, onNomeChange }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(nota || "");
@@ -3590,19 +3616,52 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
     updateConsulta(p => ({ ...p, problemasOrdem: novaOrdem }));
   }
 
+  function moverPrioridadePara(chave, novoIdx) {
+    const chavesAtuais = itensOrdenados.map(it => it.chave);
+    const idxAtual = chavesAtuais.indexOf(chave);
+    if (idxAtual === -1 || idxAtual === novoIdx) return;
+    const novaOrdem = [...chavesAtuais];
+    novaOrdem.splice(idxAtual, 1);
+    novaOrdem.splice(novoIdx, 0, chave);
+    updateConsulta(p => ({ ...p, problemasOrdem: novaOrdem }));
+  }
+
+  const [arrastandoChave, setArrastandoChave] = useState(null);
+  const [sobreIndice, setSobreIndice] = useState(null);
+
   return (
     <div>
       {itensOrdenados.length > 0 && (
         <SectionCard title={`Comorbidades ativas — ordenar por prioridade/gravidade (${itensOrdenados.length})`} icon="ti-sort-descending" defaultOpen={true}>
           <p style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: 0, marginBottom: "10px" }}>
-            Use as setas para ordenar as comorbidades da mais para a menos prioritária/grave. Essa ordem é usada na lista de problemas impressa e em outros documentos do prontuário.
+            Arraste os itens (segure e mova) ou use as setas para ordenar as comorbidades da mais para a menos prioritária/grave. Essa ordem é usada na lista de problemas impressa e em outros documentos do prontuário.
           </p>
           <div style={{ display: "grid", gap: "4px" }}>
             {itensOrdenados.map((item, i) => (
-              <div key={item.chave} style={{
-                display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px",
-                background: "var(--color-background-secondary)", borderRadius: "6px", fontSize: "13px",
-              }}>
+              <div
+                key={item.chave}
+                draggable
+                onDragStart={(e) => { setArrastandoChave(item.chave); e.dataTransfer.effectAllowed = "move"; }}
+                onDragEnd={() => { setArrastandoChave(null); setSobreIndice(null); }}
+                onDragOver={(e) => { e.preventDefault(); if (sobreIndice !== i) setSobreIndice(i); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (arrastandoChave) moverPrioridadePara(arrastandoChave, i);
+                  setArrastandoChave(null);
+                  setSobreIndice(null);
+                }}
+                style={{
+                  display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px",
+                  background: sobreIndice === i && arrastandoChave && arrastandoChave !== item.chave
+                    ? "var(--color-background-info)"
+                    : "var(--color-background-secondary)",
+                  borderRadius: "6px", fontSize: "13px",
+                  border: arrastandoChave === item.chave ? "1px dashed var(--color-border-info)" : "1px solid transparent",
+                  opacity: arrastandoChave === item.chave ? 0.5 : 1,
+                  cursor: "grab",
+                }}
+              >
+                <i className="ti ti-grip-vertical" aria-hidden="true" style={{ color: "var(--color-text-tertiary)", flexShrink: 0, cursor: "grab" }}></i>
                 <span style={{
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
                   minWidth: "22px", height: "22px", borderRadius: "50%",
@@ -5533,7 +5592,14 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
         </Field>
         {!aga.semQueixasHumor && (
           <>
-            <Field label="Descrição da queixa de humor"><textarea rows={2} value={aga.queixasHumorDescricao || ""} onChange={e => set("queixasHumorDescricao", e.target.value)} placeholder="ex: tristeza, anedonia, irritabilidade..." /></Field>
+            <Field label="Descrição da queixa de humor">
+              <textarea rows={2} value={aga.queixasHumorDescricao || ""} onChange={e => set("queixasHumorDescricao", e.target.value)} placeholder="ex: tristeza, anedonia, irritabilidade..." />
+              <ChipsSugestao
+                valor={aga.queixasHumorDescricao}
+                onChange={v => set("queixasHumorDescricao", v)}
+                opcoes={["Tristeza", "Anedonia", "Ansiedade", "Irritabilidade", "Agitação", "Apatia", "Alucinações", "Delírios", "Ideação suicida", "Alterações comportamentais", "Déficit de concentração"]}
+              />
+            </Field>
 
             {/* PHQ-9 estruturado */}
             <SectionCard title="PHQ-9 — Questionário de Saúde do Paciente" icon="ti-clipboard-list" defaultOpen={false}>
@@ -5642,6 +5708,11 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
         )}
         <Field label="Observações sobre o sono">
           <textarea rows={2} value={aga.sonoObservacoes || ""} onChange={e => set("sonoObservacoes", e.target.value)} placeholder="Descreva queixas, padrão de sono, uso de medicações para dormir..." />
+          <ChipsSugestao
+            valor={aga.sonoObservacoes}
+            onChange={v => set("sonoObservacoes", v)}
+            opcoes={["Dificuldade para iniciar o sono", "Dificuldade para manter o sono", "Despertar precoce", "Sono não reparador", "Pausas respiratórias", "Pesadelos", "Sonambulismo", "Movimentos periódicos dos membros", "Síndrome das pernas inquietas"]}
+          />
         </Field>
       </SectionCard>
 
@@ -5902,6 +5973,11 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
           value={aga.sexualidade || ""}
           onChange={e => set("sexualidade", e.target.value)}
           placeholder="Registre livremente: atividade sexual, disfunções, preocupações, uso de terapias/dispositivos, orientações fornecidas..."
+        />
+        <ChipsSugestao
+          valor={aga.sexualidade}
+          onChange={v => set("sexualidade", v)}
+          opcoes={["Atividade sexual", "Libido", "Disfunção sexual", "Dor durante relação", "IST prévias"]}
         />
       </SectionCard>
     </div>
