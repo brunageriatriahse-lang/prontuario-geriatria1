@@ -4974,18 +4974,19 @@ function QueixasTab({ consulta, updateConsulta, patient }) {
             isda: { ...(p.isda || {}), [sistema]: { ...((p.isda || {})[sistema] || {}), _obs: valor } },
           }));
 
+          const sexoPac = patient?.ident?.sexo || "";
+
           const SISTEMAS = [
-            { chave: "geral", label: "Geral", icone: "ti-user", itens: ["Febre", "Calafrios", "Sudorese noturna", "Fadiga", "Perda de peso", "Ganho de peso", "Anorexia", "Astenia"] },
-            { chave: "pele", label: "Pele e faneras", icone: "ti-hand-finger", itens: ["Prurido", "Lesões de pele", "Alteração de cor", "Alopecia", "Alteração ungueal", "Ressecamento"] },
-            { chave: "cabeca", label: "Cabeça e pescoço", icone: "ti-face-id", itens: ["Cefaleia", "Tontura/vertigem", "Alteração visual", "Alteração auditiva", "Zumbido", "Odinofagia", "Disfagia", "Rouquidão", "Nódulos cervicais"] },
-            { chave: "cardio", label: "Cardiovascular", icone: "ti-heartbeat", itens: ["Dor torácica", "Palpitações", "Dispneia aos esforços", "Dispneia em repouso", "Ortopneia", "Dispneia paroxística noturna", "Edema de MMII", "Síncope/pré-síncope", "Claudicação intermitente"] },
-            { chave: "respiratorio", label: "Respiratório", icone: "ti-lungs", itens: ["Tosse", "Expectoração", "Hemoptise", "Sibilância", "Dor pleurítica"] },
-            { chave: "gastro", label: "Gastrointestinal", icone: "ti-stomach", itens: ["Náusea", "Vômito", "Dor abdominal", "Pirose", "Constipação", "Diarreia", "Melena", "Hematoquezia", "Icterícia", "Distensão abdominal"] },
-            { chave: "urinario", label: "Geniturinário", icone: "ti-droplet", itens: ["Disúria", "Polaciúria", "Urgência urinária", "Incontinência urinária", "Hematúria", "Noctúria", "Jato urinário fraco", "Corrimento/sangramento vaginal"] },
-            { chave: "musculo", label: "Musculoesquelético", icone: "ti-bone", itens: ["Dor articular", "Edema articular", "Limitação de movimento", "Dor lombar", "Fraqueza muscular", "Mialgia"] },
-            { chave: "neuro", label: "Neurológico", icone: "ti-brain", itens: ["Fraqueza focal", "Alteração de sensibilidade", "Tremor", "Alteração de marcha", "Convulsão", "Alteração de memória", "Alteração de linguagem", "Perda de consciência"] },
-            { chave: "psiquiatrico", label: "Psiquiátrico", icone: "ti-mood-sad", itens: ["Humor deprimido", "Ansiedade", "Insônia", "Hipersonia", "Ideação suicida", "Alucinações", "Alterações de comportamento"] },
-            { chave: "hemato", label: "Hematológico/Endócrino", icone: "ti-vaccine", itens: ["Sangramentos fáceis", "Equimoses", "Linfadenopatia", "Intolerância ao calor", "Intolerância ao frio", "Polidipsia", "Polifagia"] },
+            { chave: "geral", label: "Geral", icone: "ti-user", itens: ["Febre", "Calafrios", "Sudorese noturna", "Alteração de peso", "Astenia", "Anorexia", "Edema", "Linfonodomegalia"] },
+            { chave: "pele", label: "Pele e Anexos", icone: "ti-hand-finger", itens: ["Prurido", "Ressecamento", "Lesões de pele", "Alteração de cor", "Alteração ungueal", "Alopecia"] },
+            { chave: "respiratorio", label: "Sistema Respiratório", icone: "ti-lungs", itens: ["Tosse", "Expectoração", "Hemoptise", "Dispneia aos esforços", "Dispneia em repouso", "Chiado torácico", "Dor torácica ventilatório-dependente", "Roncos", "Apneia do sono", "Obstrução nasal", "Coriza", "Espirros", "Epistaxe", "Prurido nasal", "Hiposmia", "Anosmia", "Rinorreia", "Dor facial"] },
+            { chave: "cardio", label: "Sistema Cardiovascular", icone: "ti-heartbeat", itens: ["Dor torácica", "Palpitações", "Dispneia aos esforços", "Dispneia em repouso", "Ortopneia", "Dispneia paroxística noturna", "Edema de membros inferiores", "Claudicação intermitente", "Síncope", "Lipotímia"] },
+            { chave: "gastro", label: "Sistema Gastrointestinal", icone: "ti-stomach", itens: ["Xerostomia", "Sialorreia", "Lesões em cavidade oral", "Sangramento gengival", "Halitose", "Alteração do paladar", "Disfagia", "Odinofagia", "Rouquidão", "Disfonia", "Pirose", "Refluxo", "Regurgitação", "Náuseas", "Vômitos", "Dor abdominal", "Hematêmese", "Melena", "Hematoquezia", "Saciedade precoce", "Distensão abdominal", "Flatulência", "Constipação", "Diarreia", "Alternância do hábito intestinal", "Tenesmo", "Colúria", "Acolia fecal"] },
+            { chave: "urinario", label: "Sistema Geniturinário", icone: "ti-droplet", itens: ["Disúria", "Polaciúria", "Noctúria", "Oligúria", "Anúria", "Poliúria", "Hesitação", "Jato fraco", "Gotejamento", "Sensação de esvaziamento incompleto", "Retenção urinária", "Hematúria", "Incontinência urinária", "Dor lombar"] },
+            ...(sexoPac === "M" ? [{ chave: "masculino", label: "Masculino", icone: "ti-gender-male", itens: ["Disfunção erétil", "Dor testicular", "Massa testicular", "Corrimento uretral"] }] : []),
+            ...(sexoPac === "F" ? [{ chave: "feminino", label: "Feminino", icone: "ti-gender-female", itens: ["Corrimento vaginal", "Sangramento vaginal", "Prurido", "Dor pélvica", "Dispareunia", "Menopausa", "Prolapso vaginal"] }] : []),
+            { chave: "musculo", label: "Sistema Musculoesquelético", icone: "ti-bone", itens: ["Artralgia", "Rigidez matinal", "Edema articular", "Calor local", "Limitação funcional", "Mialgia", "Fraqueza muscular", "Cãibras"] },
+            { chave: "neuro", label: "Sistema Neurológico", icone: "ti-brain", itens: ["Cefaleia", "Tontura", "Síncope", "Lipotímia", "Tremores", "Convulsões", "Alteração de memória", "Alteração da linguagem", "Paresias", "Paralisias", "Dormência", "Formigamentos", "Alteração da marcha", "Incoordenação", "Alteração de equilíbrio", "Movimentos involuntários", "Alteração de sensibilidade"] },
           ];
 
           return (
@@ -5721,10 +5722,30 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
           <Field label="Visão"><RadioGroup name="visao" value={aga.visao} onChange={v => set("visao", v)} options={[{value:"preservada",label:"Preservada"},{value:"alterada",label:"Alterada"}]} /></Field>
           <Field label="Uso de lentes corretivas?"><RadioGroup name="visaoLentes" value={aga.visaoLentes} onChange={v => set("visaoLentes", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
         </Row>
+        {aga.visao === "alterada" && (
+          <Field label="Detalhes da alteração visual">
+            <textarea rows={2} value={aga.visaoDescricao || ""} onChange={e => set("visaoDescricao", e.target.value)} placeholder="Descreva a alteração visual..." />
+            <ChipsSugestao
+              valor={aga.visaoDescricao}
+              onChange={v => set("visaoDescricao", v)}
+              opcoes={["Baixa acuidade visual", "Diplopia", "Escotomas", "Fotofobia", "Dor ocular", "Lacrimejamento", "Olho seco", "Secreção", "Prurido", "Hiperemia", "Moscas volantes", "Fotopsias"]}
+            />
+          </Field>
+        )}
         <Row>
           <Field label="Audição"><RadioGroup name="audicao" value={aga.audicao} onChange={v => set("audicao", v)} options={[{value:"preservada",label:"Preservada"},{value:"alterada",label:"Alterada"}]} /></Field>
           <Field label="Uso de aparelho auditivo?"><RadioGroup name="audicaoAparelho" value={aga.audicaoAparelho} onChange={v => set("audicaoAparelho", v)} options={[{value:"nao",label:"Não"},{value:"sim",label:"Sim"}]} /></Field>
         </Row>
+        {aga.audicao === "alterada" && (
+          <Field label="Detalhes da alteração auditiva">
+            <textarea rows={2} value={aga.audicaoDescricao || ""} onChange={e => set("audicaoDescricao", e.target.value)} placeholder="Descreva a alteração auditiva..." />
+            <ChipsSugestao
+              valor={aga.audicaoDescricao}
+              onChange={v => set("audicaoDescricao", v)}
+              opcoes={["Hipoacusia", "Surdez", "Otalgia", "Otorreia", "Zumbido"]}
+            />
+          </Field>
+        )}
       </SectionCard>
 
       <SectionCard title="Continências" icon="ti-droplet">
