@@ -1423,7 +1423,7 @@ function emptyConsulta(base) {
       frail: {}, semQueixasCognitivas: false, queixasCognitivasDescricao: "", minicog: "", meem: "", moca: "",
       semQueixasHumor: false, queixasHumorDescricao: "", phq9: "",
       semQueixasSono: false, roncos: "", sonolenciaDiurna: "", higieneSono: "",
-      visao: "preservada", visaoLentes: "", audicao: "", audicaoAparelho: "",
+      visao: "", visaoLentes: "", audicao: "", audicaoAparelho: "",
       incontinenciaUrinaria: "", incontinenciaUrinariaDes: "", incontinenciaFecal: "", incontinenciaFecalDes: "", constipacao: "", constipacaoDescricao: "",
       peso: "", pesoHabitual: "", altura: "", perdaPeso: "", perdaPesoKg: "", perdaPesoTempo: "",
       apetite: "", disfagia: "", disfagiaDieta: "",
@@ -4058,6 +4058,82 @@ function verificarDisponibilidadeSUS(texto) {
   return { disponiveis, naoEncontrados, sugestoesGenerico };
 }
 
+// ============================================================
+// ESTIMATIVA DE CUSTO MENSAL DO TRATAMENTO — valores aproximados de
+// referência (genérico, preço médio de mercado em R$/mês para uso contínuo).
+// São estimativas grosseiras para dar uma noção de carga financeira ao
+// paciente — não substituem consulta de preço real em farmácia.
+// ============================================================
+const CUSTO_MENSAL_APROXIMADO = [
+  { nome: "Losartana", regex: /losartana/i, custo: 15 },
+  { nome: "Captopril", regex: /captopril/i, custo: 12 },
+  { nome: "Enalapril", regex: /enalapril/i, custo: 12 },
+  { nome: "Atenolol", regex: /atenolol/i, custo: 10 },
+  { nome: "Propranolol", regex: /propranolol/i, custo: 8 },
+  { nome: "Carvedilol", regex: /carvedilol/i, custo: 20 },
+  { nome: "Anlodipino", regex: /anlodipino|amlodipino/i, custo: 12 },
+  { nome: "Hidroclorotiazida", regex: /hidroclorotiazida/i, custo: 8 },
+  { nome: "Furosemida", regex: /furosemida/i, custo: 10 },
+  { nome: "Espironolactona", regex: /espironolactona/i, custo: 18 },
+  { nome: "Sinvastatina", regex: /sinvastatina/i, custo: 15 },
+  { nome: "Atorvastatina", regex: /atorvastatina/i, custo: 25 },
+  { nome: "Rosuvastatina", regex: /rosuvastatina/i, custo: 35 },
+  { nome: "AAS", regex: /\baas\b|ácido acetilsalicílico|aspirina/i, custo: 8 },
+  { nome: "Clopidogrel", regex: /clopidogrel/i, custo: 40 },
+  { nome: "Varfarina", regex: /varfarina|warfarina/i, custo: 15 },
+  { nome: "Rivaroxabana", regex: /rivaroxabana/i, custo: 220 },
+  { nome: "Apixabana", regex: /apixabana/i, custo: 240 },
+  { nome: "Dabigatrana", regex: /dabigatrana/i, custo: 230 },
+  { nome: "Metformina", regex: /metformina/i, custo: 15 },
+  { nome: "Glibenclamida", regex: /glibenclamida/i, custo: 8 },
+  { nome: "Gliclazida", regex: /gliclazida/i, custo: 25 },
+  { nome: "Dapagliflozina", regex: /dapagliflozina/i, custo: 180 },
+  { nome: "Empagliflozina", regex: /empagliflozina/i, custo: 190 },
+  { nome: "Insulina NPH", regex: /insulina nph/i, custo: 40 },
+  { nome: "Insulina Regular", regex: /insulina regular/i, custo: 40 },
+  { nome: "Levotiroxina", regex: /levotiroxina/i, custo: 12 },
+  { nome: "Omeprazol", regex: /omeprazol/i, custo: 10 },
+  { nome: "Pantoprazol", regex: /pantoprazol/i, custo: 15 },
+  { nome: "Sertralina", regex: /sertralina/i, custo: 18 },
+  { nome: "Fluoxetina", regex: /fluoxetina/i, custo: 12 },
+  { nome: "Escitalopram", regex: /escitalopram/i, custo: 45 },
+  { nome: "Citalopram", regex: /(?<!es)citalopram/i, custo: 30 },
+  { nome: "Mirtazapina", regex: /mirtazapina/i, custo: 35 },
+  { nome: "Amitriptilina", regex: /amitriptilina/i, custo: 10 },
+  { nome: "Quetiapina", regex: /quetiapina/i, custo: 40 },
+  { nome: "Risperidona", regex: /risperidona/i, custo: 20 },
+  { nome: "Haloperidol", regex: /haloperidol/i, custo: 12 },
+  { nome: "Clonazepam", regex: /clonazepam/i, custo: 8 },
+  { nome: "Alprazolam", regex: /alprazolam/i, custo: 10 },
+  { nome: "Zolpidem", regex: /zolpidem/i, custo: 20 },
+  { nome: "Gabapentina", regex: /gabapentina/i, custo: 30 },
+  { nome: "Pregabalina", regex: /pregabalina/i, custo: 60 },
+  { nome: "Prednisona", regex: /prednisona/i, custo: 10 },
+  { nome: "Alendronato", regex: /alendronato/i, custo: 20 },
+  { nome: "Cálcio + Vitamina D", regex: /cálcio.*vitamina d|carbonato de cálcio/i, custo: 25 },
+  { nome: "Colecalciferol (Vit D)", regex: /colecalciferol|vitamina d(?!\s*e)/i, custo: 20 },
+  { nome: "Digoxina", regex: /digoxina/i, custo: 10 },
+  { nome: "Tramadol", regex: /tramadol/i, custo: 25 },
+  { nome: "Dipirona", regex: /dipirona/i, custo: 8 },
+  { nome: "Paracetamol", regex: /paracetamol/i, custo: 10 },
+];
+
+function estimarCustoMensal(medicacoesTexto) {
+  const linhas = garantirString(medicacoesTexto).split("\n").map(l => l.trim()).filter(Boolean);
+  const identificados = [];
+  const naoIdentificados = [];
+  linhas.forEach(linha => {
+    let achou = null;
+    for (const item of CUSTO_MENSAL_APROXIMADO) {
+      if (item.regex.test(linha)) { achou = item; break; }
+    }
+    if (achou) identificados.push({ medicacao: linha, nome: achou.nome, custo: achou.custo });
+    else naoIdentificados.push(linha);
+  });
+  const total = identificados.reduce((s, i) => s + i.custo, 0);
+  return { identificados, naoIdentificados, total };
+}
+
 function MedicacoesTab({ consulta, updateConsulta }) {
   const texto = consulta.medicacoesTexto || "";
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
@@ -4066,6 +4142,8 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const alertasEspeciais = checkAlertasEspeciais(texto);
   const [showDisponibilidadeSUS, setShowDisponibilidadeSUS] = useState(false);
   const disponibilidadeSUS = verificarDisponibilidadeSUS(texto);
+  const [showCustoMensal, setShowCustoMensal] = useState(false);
+  const custoMensal = estimarCustoMensal(consulta.medicacoesTexto);
   const alertasDoseMaxima = verificarDoseMaximaDiaria(texto);
 
   // Checagem cruzada: alergias medicamentosas registradas vs. medicações prescritas
@@ -4386,6 +4464,45 @@ function MedicacoesTab({ consulta, updateConsulta }) {
             )}
           </div>
         )}
+        {linhas.length > 0 && (
+          <div style={{ marginBottom: "10px" }}>
+            <button onClick={() => setShowCustoMensal(!showCustoMensal)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-currency-real" aria-hidden="true"></i>
+              {showCustoMensal ? "Ocultar" : "Estimar"} custo mensal do tratamento
+            </button>
+            {showCustoMensal && (
+              <div style={{ marginTop: "8px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px", fontSize: "12px" }}>
+                {custoMensal.identificados.length > 0 && (
+                  <div style={{ marginBottom: "8px" }}>
+                    {custoMensal.identificados.map((item, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                        <span>{item.nome}</span>
+                        <span style={{ color: "var(--color-text-secondary)" }}>~R$ {item.custo}/mês</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {custoMensal.total > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "13px", paddingTop: "6px", borderTop: "0.5px solid var(--color-border-tertiary)", marginBottom: "6px" }}>
+                    <span>Total estimado</span>
+                    <span style={{ color: "var(--color-text-warning)" }}>~R$ {custoMensal.total}/mês</span>
+                  </div>
+                )}
+                {custoMensal.naoIdentificados.length > 0 && (
+                  <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "6px" }}>
+                    Não estimado: {custoMensal.naoIdentificados.join("; ")}
+                  </div>
+                )}
+                {custoMensal.total === 0 && custoMensal.identificados.length === 0 && (
+                  <div style={{ color: "var(--color-text-tertiary)" }}>Nenhuma medicação da lista com preço de referência identificada.</div>
+                )}
+                <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                  Valores aproximados de referência (genérico, preço médio de mercado) — apenas para dar noção da carga financeira ao paciente. Não substitui consulta de preço real na farmácia. Muitos itens podem estar disponíveis gratuitamente pelo SUS/Farmácia Popular (ver acima).
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {alertasDoseMaxima.length > 0 && (
           <div style={{ marginBottom: "12px" }}>
             {alertasDoseMaxima.map((a, i) => (
@@ -4537,10 +4654,24 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
   const sexo = patient?.ident?.sexo || "";
   const F = sexo === "F";
 
+  // Achata todos os sintomas marcados como positivos no ISDA (Interrogatório
+  // Sintomatológico por Sistemas) em um texto único, para que hipóteses diagnósticas
+  // considerem também sintomas marcados por lá, mesmo que não estejam escritos nas queixas.
+  const isdaTexto = (() => {
+    const isda = consulta.isda || {};
+    const itens = [];
+    Object.values(isda).forEach(sistema => {
+      Object.entries(sistema || {}).forEach(([item, valor]) => {
+        if (item !== "_obs" && valor) itens.push(item);
+      });
+    });
+    return itens.join(" | ").toLowerCase();
+  })();
+
   const hipoteses = [];
 
   function tem(...termos) {
-    return termos.some(t => temSemNegacao(consulta.queixas || "", t) || labs.includes(t));
+    return termos.some(t => temSemNegacao(consulta.queixas || "", t) || labs.includes(t) || isdaTexto.includes(t));
   }
   function temMed(...termos) { return termos.some(t => meds.includes(t)); }
   function temProb(...termos) { return termos.some(t => prob[t]); }
@@ -4668,6 +4799,16 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
     hipoteses.push({ diag: "Doença do refluxo gastroesofágico (DRGE)", prob: "Moderada", cor: "warning", motivo: "Tosse crônica — causa frequente" });
     hipoteses.push({ diag: "Síndrome de gotejamento pós-nasal", prob: "Moderada", cor: "info", motivo: "Tosse com sensação de muco na garganta" });
     if (temProb("DPOC","Asma")) hipoteses.push({ diag: "Exacerbação de DPOC/Asma", prob: "Alta", cor: "danger", motivo: "Tosse + doença pulmonar conhecida" });
+  }
+
+  if (tem("hemoptise")) {
+    hipoteses.push({ diag: "Investigar neoplasia pulmonar", prob: "Alta", cor: "danger", motivo: "Hemoptise em idoso é bandeira vermelha — solicitar TC de tórax, especialmente se tabagista" });
+    hipoteses.push({ diag: "Bronquiectasias", prob: "Moderada", cor: "warning", motivo: "Causa comum de hemoptise recorrente — considerar TC de tórax de alta resolução" });
+    if (temMed("varfarina","warfarina","rivaroxabana","apixabana","dabigatrana","edoxabana","clopidogrel","aas")) {
+      hipoteses.push({ diag: "Hemoptise relacionada a anticoagulante/antiagregante", prob: "Moderada", cor: "warning", motivo: "Verificar INR/função renal e reavaliar risco-benefício da anticoagulação" });
+    }
+    hipoteses.push({ diag: "Tromboembolismo pulmonar", prob: "Moderada", cor: "danger", motivo: "Considerar especialmente se dispneia/dor torácica associadas — avaliar D-dímero/angioTC" });
+    hipoteses.push({ diag: "Infecção respiratória (pneumonia, tuberculose, bronquite)", prob: "Moderada", cor: "warning", motivo: "Investigar com RX/TC tórax e história epidemiológica" });
   }
 
   if (tem("dispneia aos esforços", "cansaço ao caminhar", "intolerância ao esforço")) {
@@ -6761,7 +6902,20 @@ function detectarPadroesMultissistemicos(consulta, patient) {
   const aga = consulta.aga || {};
   const queixas = garantirString(consulta.queixas).toLowerCase();
 
-  function tem(...termos) { return termos.some(t => labs.includes(t) || temSemNegacao(consulta.queixas || "", t)); }
+  // Sintomas marcados no ISDA também contam para a detecção de padrões, mesmo
+  // que não estejam escritos no texto livre de queixas.
+  const isdaTexto = (() => {
+    const isda = consulta.isda || {};
+    const itens = [];
+    Object.values(isda).forEach(sistema => {
+      Object.entries(sistema || {}).forEach(([item, valor]) => {
+        if (item !== "_obs" && valor) itens.push(item);
+      });
+    });
+    return itens.join(" | ").toLowerCase();
+  })();
+
+  function tem(...termos) { return termos.some(t => labs.includes(t) || temSemNegacao(consulta.queixas || "", t) || isdaTexto.includes(t)); }
   function temValorBaixo(regex, limite) {
     const m = labs.match(regex);
     if (!m) return false;
