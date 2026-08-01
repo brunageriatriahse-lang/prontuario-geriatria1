@@ -1178,8 +1178,21 @@ function uid() {
   return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
 }
 
+// Normaliza um valor de data que pode ser "AAAA-MM-DD" (data completa) ou só "AAAA"
+// (ano aproximado, usado quando a data exata da vacina não é conhecida) para uma
+// data completa utilizável em cálculos (assume 1º de julho — meio do ano — como aproximação).
+function normalizarDataOuAno(v) {
+  if (!v) return "";
+  if (/^\d{4}$/.test(v)) return v + "-07-01";
+  return v;
+}
+function ehAnoApenas(v) {
+  return /^\d{4}$/.test(v || "");
+}
+
 function fmtDate(iso) {
   if (!iso) return "";
+  if (ehAnoApenas(iso)) return `~${iso}`; // ano aproximado, sem dia/mês conhecido
   try {
     // Datas puras "AAAA-MM-DD" (sem horário) são interpretadas pelo JS como UTC meia-noite;
     // em fusos negativos (como o do Brasil) isso faz a data exibida "voltar" um dia.
@@ -1406,15 +1419,15 @@ function emptyConsulta(base) {
       aivd: {"Telefone":true,"Transporte":true,"Compras":true,"Preparar refeições":true,"Tarefas domésticas":true,"Trabalhos manuais":true,"Lavar roupas":true,"Medicações":true,"Finanças":true},
       abvd: {"Banho":true,"Vestir-se":true,"Higiene pessoal":true,"Transferência":true,"Continência":true,"Alimentação":true},
       marcha: "", dispositivo: "",
-      quedas: "nao", quedasNum: "", quedasDescricao: "", fraturas: "nao", fraturasDescricao: "", tce: "nao", tceDescricao: "",
+      quedas: "", quedasNum: "", quedasDescricao: "", fraturas: "nao", fraturasDescricao: "", tce: "nao", tceDescricao: "",
       frail: {}, semQueixasCognitivas: false, queixasCognitivasDescricao: "", minicog: "", meem: "", moca: "",
       semQueixasHumor: false, queixasHumorDescricao: "", phq9: "",
       semQueixasSono: false, roncos: "", sonolenciaDiurna: "", higieneSono: "",
-      visao: "preservada", visaoLentes: "nao", audicao: "preservada", audicaoAparelho: "nao",
-      incontinenciaUrinaria: "nao", incontinenciaUrinariaDes: "", incontinenciaFecal: "nao", incontinenciaFecalDes: "", constipacao: "nao", constipacaoDescricao: "",
-      peso: "", pesoHabitual: "", altura: "", perdaPeso: "nao", perdaPesoKg: "", perdaPesoTempo: "",
-      apetite: "preservado", disfagia: "ausente", disfagiaDieta: "",
-      problemasDentarios: "nao", problemasDentariosDes: "", proteseDentaria: "nao",
+      visao: "preservada", visaoLentes: "", audicao: "", audicaoAparelho: "",
+      incontinenciaUrinaria: "", incontinenciaUrinariaDes: "", incontinenciaFecal: "", incontinenciaFecalDes: "", constipacao: "", constipacaoDescricao: "",
+      peso: "", pesoHabitual: "", altura: "", perdaPeso: "", perdaPesoKg: "", perdaPesoTempo: "",
+      apetite: "", disfagia: "", disfagiaDieta: "",
+      problemasDentarios: "", problemasDentariosDes: "", proteseDentaria: "",
       testeForca: "", circPanturrilha: "",
       atividadeFisica: "",
       sonoObservacoes: "",
@@ -1473,32 +1486,32 @@ const TABS = [
 
 
 
-function Field({ label, children, hint }) {
+function Field({ label, children, hint, compact }) {
   return (
-    <div style={{ marginBottom: "14px" }}>
-      <label style={{ display: "block", fontSize: "13px", fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: "4px" }}>{label}</label>
+    <div style={{ marginBottom: compact ? "8px" : "14px" }}>
+      <label style={{ display: "block", fontSize: "13px", fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: compact ? "2px" : "4px" }}>{label}</label>
       {children}
-      {hint && <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>{hint}</div>}
+      {hint && <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: compact ? "2px" : "4px" }}>{hint}</div>}
     </div>
   );
 }
 
-function Row({ children, cols }) {
-  return <div style={{ display: "grid", gridTemplateColumns: cols || "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px" }}>{children}</div>;
+function Row({ children, cols, compact }) {
+  return <div style={{ display: "grid", gridTemplateColumns: cols || "repeat(auto-fit, minmax(180px, 1fr))", gap: compact ? "8px" : "12px" }}>{children}</div>;
 }
 
-function SectionCard({ title, icon, children, defaultOpen }) {
+function SectionCard({ title, icon, children, defaultOpen, compact }) {
   const [open, setOpen] = useState(defaultOpen !== false);
   return (
-    <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", marginBottom: "12px", background: "var(--color-background-primary)" }}>
-      <button onClick={() => setOpen(!open)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+    <div style={{ border: "0.5px solid var(--color-border-tertiary)", borderRadius: "12px", marginBottom: compact ? "8px" : "12px", background: "var(--color-background-primary)" }}>
+      <button onClick={() => setOpen(!open)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: compact ? "8px 14px" : "12px 16px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
         <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 500, fontSize: "15px" }}>
           {icon && <i className={"ti " + icon} style={{ fontSize: "18px" }} aria-hidden="true"></i>}
           {title}
         </span>
         <i className={"ti " + (open ? "ti-chevron-up" : "ti-chevron-down")} style={{ fontSize: "16px", color: "var(--color-text-tertiary)" }} aria-hidden="true"></i>
       </button>
-      {open && <div style={{ padding: "0 16px 16px" }}>{children}</div>}
+      {open && <div style={{ padding: compact ? "0 14px 10px" : "0 16px 16px" }}>{children}</div>}
     </div>
   );
 }
@@ -6007,7 +6020,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
 
 function mesesDesde(dateStr, referencia) {
   if (!dateStr) return null;
-  const d = new Date(dateStr + "T00:00:00");
+  const d = new Date(normalizarDataOuAno(dateStr) + "T00:00:00");
   if (isNaN(d.getTime())) return null;
   const ref = referencia || new Date();
   const meses = (ref.getFullYear() - d.getFullYear()) * 12 + (ref.getMonth() - d.getMonth());
@@ -6065,7 +6078,7 @@ function sugerirRetorno(consulta, patient) {
 
 function addMonths(dateStr, months) {
   if (!dateStr) return "";
-  const d = new Date(dateStr + "T00:00:00");
+  const d = new Date(normalizarDataOuAno(dateStr) + "T00:00:00");
   if (isNaN(d.getTime())) return "";
   // Proteção contra valores intermediários inválidos vindos do <input type="date">
   // (alguns navegadores disparam onChange enquanto o usuário ainda está digitando o ano,
@@ -6285,6 +6298,43 @@ function PrevencaoTab({ patient, consulta, updateConsulta }) {
   );
 }
 
+// ============================================================
+// CAMPO DE DATA OU ANO — para vacinas quando a data exata não é conhecida
+// ============================================================
+function CampoDataOuAno({ value, onChange }) {
+  const soAno = ehAnoApenas(value);
+  const [modoAno, setModoAno] = useState(soAno);
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+        {modoAno ? (
+          <input
+            type="number"
+            min="1950"
+            max="2100"
+            value={value || ""}
+            onChange={e => onChange(e.target.value)}
+            placeholder="Ex: 2022"
+            style={{ flex: 1 }}
+          />
+        ) : (
+          <input type="date" value={value || ""} onChange={e => onChange(e.target.value)} style={{ flex: 1 }} />
+        )}
+        <button
+          type="button"
+          onClick={() => { setModoAno(!modoAno); onChange(""); }}
+          title={modoAno ? "Informar data completa" : "Não sei a data exata — informar só o ano"}
+          style={{ fontSize: "10px", padding: "4px 8px", whiteSpace: "nowrap" }}
+        >
+          {modoAno ? <><i className="ti ti-calendar" aria-hidden="true"></i> Data completa</> : <><i className="ti ti-calendar-off" aria-hidden="true"></i> Só o ano</>}
+        </button>
+      </div>
+      {soAno && <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>Ano aproximado — cálculos de reforço usam 1º de julho como referência</div>}
+    </div>
+  );
+}
+
 function VacinasTab({ patient, consulta, updateConsulta }) {
   const vac = consulta.vacinas || {};
   const setVacField = (nome, campo, v) => {
@@ -6352,27 +6402,27 @@ function VacinasTab({ patient, consulta, updateConsulta }) {
         <div style={{ marginBottom: "16px" }}>
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>Influenza (dose anual)</div>
           <Row cols="repeat(2, 1fr)">
-            <Field label="Última dose"><input type="date" value={vac.influenza?.dose || ""} onChange={e => setVacField("influenza", "dose", e.target.value)} /></Field>
-            <Field label="Próximo reforço (sugerido)"><input type="date" value={vac.influenza?.reforco || ""} onChange={e => setVacField("influenza", "reforco", e.target.value)} /></Field>
+            <Field label="Última dose"><CampoDataOuAno value={vac.influenza?.dose || ""} onChange={v => setVacField("influenza", "dose", v)} /></Field>
+            <Field label="Próximo reforço (sugerido)"><CampoDataOuAno value={vac.influenza?.reforco || ""} onChange={v => setVacField("influenza", "reforco", v)} /></Field>
           </Row>
         </div>
 
         <div style={{ marginBottom: "16px" }}>
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>COVID-19 (reforço a cada 6 meses)</div>
           <Row cols="repeat(2, 1fr)">
-            <Field label="Dose"><input type="date" value={vac.covid?.dose || ""} onChange={e => setVacField("covid", "dose", e.target.value)} /></Field>
-            <Field label="Próximo reforço (sugerido, 6 meses)"><input type="date" value={vac.covid?.reforco || ""} onChange={e => setVacField("covid", "reforco", e.target.value)} /></Field>
+            <Field label="Dose"><CampoDataOuAno value={vac.covid?.dose || ""} onChange={v => setVacField("covid", "dose", v)} /></Field>
+            <Field label="Próximo reforço (sugerido, 6 meses)"><CampoDataOuAno value={vac.covid?.reforco || ""} onChange={v => setVacField("covid", "reforco", v)} /></Field>
           </Row>
         </div>
 
         <div style={{ marginBottom: "16px" }}>
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>Pneumocócica</div>
-          <Field label="VPC20 (dose única)"><input type="date" value={vac.pneumo?.vpc20 || ""} onChange={e => setVacField("pneumo", "vpc20", e.target.value)} /></Field>
+          <Field label="VPC20 (dose única)"><CampoDataOuAno value={vac.pneumo?.vpc20 || ""} onChange={v => setVacField("pneumo", "vpc20", v)} /></Field>
           <p style={{ fontSize: "11px", color: "var(--color-text-tertiary)", margin: "0 0 8px" }}>Se indisponibilidade de VPC20:</p>
           <Row cols="repeat(3, 1fr)">
-            <Field label="VPC13/15"><input type="date" value={vac.pneumo?.vpc13 || ""} onChange={e => setVacField("pneumo", "vpc13", e.target.value)} /></Field>
-            <Field label="VPP23 (sugerido, após 2m)"><input type="date" value={vac.pneumo?.vpp23_1 || ""} onChange={e => setVacField("pneumo", "vpp23_1", e.target.value)} /></Field>
-            <Field label="VPP23 (sugerido, reforço 5a)"><input type="date" value={vac.pneumo?.vpp23_2 || ""} onChange={e => setVacField("pneumo", "vpp23_2", e.target.value)} /></Field>
+            <Field label="VPC13/15"><CampoDataOuAno value={vac.pneumo?.vpc13 || ""} onChange={v => setVacField("pneumo", "vpc13", v)} /></Field>
+            <Field label="VPP23 (sugerido, após 2m)"><CampoDataOuAno value={vac.pneumo?.vpp23_1 || ""} onChange={v => setVacField("pneumo", "vpp23_1", v)} /></Field>
+            <Field label="VPP23 (sugerido, reforço 5a)"><CampoDataOuAno value={vac.pneumo?.vpp23_2 || ""} onChange={v => setVacField("pneumo", "vpp23_2", v)} /></Field>
           </Row>
         </div>
 
@@ -6380,33 +6430,33 @@ function VacinasTab({ patient, consulta, updateConsulta }) {
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>dT / dTpa</div>
           <p style={{ fontSize: "11px", color: "var(--color-text-tertiary)", margin: "0 0 8px" }}>Sem esquema prévio:</p>
           <Row cols="repeat(3, 1fr)">
-            <Field label="dT (1ª dose)"><input type="date" value={vac.dtpa?.dt1 || ""} onChange={e => setVacField("dtpa", "dt1", e.target.value)} /></Field>
-            <Field label="dT (sugerido, após 2m)"><input type="date" value={vac.dtpa?.dt2 || ""} onChange={e => setVacField("dtpa", "dt2", e.target.value)} /></Field>
-            <Field label="dTpa (sugerido, após 2m da última)"><input type="date" value={vac.dtpa?.dtpa1 || ""} onChange={e => setVacField("dtpa", "dtpa1", e.target.value)} /></Field>
+            <Field label="dT (1ª dose)"><CampoDataOuAno value={vac.dtpa?.dt1 || ""} onChange={v => setVacField("dtpa", "dt1", v)} /></Field>
+            <Field label="dT (sugerido, após 2m)"><CampoDataOuAno value={vac.dtpa?.dt2 || ""} onChange={v => setVacField("dtpa", "dt2", v)} /></Field>
+            <Field label="dTpa (sugerido, após 2m da última)"><CampoDataOuAno value={vac.dtpa?.dtpa1 || ""} onChange={v => setVacField("dtpa", "dtpa1", v)} /></Field>
           </Row>
           <p style={{ fontSize: "11px", color: "var(--color-text-tertiary)", margin: "8px 0" }}>Com esquema prévio:</p>
-          <Field label="dTpa (reforço sugerido a cada 10 anos)"><input type="date" value={vac.dtpa?.reforco || ""} onChange={e => setVacField("dtpa", "reforco", e.target.value)} /></Field>
+          <Field label="dTpa (reforço sugerido a cada 10 anos)"><CampoDataOuAno value={vac.dtpa?.reforco || ""} onChange={v => setVacField("dtpa", "reforco", v)} /></Field>
         </div>
 
         <div style={{ marginBottom: "16px" }}>
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>Hepatite B</div>
           <Row cols="repeat(3, 1fr)">
-            <Field label="1ª dose"><input type="date" value={vac.hepB?.dose1 || ""} onChange={e => setVacField("hepB", "dose1", e.target.value)} /></Field>
-            <Field label="2ª dose (sugerido, após 1 mês)"><input type="date" value={vac.hepB?.dose2 || ""} onChange={e => setVacField("hepB", "dose2", e.target.value)} /></Field>
-            <Field label="3ª dose (sugerido, após 6 meses da 1ª)"><input type="date" value={vac.hepB?.dose3 || ""} onChange={e => setVacField("hepB", "dose3", e.target.value)} /></Field>
+            <Field label="1ª dose"><CampoDataOuAno value={vac.hepB?.dose1 || ""} onChange={v => setVacField("hepB", "dose1", v)} /></Field>
+            <Field label="2ª dose (sugerido, após 1 mês)"><CampoDataOuAno value={vac.hepB?.dose2 || ""} onChange={v => setVacField("hepB", "dose2", v)} /></Field>
+            <Field label="3ª dose (sugerido, após 6 meses da 1ª)"><CampoDataOuAno value={vac.hepB?.dose3 || ""} onChange={v => setVacField("hepB", "dose3", v)} /></Field>
           </Row>
         </div>
 
         <div style={{ marginBottom: "16px" }}>
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>Vírus sincicial respiratório (VSR) — dose única</div>
-          <Field label="Dose"><input type="date" value={vac.vsr?.dose || ""} onChange={e => setVacField("vsr", "dose", e.target.value)} /></Field>
+          <Field label="Dose"><CampoDataOuAno value={vac.vsr?.dose || ""} onChange={v => setVacField("vsr", "dose", v)} /></Field>
         </div>
 
         <div>
           <div style={{ fontWeight: 500, fontSize: "14px", marginBottom: "6px" }}>Herpes-zóster (VZR recombinante)</div>
           <Row cols="repeat(2, 1fr)">
-            <Field label="1ª dose"><input type="date" value={vac.vzr?.dose1 || ""} onChange={e => setVacField("vzr", "dose1", e.target.value)} /></Field>
-            <Field label="2ª dose (sugerido, após 2 meses)"><input type="date" value={vac.vzr?.dose2 || ""} onChange={e => setVacField("vzr", "dose2", e.target.value)} /></Field>
+            <Field label="1ª dose"><CampoDataOuAno value={vac.vzr?.dose1 || ""} onChange={v => setVacField("vzr", "dose1", v)} /></Field>
+            <Field label="2ª dose (sugerido, após 2 meses)"><CampoDataOuAno value={vac.vzr?.dose2 || ""} onChange={v => setVacField("vzr", "dose2", v)} /></Field>
           </Row>
         </div>
       </SectionCard>
@@ -6561,7 +6611,7 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
 
   return (
     <div>
-      <SectionCard title="Sinais vitais" icon="ti-heartbeat">
+      <SectionCard compact title="Sinais vitais" icon="ti-heartbeat">
         <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "8px", padding: "8px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
           🎯 <strong>Meta de PA — {perfilPA}:</strong> {metaPA}
           {!ehFragil && (
@@ -6603,8 +6653,8 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
             </div>
           </div>
         )}
-        <Row cols="repeat(3, 1fr)">
-          <Field label="PA sentado (mmHg)">
+        <Row compact cols="repeat(3, 1fr)">
+          <Field compact label="PA sentado (mmHg)">
             <input value={e.paSentado || ""} onChange={ev => set("paSentado", ev.target.value)} placeholder="ex: 130/80" />
             {(() => {
               const m = (e.paSentado || "").match(/(\d+)\s*[xX\/]\s*(\d+)/);
@@ -6614,28 +6664,28 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
               return (avisoSis || avisoDia) ? <div style={{ fontSize: "11px", color: "var(--color-text-danger)", marginTop: "3px" }}>{avisoSis || avisoDia}</div> : null;
             })()}
           </Field>
-          <Field label="PA em pé após 3 min (mmHg)" hint="Triagem de hipotensão ortostática"><input value={e.paEmPe || ""} onChange={ev => set("paEmPe", ev.target.value)} placeholder="ex: 120/75" /></Field>
-          <Field label="FC (bpm)">
+          <Field compact label="PA em pé após 3 min (mmHg)" hint="Triagem de hipotensão ortostática"><input value={e.paEmPe || ""} onChange={ev => set("paEmPe", ev.target.value)} placeholder="ex: 120/75" /></Field>
+          <Field compact label="FC (bpm)">
             <input value={e.fc || ""} onChange={ev => set("fc", ev.target.value)} />
             {(() => { const a = verificarPlausibilidade("fc", e.fc); return a ? <div style={{ fontSize: "11px", color: "var(--color-text-danger)", marginTop: "3px" }}>{a}</div> : null; })()}
           </Field>
         </Row>
-        <Row cols="repeat(3, 1fr)">
-          <Field label="SatO2 (%)"><input value={e.sato2 || ""} onChange={ev => set("sato2", ev.target.value)} /></Field>
-          <Field label="FR (irpm)"><input value={e.fr || ""} onChange={ev => set("fr", ev.target.value)} /></Field>
-          <Field label="Temp (°C)"><input value={e.temp || ""} onChange={ev => set("temp", ev.target.value)} /></Field>
+        <Row compact cols="repeat(3, 1fr)">
+          <Field compact label="SatO2 (%)"><input value={e.sato2 || ""} onChange={ev => set("sato2", ev.target.value)} /></Field>
+          <Field compact label="FR (irpm)"><input value={e.fr || ""} onChange={ev => set("fr", ev.target.value)} /></Field>
+          <Field compact label="Temp (°C)"><input value={e.temp || ""} onChange={ev => set("temp", ev.target.value)} /></Field>
         </Row>
-        <Row cols="repeat(2, 1fr)">
-          <Field label="Peso (kg)" hint="Aferido na consulta — sincronizado automaticamente com a AGA">
+        <Row compact cols="repeat(2, 1fr)">
+          <Field compact label="Peso (kg)" hint="Aferido na consulta — sincronizado automaticamente com a AGA">
             <input value={e.peso || ""} onChange={ev => {
               const v = ev.target.value;
               updateConsulta(p => ({ ...p, exameFisico: { ...p.exameFisico, peso: v }, aga: { ...p.aga, peso: v } }));
             }} />
             {(() => { const a = verificarPlausibilidade("peso", e.peso); return a ? <div style={{ fontSize: "11px", color: "var(--color-text-danger)", marginTop: "3px" }}>{a}</div> : null; })()}
           </Field>
-          <Field label="HGT (mg/dL)"><input value={e.hgt || ""} onChange={ev => set("hgt", ev.target.value)} /></Field>
+          <Field compact label="HGT (mg/dL)"><input value={e.hgt || ""} onChange={ev => set("hgt", ev.target.value)} /></Field>
         </Row>
-        <Field label="Dor (EVA 0–10)" hint="0 = sem dor · 10 = pior dor imaginável">
+        <Field compact label="Dor (EVA 0–10)" hint="0 = sem dor · 10 = pior dor imaginável">
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <input
               type="number" min="0" max="10" step="1"
@@ -6680,7 +6730,7 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
           return null;
         })()}
       </SectionCard>
-      <SectionCard title="Exame físico segmentar" icon="ti-stethoscope">
+      <SectionCard compact title="Exame físico segmentar" icon="ti-stethoscope">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
           <p style={{ fontSize: "12px", color: "var(--color-text-tertiary)", margin: 0 }}>
             Achados padrão pré-preenchidos conforme sexo {sexo ? `(${F ? "Feminino" : "Masculino"})` : "— informe o sexo na aba Identificação"} — edite conforme o exame real.
@@ -7708,8 +7758,49 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
           <textarea rows={2} value={pl.encaminhamentos || ""} onChange={e => set("encaminhamentos", e.target.value)} placeholder="Encaminhamentos adicionais..." />
         </Field>
 
-        <Field label="5. Retorno agendado em">
-          <input type="date" value={pl.retorno || ""} onChange={e => set("retorno", e.target.value)} />
+        <Field compact label="5. Retorno(s) agendado(s)">
+          {(() => {
+            const retornos = Array.isArray(pl.retornos) && pl.retornos.length > 0
+              ? pl.retornos
+              : (pl.retorno ? [{ id: "legado", data: pl.retorno, medico: "" }] : []);
+
+            function atualizarRetornos(novaLista) {
+              // Recalcula pl.retorno (data mais próxima) para manter compatibilidade com
+              // Dashboard, exportação CSV e impressão, que usam o campo único.
+              const datasValidas = novaLista.map(r => r.data).filter(Boolean).sort();
+              updateConsulta(p => ({
+                ...p,
+                plano: { ...p.plano, retornos: novaLista, retorno: datasValidas[0] || "" },
+              }));
+            }
+
+            function addRetorno() {
+              atualizarRetornos([...retornos, { id: uid(), data: "", medico: "" }]);
+            }
+            function removeRetorno(id) {
+              atualizarRetornos(retornos.filter(r => r.id !== id));
+            }
+            function setRetornoCampo(id, campo, valor) {
+              atualizarRetornos(retornos.map(r => r.id === id ? { ...r, [campo]: valor } : r));
+            }
+
+            return (
+              <div>
+                {retornos.map((r) => (
+                  <div key={r.id} style={{ display: "flex", gap: "6px", alignItems: "center", marginBottom: "6px" }}>
+                    <input type="date" value={r.data || ""} onChange={e => setRetornoCampo(r.id, "data", e.target.value)} style={{ flex: "0 0 150px" }} />
+                    <input value={r.medico || ""} onChange={e => setRetornoCampo(r.id, "medico", e.target.value)} placeholder="Nome do médico (opcional)" style={{ flex: 1 }} />
+                    <button onClick={() => removeRetorno(r.id)} title="Remover esta data" style={{ padding: "4px 8px", flexShrink: 0 }}>
+                      <i className="ti ti-x" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                ))}
+                <button onClick={addRetorno} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <i className="ti ti-plus" aria-hidden="true"></i>Adicionar outra data de retorno
+                </button>
+              </div>
+            );
+          })()}
           {(() => {
             const sugestao = sugerirRetorno(consulta, patient);
             if (!sugestao) return null;
@@ -7718,7 +7809,15 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
                 <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>
                   💡 Sugestão: <strong>{sugestao.dias} dias</strong> ({sugestao.motivo})
                 </span>
-                <button onClick={() => set("retorno", addDays(consulta.data, sugestao.dias))} style={{ fontSize: "11px", padding: "3px 10px" }}>
+                <button onClick={() => {
+                  const novaData = addDays(consulta.data, sugestao.dias);
+                  const retornosAtuais = Array.isArray(pl.retornos) && pl.retornos.length > 0
+                    ? pl.retornos
+                    : (pl.retorno ? [{ id: "legado", data: pl.retorno, medico: "" }] : []);
+                  const novaLista = [...retornosAtuais, { id: uid(), data: novaData, medico: "" }];
+                  const datasValidas = novaLista.map(r => r.data).filter(Boolean).sort();
+                  updateConsulta(p => ({ ...p, plano: { ...p.plano, retornos: novaLista, retorno: datasValidas[0] || "" } }));
+                }} style={{ fontSize: "11px", padding: "3px 10px" }}>
                   Usar {fmtDate(addDays(consulta.data, sugestao.dias))}
                 </button>
               </div>
@@ -9807,7 +9906,21 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.orientacoes || "—"}</div>
       <div><strong>4. Encaminho para:</strong></div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{pl.encaminhamentos || "—"}</div>
-      <div>5. Retorno agendado em: {pl.retorno ? fmtDate(pl.retorno) : "—"}</div>
+      <div>5. Retorno(s) agendado(s):
+        {(() => {
+          const retornos = Array.isArray(pl.retornos) && pl.retornos.length > 0
+            ? pl.retornos.filter(r => r.data)
+            : (pl.retorno ? [{ id: "legado", data: pl.retorno, medico: "" }] : []);
+          if (retornos.length === 0) return " —";
+          return (
+            <ul style={{ margin: "4px 0 0", paddingLeft: "18px" }}>
+              {retornos.map(r => (
+                <li key={r.id}>{fmtDate(r.data)}{r.medico ? ` — Dr(a). ${r.medico}` : ""}</li>
+              ))}
+            </ul>
+          );
+        })()}
+      </div>
 
       <div style={sectionTitle}>PENDÊNCIAS</div>
       {pend.length === 0 ? <div>Nenhuma pendência registrada.</div> : (
