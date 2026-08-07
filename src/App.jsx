@@ -2470,6 +2470,53 @@ export default function App() {
     }
   }
 
+  // Move um paciente do ambulatório atual para o outro (CEMPRE ↔ Residência):
+  // salva o registro completo na aba de destino e remove definitivamente da aba de origem.
+  async function trocarLocalPaciente(id) {
+    const target = (patients || []).find(p => p.id === id);
+    if (!target) return;
+    const novoAmbulatorio = ambulatorio === "cempre" ? "residencia" : "cempre";
+    try {
+      await savePatient(target, novoAmbulatorio);
+      await purgePatient(id, ambulatorio);
+      setPatients(prev => (prev || []).filter(p => p.id !== id));
+      if (activeId === id) { setActiveId(null); setView("list"); }
+      alert(`Paciente movido para ${novoAmbulatorio === "cempre" ? "CEMPRE" : "Residência"} com sucesso.`);
+    } catch (e) {
+      console.error("Erro ao trocar paciente de local:", e);
+      alert("Erro ao trocar o paciente de local. Verifique a conexão e tente novamente.");
+    }
+  }
+
+  // ============================================================
+  // REGISTRO DE FALTAS — cada paciente guarda um array "faltas" com
+  // {id, data, observacao}, independente das consultas normais.
+  // ============================================================
+  function registrarFalta(id) {
+    const target = (patients || []).find(p => p.id === id);
+    if (!target) return;
+    const novaFalta = { id: uid(), data: new Date().toISOString().slice(0, 10), observacao: "" };
+    const atualizado = { ...target, faltas: [...(target.faltas || []), novaFalta] };
+    setPatients(prev => (prev || []).map(p => p.id === id ? atualizado : p));
+    persistPatient(atualizado);
+  }
+
+  function editarFalta(pacienteId, faltaId, novaObservacao) {
+    const target = (patients || []).find(p => p.id === pacienteId);
+    if (!target) return;
+    const atualizado = { ...target, faltas: (target.faltas || []).map(f => f.id === faltaId ? { ...f, observacao: novaObservacao } : f) };
+    setPatients(prev => (prev || []).map(p => p.id === pacienteId ? atualizado : p));
+    persistPatient(atualizado);
+  }
+
+  function removerFalta(pacienteId, faltaId) {
+    const target = (patients || []).find(p => p.id === pacienteId);
+    if (!target) return;
+    const atualizado = { ...target, faltas: (target.faltas || []).filter(f => f.id !== faltaId) };
+    setPatients(prev => (prev || []).map(p => p.id === pacienteId ? atualizado : p));
+    persistPatient(atualizado);
+  }
+
   function openPatient(id) {
     setActiveId(id);
     setView("consultas");
@@ -2676,6 +2723,11 @@ export default function App() {
           onOpen={openPatient}
           onCreate={createPatient}
           onDelete={handleDeletePatient}
+          onTrocarLocal={trocarLocalPaciente}
+          ambulatorio={ambulatorio}
+          onRegistrarFalta={registrarFalta}
+          onEditarFalta={editarFalta}
+          onRemoverFalta={removerFalta}
         />
       )}
 
@@ -3066,10 +3118,55 @@ function TrashView({ trashedPatients, patients, onRestorePatient, onPermanentlyD
   );
 }
 
-function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpen, onDelete }) {
+// ============================================================
+// LISTA DE FALTANTES — agrega faltas registradas de todos os pacientes,
+// com texto editável por linha (data + observação livre) e opção de remover.
+// ============================================================
+function ListaFaltantes({ patients, onEditarFalta, onRemoverFalta }) {
+  const todasFaltas = [];
+  (patients || []).forEach(p => {
+    (p.faltas || []).forEach(f => {
+      todasFaltas.push({ ...f, pacienteId: p.id, pacienteNome: p.ident?.nome || "Sem nome", prontuario: p.ident?.prontuario || "" });
+    });
+  });
+  todasFaltas.sort((a, b) => new Date(b.data) - new Date(a.data));
+
+  return (
+    <SectionCard title={`Lista de faltantes (${todasFaltas.length})`} icon="ti-user-x" defaultOpen={true}>
+      {todasFaltas.length === 0 ? (
+        <div style={{ fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+          Nenhuma falta registrada. Use o botão "Registrar falta" ao lado do nome do paciente na lista.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: "6px" }}>
+          {todasFaltas.map(f => (
+            <div key={f.id} style={{ display: "flex", gap: "8px", alignItems: "center", padding: "6px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
+              <span style={{ fontSize: "12px", fontWeight: 600, minWidth: "80px", flexShrink: 0 }}>{fmtDate(f.data)}</span>
+              <span style={{ fontSize: "12px", color: "var(--color-text-info)", minWidth: "140px", flexShrink: 0 }}>
+                {f.pacienteNome}{f.prontuario ? ` (${f.prontuario})` : ""}
+              </span>
+              <input
+                value={f.observacao || ""}
+                onChange={e => onEditarFalta(f.pacienteId, f.id, e.target.value)}
+                placeholder="Observação livre (motivo, se remarcou, etc.)..."
+                style={{ flex: 1, fontSize: "12px" }}
+              />
+              <button onClick={() => { if (confirm("Remover este registro de falta?")) onRemoverFalta(f.pacienteId, f.id); }} title="Remover" style={{ padding: "3px 7px", flexShrink: 0 }}>
+                <i className="ti ti-x" aria-hidden="true"></i>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpen, onDelete, onTrocarLocal, ambulatorio, onRegistrarFalta, onEditarFalta, onRemoverFalta }) {
   const [filtroComorbidade, setFiltroComorbidade] = useState("");
   const [filtroFragilidade, setFiltroFragilidade] = useState("");
   const [showDashboard, setShowDashboard] = useState(false);
+  const [showFaltantes, setShowFaltantes] = useState(false);
   const [paginaAtual, setPaginaAtual] = useState(1);
   const PACIENTES_POR_PAGINA = 25;
 
@@ -3112,6 +3209,9 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
         <button onClick={() => setShowDashboard(!showDashboard)} style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
           <i className="ti ti-chart-bar" aria-hidden="true"></i>Dashboard
         </button>
+        <button onClick={() => setShowFaltantes(!showFaltantes)} style={{ display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap" }}>
+          <i className="ti ti-user-x" aria-hidden="true"></i>Lista de faltantes
+        </button>
       </div>
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "14px", flexWrap: "wrap", alignItems: "center" }}>
@@ -3139,6 +3239,14 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
         <div style={{ marginBottom: "20px" }}>
           <ErrorBoundary>
             <Dashboard patients={allPatients} />
+          </ErrorBoundary>
+        </div>
+      )}
+
+      {showFaltantes && (
+        <div style={{ marginBottom: "20px" }}>
+          <ErrorBoundary>
+            <ListaFaltantes patients={allPatients} onEditarFalta={onEditarFalta} onRemoverFalta={onRemoverFalta} />
           </ErrorBoundary>
         </div>
       )}
@@ -3173,6 +3281,24 @@ function PatientList({ patients, allPatients, search, setSearch, onCreate, onOpe
                 </div>
               </div>
               <div style={{ display: "flex", gap: "6px" }}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const outroLocal = ambulatorio === "cempre" ? "Residência" : "CEMPRE";
+                    if (confirm(`Trocar ${p.ident?.nome || "este paciente"} para ${outroLocal}? Ele deixará de aparecer em ${ambulatorio === "cempre" ? "CEMPRE" : "Residência"}.`)) onTrocarLocal(p.id);
+                  }}
+                  title={`Trocar para ${ambulatorio === "cempre" ? "Residência" : "CEMPRE"}`}
+                  aria-label="Trocar de local"
+                >
+                  <i className="ti ti-transfer" aria-hidden="true"></i>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRegistrarFalta(p.id); }}
+                  title="Registrar falta"
+                  aria-label="Registrar falta"
+                >
+                  <i className="ti ti-user-x" aria-hidden="true"></i>
+                </button>
                 <button onClick={(e) => { e.stopPropagation(); if (confirm("Mover este paciente para a lixeira? Você poderá restaurá-lo em até 30 dias.")) onDelete(p.id); }} aria-label="Excluir"><i className="ti ti-trash" aria-hidden="true"></i></button>
               </div>
             </div>
@@ -3928,24 +4054,34 @@ function AntecedentesTab({ consulta, updateConsulta }) {
           options={["Nunca fumou","Ex-tabagista","Tabagista atual"].map(o => ({ value: o, label: o }))} />
       </Field>
       {a.tabagismo && a.tabagismo !== "Nunca fumou" && (
-        <Row cols="repeat(4, 1fr)">
-          <Field label="Início (ano)"><input value={a.tabagismoInicio || ""} onChange={e => set("tabagismoInicio", e.target.value)} /></Field>
-          {a.tabagismo === "Ex-tabagista" && <Field label="Cessou (ano)"><input value={a.tabagismoCessou || ""} onChange={e => set("tabagismoCessou", e.target.value)} /></Field>}
-          <Field label="Maços/dia"><input type="number" step="0.1" value={a.macosDia || ""} onChange={e => set("macosDia", e.target.value)} /></Field>
-          <Field label="Maços/ano"><input type="number" value={a.macosAno || ""} onChange={e => set("macosAno", e.target.value)} /></Field>
-        </Row>
+        <>
+          <Row cols="repeat(4, 1fr)">
+            <Field label="Início (ano)"><input value={a.tabagismoInicio || ""} onChange={e => set("tabagismoInicio", e.target.value)} /></Field>
+            {a.tabagismo === "Ex-tabagista" && <Field label="Cessou (ano)"><input value={a.tabagismoCessou || ""} onChange={e => set("tabagismoCessou", e.target.value)} /></Field>}
+            <Field label="Maços/dia"><input type="number" step="0.1" value={a.macosDia || ""} onChange={e => set("macosDia", e.target.value)} /></Field>
+            <Field label="Maços/ano"><input type="number" value={a.macosAno || ""} onChange={e => set("macosAno", e.target.value)} /></Field>
+          </Row>
+          <Field label="Observações adicionais sobre tabagismo">
+            <textarea rows={2} value={a.tabagismoObs || ""} onChange={e => set("tabagismoObs", e.target.value)} placeholder="Detalhes livres: tipo de fumo (cigarro, charuto, narguilé...), tentativas de cessação, uso de outros produtos com nicotina..." />
+          </Field>
+        </>
       )}
       <Field label="Etilismo">
         <RadioGroup name="etilismo" value={a.etilismo || ""} onChange={v => set("etilismo", v)}
           options={["Nega","Social","Abuso/dependência","Etilista inativo"].map(o => ({ value: o, label: o }))} />
       </Field>
       {a.etilismo && a.etilismo !== "Nega" && (
-        <Row cols="repeat(4, 1fr)">
-          <Field label="Tipo de bebida"><input value={a.etilismoTipo || ""} onChange={e => set("etilismoTipo", e.target.value)} placeholder="ex: cerveja, vinho..." /></Field>
-          <Field label="Frequência"><input value={a.etilismoFrequencia || ""} onChange={e => set("etilismoFrequencia", e.target.value)} placeholder="ex: diário, fins de semana..." /></Field>
-          <Field label="Início (ano)"><input value={a.etilismoInicio || ""} onChange={e => set("etilismoInicio", e.target.value)} /></Field>
-          {a.etilismo === "Etilista inativo" && <Field label="Cessou (ano)"><input value={a.etilismoCessou || ""} onChange={e => set("etilismoCessou", e.target.value)} /></Field>}
-        </Row>
+        <>
+          <Row cols="repeat(4, 1fr)">
+            <Field label="Tipo de bebida"><input value={a.etilismoTipo || ""} onChange={e => set("etilismoTipo", e.target.value)} placeholder="ex: cerveja, vinho..." /></Field>
+            <Field label="Frequência"><input value={a.etilismoFrequencia || ""} onChange={e => set("etilismoFrequencia", e.target.value)} placeholder="ex: diário, fins de semana..." /></Field>
+            <Field label="Início (ano)"><input value={a.etilismoInicio || ""} onChange={e => set("etilismoInicio", e.target.value)} /></Field>
+            {a.etilismo === "Etilista inativo" && <Field label="Cessou (ano)"><input value={a.etilismoCessou || ""} onChange={e => set("etilismoCessou", e.target.value)} /></Field>}
+          </Row>
+          <Field label="Observações adicionais sobre etilismo">
+            <textarea rows={2} value={a.etilismoObs || ""} onChange={e => set("etilismoObs", e.target.value)} placeholder="Detalhes livres: quantidade estimada, repercussões clínicas/sociais, tentativas de cessação, histórico de abstinência..." />
+          </Field>
+        </>
       )}
       <Field label="Cirurgias prévias"><textarea rows={2} value={a.cirurgias || ""} onChange={e => set("cirurgias", e.target.value)} /></Field>
       <Field label="Internamentos no último ano"><textarea rows={2} value={a.internamentos || ""} onChange={e => set("internamentos", e.target.value)} /></Field>
