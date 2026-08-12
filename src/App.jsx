@@ -1679,10 +1679,10 @@ function FavoritosMedicacoes({ onInserir }) {
           <div
             key={f.id}
             style={{
-              display: "flex", alignItems: "center", gap: "4px",
-              background: gerenciando ? "var(--color-background-danger)" : "var(--color-background-info)",
-              border: `0.5px solid ${gerenciando ? "var(--color-border-danger)" : "var(--color-border-info)"}`,
-              borderRadius: "16px", padding: "3px 6px 3px 12px",
+              display: "flex", alignItems: "center", gap: "6px",
+              background: gerenciando ? "#fdeaea" : "var(--color-background-info)",
+              border: `1px solid ${gerenciando ? "#e53935" : "var(--color-border-info)"}`,
+              borderRadius: "16px", padding: gerenciando ? "3px 3px 3px 12px" : "3px 6px 3px 12px",
               opacity: removendoId === f.id ? 0.5 : 1,
             }}
           >
@@ -1692,23 +1692,36 @@ function FavoritosMedicacoes({ onInserir }) {
               disabled={gerenciando}
               style={{
                 fontSize: "12px",
-                color: gerenciando ? "var(--color-text-danger)" : "var(--color-text-info)",
+                color: gerenciando ? "#333" : "var(--color-text-info)",
                 background: "none", border: "none", cursor: gerenciando ? "default" : "pointer", padding: 0,
               }}
             >
               {f.nome}
             </button>
-            <button
-              onClick={() => remover(f.id, f.nome)}
-              title="Apagar esta combinação"
-              disabled={removendoId === f.id}
-              style={{
-                background: "none", border: "none", cursor: "pointer", padding: gerenciando ? "3px" : "2px", display: "flex",
-                fontSize: gerenciando ? "14px" : "12px",
-              }}
-            >
-              <i className="ti ti-x" style={{ fontSize: gerenciando ? "14px" : "12px", color: gerenciando ? "var(--color-text-danger)" : "var(--color-text-tertiary)", fontWeight: gerenciando ? 700 : 400 }} aria-hidden="true"></i>
-            </button>
+            {gerenciando ? (
+              <button
+                onClick={() => remover(f.id, f.nome)}
+                title="Apagar esta combinação"
+                disabled={removendoId === f.id}
+                style={{
+                  background: "#e53935", border: "none", cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: "20px", height: "20px", borderRadius: "50%", flexShrink: 0,
+                  color: "#fff", fontSize: "13px", fontWeight: 700, lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            ) : (
+              <button
+                onClick={() => remover(f.id, f.nome)}
+                title="Apagar esta combinação"
+                disabled={removendoId === f.id}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", display: "flex", fontSize: "12px" }}
+              >
+                <i className="ti ti-x" style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }} aria-hidden="true"></i>
+              </button>
+            )}
           </div>
         ))}
       </div>
