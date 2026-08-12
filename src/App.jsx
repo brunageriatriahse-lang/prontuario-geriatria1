@@ -1573,9 +1573,11 @@ function FavoritosMedicacoes({ onInserir }) {
   const [favoritos, setFavoritos] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [gerenciando, setGerenciando] = useState(false);
   const [novoNome, setNovoNome] = useState("");
   const [novoTexto, setNovoTexto] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [removendoId, setRemovendoId] = useState(null);
 
   useEffect(() => {
     let ativo = true;
@@ -1603,13 +1605,16 @@ function FavoritosMedicacoes({ onInserir }) {
   }
 
   async function remover(id, nome) {
-    if (!confirm(`Excluir a combinação "${nome}"?`)) return;
+    if (!confirm(`Apagar a combinação "${nome}"? Esta ação não pode ser desfeita.`)) return;
+    setRemovendoId(id);
     setFavoritos(prev => prev.filter(f => f.id !== id));
     try {
       await removerFavoritoMedicacao(id);
     } catch (e) {
       console.error("Erro ao remover favorito:", e);
+      alert("Erro ao apagar a combinação. Tente novamente.");
     }
+    setRemovendoId(null);
   }
 
   return (
@@ -1619,9 +1624,24 @@ function FavoritosMedicacoes({ onInserir }) {
           <i className="ti ti-star" style={{ color: "var(--color-text-warning)" }} aria-hidden="true"></i>
           Combinações favoritas
         </div>
-        <button onClick={() => setShowAdd(!showAdd)} style={{ fontSize: "12px", padding: "3px 8px", display: "flex", alignItems: "center", gap: "4px" }}>
-          <i className="ti ti-plus" aria-hidden="true"></i>{showAdd ? "Cancelar" : "Salvar nova"}
-        </button>
+        <div style={{ display: "flex", gap: "6px" }}>
+          {favoritos.length > 0 && (
+            <button
+              onClick={() => setGerenciando(!gerenciando)}
+              style={{
+                fontSize: "12px", padding: "3px 8px", display: "flex", alignItems: "center", gap: "4px",
+                background: gerenciando ? "var(--color-background-danger)" : "transparent",
+                color: gerenciando ? "var(--color-text-danger)" : undefined,
+              }}
+            >
+              <i className={gerenciando ? "ti ti-check" : "ti ti-trash"} aria-hidden="true"></i>
+              {gerenciando ? "Concluir" : "Apagar combinações"}
+            </button>
+          )}
+          <button onClick={() => setShowAdd(!showAdd)} style={{ fontSize: "12px", padding: "3px 8px", display: "flex", alignItems: "center", gap: "4px" }}>
+            <i className="ti ti-plus" aria-hidden="true"></i>{showAdd ? "Cancelar" : "Salvar nova"}
+          </button>
+        </div>
       </div>
 
       {showAdd && (
@@ -1648,18 +1668,46 @@ function FavoritosMedicacoes({ onInserir }) {
         </div>
       )}
 
+      {gerenciando && favoritos.length > 0 && (
+        <div style={{ marginBottom: "8px", padding: "8px 10px", background: "var(--color-background-danger)", borderRadius: "6px", fontSize: "12px", color: "var(--color-text-danger)" }}>
+          <i className="ti ti-info-circle" aria-hidden="true"></i> Clique no ✕ ao lado de cada combinação para apagá-la definitivamente.
+        </div>
+      )}
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
         {favoritos.map(f => (
-          <div key={f.id} style={{ display: "flex", alignItems: "center", gap: "4px", background: "var(--color-background-info)", border: "0.5px solid var(--color-border-info)", borderRadius: "16px", padding: "3px 6px 3px 12px" }}>
+          <div
+            key={f.id}
+            style={{
+              display: "flex", alignItems: "center", gap: "4px",
+              background: gerenciando ? "var(--color-background-danger)" : "var(--color-background-info)",
+              border: `0.5px solid ${gerenciando ? "var(--color-border-danger)" : "var(--color-border-info)"}`,
+              borderRadius: "16px", padding: "3px 6px 3px 12px",
+              opacity: removendoId === f.id ? 0.5 : 1,
+            }}
+          >
             <button
-              onClick={() => onInserir(f.texto)}
+              onClick={() => gerenciando ? null : onInserir(f.texto)}
               title={f.texto}
-              style={{ fontSize: "12px", color: "var(--color-text-info)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              disabled={gerenciando}
+              style={{
+                fontSize: "12px",
+                color: gerenciando ? "var(--color-text-danger)" : "var(--color-text-info)",
+                background: "none", border: "none", cursor: gerenciando ? "default" : "pointer", padding: 0,
+              }}
             >
               {f.nome}
             </button>
-            <button onClick={() => remover(f.id, f.nome)} title="Excluir combinação" style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", display: "flex" }}>
-              <i className="ti ti-x" style={{ fontSize: "12px", color: "var(--color-text-tertiary)" }} aria-hidden="true"></i>
+            <button
+              onClick={() => remover(f.id, f.nome)}
+              title="Apagar esta combinação"
+              disabled={removendoId === f.id}
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: gerenciando ? "3px" : "2px", display: "flex",
+                fontSize: gerenciando ? "14px" : "12px",
+              }}
+            >
+              <i className="ti ti-x" style={{ fontSize: gerenciando ? "14px" : "12px", color: gerenciando ? "var(--color-text-danger)" : "var(--color-text-tertiary)", fontWeight: gerenciando ? 700 : 400 }} aria-hidden="true"></i>
             </button>
           </div>
         ))}
@@ -3992,7 +4040,7 @@ function ProblemasTab({ consulta, updateConsulta, patient }) {
         const mPA = (ef.paSentado || "").match(/(\d+)/);
         const PAS = mPA ? parseInt(mPA[1]) : null;
         const labs = consulta.labsTexto || "";
-        const meds = garantirString(consulta.medicacoesTexto).toLowerCase();
+        const meds = expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase();
         const hasBledItens = [
           { label: "HAS não controlada (PA sistólica >160)", pts: 1, val: PAS && PAS > 160 },
           { label: "Disfunção renal ou hepática", pts: 1, val: prob["DRC"] || custom.some(c => c.includes("hepatopatia") || c.includes("cirrose")) },
@@ -4122,6 +4170,80 @@ const MEDS_SUS_FARMACIA_POPULAR = {
 };
 
 // Nomes comerciais comuns → genérico disponível no SUS/Farmácia Popular
+// ============================================================
+// RECONHECIMENTO DE NOMES COMERCIAIS — expande nomes de marca para o
+// nome genérico correspondente antes de qualquer checagem clínica
+// (Beers, interações, gap terapêutico, hipóteses diagnósticas, custo),
+// para que essas checagens funcionem também quando a médica escreve o
+// nome comercial em vez do genérico.
+// ============================================================
+const NOME_COMERCIAL_PARA_GENERICO = {
+  // Tireoide
+  "puran t4": "levotiroxina", "synthroid": "levotiroxina",
+  // Diabetes
+  "glifage": "metformina", "glucophage": "metformina", "amaryl": "glimepirida",
+  "daonil": "glibenclamida", "jardiance": "empagliflozina", "forxiga": "dapagliflozina",
+  "trajenta": "linagliptina", "januvia": "sitagliptina", "galvus": "vildagliptina",
+  "victoza": "liraglutida", "lantus": "insulina glargina", "basaglar": "insulina glargina",
+  "novolin": "insulina nph", "humalog": "insulina lispro",
+  // Cardiovascular
+  "cozaar": "losartana", "aradois": "losartana", "diovan": "valsartana", "micardis": "telmisartana",
+  "capoten": "captopril", "renitec": "enalapril", "coversyl": "perindopril", "vasopril": "ramipril",
+  "tenormin": "atenolol", "inderal": "propranolol", "selozok": "metoprolol", "seloken": "metoprolol",
+  "concor": "bisoprolol", "coreg": "carvedilol",
+  "norvasc": "anlodipino", "adalat": "nifedipino",
+  "lasix": "furosemida", "aldactone": "espironolactona",
+  "digoxina nova química": "digoxina", "cardioxin": "digoxina",
+  "marevan": "varfarina", "coumadin": "varfarina",
+  "xarelto": "rivaroxabana", "eliquis": "apixabana", "pradaxa": "dabigatrana", "lixiana": "edoxabana",
+  "plavix": "clopidogrel", "brilinta": "ticagrelor",
+  "zocor": "sinvastatina", "lipitor": "atorvastatina", "crestor": "rosuvastatina",
+  "aas infantil": "aas", "aspirina prevent": "aas",
+  "isordil": "isossorbida",
+  // Psiquiátrico/Neurológico
+  "prozac": "fluoxetina", "eutimil": "fluoxetina",
+  "zoloft": "sertralina", "lexapro": "escitalopram", "cipramil": "citalopram",
+  "efexor": "venlafaxina", "cymbalta": "duloxetina",
+  "remeron": "mirtazapina",
+  "amytril": "amitriptilina", "tryptanol": "amitriptilina",
+  "seroquel": "quetiapina", "risperdal": "risperidona", "zyprexa": "olanzapina",
+  "haldol": "haloperidol",
+  "depakene": "ácido valproico", "depakote": "divalproato",
+  "carbolim": "carbamazepina", "tegretol": "carbamazepina",
+  "hidantal": "fenitoína",
+  "xanax": "alprazolam", "frontal": "alprazolam",
+  "rivotril": "clonazepam", "lexotan": "bromazepam", "dienpax": "diazepam",
+  "stilnox": "zolpidem",
+  "lyrica": "pregabalina", "neurontin": "gabapentina",
+  // Digestivo
+  "losec": "omeprazol", "prilosec": "omeprazol", "peptazol": "omeprazol",
+  "nexium": "esomeprazol", "pantozol": "pantoprazol", "pantoloc": "pantoprazol",
+  "buscopan": "escopolamina",
+  "plasil": "metoclopramida",
+  // Corticoides
+  "predsim": "prednisona", "meral": "prednisona",
+  // Analgésicos/AINEs
+  "voltaren": "diclofenaco", "cataflam": "diclofenaco",
+  "tramal": "tramadol",
+  // Osteoporose
+  "fosamax": "alendronato",
+};
+
+function expandirNomesComerciais(texto) {
+  if (!texto) return texto;
+  let expandido = texto;
+  const lower = texto.toLowerCase();
+  Object.entries(NOME_COMERCIAL_PARA_GENERICO).forEach(([marca, generico]) => {
+    // Fronteira de palavra para não capturar substrings indevidos (mesmo cuidado
+    // já aplicado nas correções de bugs de regex de labs anteriores)
+    const regex = new RegExp("\\b" + marca.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b", "i");
+    if (regex.test(lower) && !lower.includes(generico)) {
+      expandido = expandido.replace(regex, (match) => `${match} (${generico})`);
+    }
+  });
+  return expandido;
+}
+
 const MARCA_PARA_GENERICO_SUS = {
   "puran t4": { generico: "Levotiroxina", disponibilidade: "Farmácia Popular (gratuito)" },
   "synthroid": { generico: "Levotiroxina", disponibilidade: "Farmácia Popular (gratuito)" },
@@ -4252,10 +4374,41 @@ const CUSTO_MENSAL_APROXIMADO = [
   { nome: "Tramadol", regex: /tramadol/i, custo: 25 },
   { nome: "Dipirona", regex: /dipirona/i, custo: 8 },
   { nome: "Paracetamol", regex: /paracetamol/i, custo: 10 },
+  { nome: "Valsartana", regex: /valsartana/i, custo: 30 },
+  { nome: "Telmisartana", regex: /telmisartana/i, custo: 35 },
+  { nome: "Perindopril", regex: /perindopril/i, custo: 25 },
+  { nome: "Ramipril", regex: /ramipril/i, custo: 20 },
+  { nome: "Bisoprolol", regex: /bisoprolol/i, custo: 18 },
+  { nome: "Nebivolol", regex: /nebivolol/i, custo: 30 },
+  { nome: "Nifedipino", regex: /nifedipino/i, custo: 12 },
+  { nome: "Edoxabana", regex: /edoxabana/i, custo: 230 },
+  { nome: "Ticagrelor", regex: /ticagrelor/i, custo: 180 },
+  { nome: "Pravastatina", regex: /pravastatina/i, custo: 30 },
+  { nome: "Linagliptina", regex: /linagliptina/i, custo: 90 },
+  { nome: "Sitagliptina", regex: /sitagliptina/i, custo: 85 },
+  { nome: "Vildagliptina", regex: /vildagliptina/i, custo: 80 },
+  { nome: "Liraglutida", regex: /liraglutida/i, custo: 450 },
+  { nome: "Insulina Glargina", regex: /insulina glargina/i, custo: 120 },
+  { nome: "Insulina Lispro", regex: /insulina lispro/i, custo: 100 },
+  { nome: "Duloxetina", regex: /duloxetina/i, custo: 70 },
+  { nome: "Venlafaxina", regex: /venlafaxina/i, custo: 40 },
+  { nome: "Bromazepam", regex: /bromazepam/i, custo: 10 },
+  { nome: "Diazepam", regex: /\bdiazepam\b/i, custo: 8 },
+  { nome: "Olanzapina", regex: /olanzapina/i, custo: 35 },
+  { nome: "Divalproato/Ácido Valproico", regex: /divalproato|ácido valproico/i, custo: 30 },
+  { nome: "Carbamazepina", regex: /carbamazepina/i, custo: 15 },
+  { nome: "Fenitoína", regex: /fenitoína/i, custo: 12 },
+  { nome: "Esomeprazol", regex: /esomeprazol/i, custo: 30 },
+  { nome: "Prednisolona", regex: /prednisolona/i, custo: 15 },
+  { nome: "Denosumabe", regex: /denosumabe/i, custo: 800 },
+  { nome: "Risedronato", regex: /risedronato/i, custo: 40 },
+  { nome: "Colchicina", regex: /colchicina/i, custo: 15 },
+  { nome: "Alopurinol", regex: /alopurinol/i, custo: 10 },
 ];
 
 function estimarCustoMensal(medicacoesTexto) {
-  const linhas = garantirString(medicacoesTexto).split("\n").map(l => l.trim()).filter(Boolean);
+  const textoExpandido = expandirNomesComerciais(garantirString(medicacoesTexto));
+  const linhas = textoExpandido.split("\n").map(l => l.trim()).filter(Boolean);
   const identificados = [];
   const naoIdentificados = [];
   linhas.forEach(linha => {
@@ -4498,7 +4651,7 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   // 1. IBP sem indicação clara (uso crônico)
   const temIBP = linhas.some(l => /omeprazol|pantoprazol|lansoprazol|rabeprazol|esomeprazol/i.test(l));
   const temIndicacaoIBP = (consulta.problemas?.["DRGE"] || consulta.problemas?.["Úlcera péptica"] || consulta.problemas?.["Esofagite"] ||
-    garantirString(consulta.medicacoesTexto).toLowerCase().match(/\baas\b|ácido acetilsalicílico|aspirina|clopidogrel|varfarina|ibuprofeno|diclofenaco|prednisona|dexametasona|corticoide/));
+    expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/\baas\b|ácido acetilsalicílico|aspirina|clopidogrel|varfarina|ibuprofeno|diclofenaco|prednisona|dexametasona|corticoide/));
   if (temIBP && !temIndicacaoIBP) {
     alertasDesprescricao.push({
       titulo: "⚠ IBP sem indicação clara — sugerir tentativa de desmame",
@@ -4782,7 +4935,7 @@ function temAlgumSemNegacao(texto, ...termos) {
 function gerarHipotesesDiagnosticas(consulta, patient) {
   const queixas = garantirString(consulta.queixas).toLowerCase();
   const labs = garantirString(consulta.labsTexto).toLowerCase();
-  const meds = garantirString(consulta.medicacoesTexto).toLowerCase();
+  const meds = expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase();
   const prob = consulta.problemas || {};
   const ef = consulta.exameFisico || {};
   const aga = consulta.aga || {};
@@ -5088,7 +5241,62 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
     }
   });
 
-  // Deduplicar por diagnóstico
+  // ============================================================
+  // HIPÓTESES ADICIONAIS — sintomas geriátricos comuns ainda não cobertos
+  // ============================================================
+  if (tem("constipação", "constipacao", "intestino preso")) {
+    hipoteses.push({ diag: "Constipação funcional/dietética", prob: "Alta", cor: "info", motivo: "Causa mais comum — avaliar ingesta hídrica e de fibras" });
+    if (meds.match(/opioide|tramadol|codeína|morfina|oxicodona/)) hipoteses.push({ diag: "Constipação induzida por opioide", prob: "Alta", cor: "warning", motivo: "Uso de opioide — considerar laxante profilático" });
+    if (meds.match(/verapamil|anticolinérgico|amitriptilina|oxibutinina/)) hipoteses.push({ diag: "Constipação medicamentosa", prob: "Moderada", cor: "warning", motivo: "Medicação com efeito anticolinérgico/constipante" });
+    if (prob["Hipotireoidismo"]) hipoteses.push({ diag: "Hipotireoidismo descompensado", prob: "Moderada", cor: "warning", motivo: "Hipotireoidismo conhecido — verificar TSH atual" });
+  }
+
+  if (tem("edema", "inchaço", "inchaco")) {
+    hipoteses.push({ diag: "Insuficiência venosa crônica", prob: "Moderada", cor: "info", motivo: "Causa comum de edema de MMII em idosos" });
+    if (meds.match(/anlodipino|nifedipino|amlodipino/)) hipoteses.push({ diag: "Edema por bloqueador de canal de cálcio", prob: "Alta", cor: "warning", motivo: "Efeito adverso dose-dependente comum — considerar redução de dose" });
+    if (prob["Insuficiência cardíaca"] || prob["IC"]) hipoteses.push({ diag: "Descompensação de IC", prob: "Alta", cor: "danger", motivo: "IC conhecida — avaliar sinais de congestão, BNP, peso" });
+    if (prob["DRC"]) hipoteses.push({ diag: "Síndrome nefrótica/sobrecarga volêmica renal", prob: "Moderada", cor: "warning", motivo: "DRC conhecida — avaliar proteinúria e função renal" });
+  }
+
+  if (tem("icterícia", "ictericia", "pele amarelada")) {
+    hipoteses.push({ diag: "Obstrução biliar (coledocolitíase, neoplasia)", prob: "Alta", cor: "danger", motivo: "Icterícia em idoso — investigar com USG abdome, bilirrubinas, enzimas canaliculares" });
+    hipoteses.push({ diag: "Hepatopatia", prob: "Moderada", cor: "warning", motivo: "Avaliar transaminases, tempo de protrombina" });
+  }
+
+  if (tem("hematúria", "hematuria", "sangue na urina")) {
+    hipoteses.push({ diag: "Investigar neoplasia urotelial/vesical", prob: "Alta", cor: "danger", motivo: "Hematúria em idoso é bandeira vermelha — encaminhar urologia para cistoscopia" });
+    hipoteses.push({ diag: "Infecção do trato urinário", prob: "Moderada", cor: "warning", motivo: "Causa mais comum — solicitar EAS/urocultura" });
+    if (meds.match(/varfarina|warfarina|rivaroxabana|apixabana|dabigatrana|aas|clopidogrel/)) hipoteses.push({ diag: "Hematúria relacionada a anticoagulante/antiagregante", prob: "Moderada", cor: "warning", motivo: "Avaliar INR/adequação da dose — hematúria não deve ser atribuída só ao anticoagulante sem excluir causa estrutural" });
+  }
+
+  if (tem("disfagia", "dificuldade para engolir", "engasgo")) {
+    hipoteses.push({ diag: "Disfagia orofaríngea relacionada à idade/sarcopenia", prob: "Moderada", cor: "warning", motivo: "Avaliar com teste de deglutição — risco de aspiração" });
+    if (prob["Doença de Parkinson"] || prob["Síndrome demencial"]) hipoteses.push({ diag: "Disfagia neurogênica", prob: "Alta", cor: "danger", motivo: "Doença neurodegenerativa conhecida — risco elevado de pneumonia aspirativa" });
+    hipoteses.push({ diag: "Causa estrutural (estenose, neoplasia esofágica)", prob: "Moderada", cor: "warning", motivo: "Considerar EDA especialmente se disfagia progressiva ou perda de peso associada" });
+  }
+
+  if (tem("insônia", "insonia", "dificuldade para dormir")) {
+    hipoteses.push({ diag: "Insônia primária/higiene do sono inadequada", prob: "Alta", cor: "info", motivo: "Causa mais comum — reforçar higiene do sono antes de medicar" });
+    if (tem("tristeza", "anedonia", "humor deprimido")) hipoteses.push({ diag: "Insônia secundária a depressão", prob: "Alta", cor: "warning", motivo: "Sintomas de humor associados — tratar causa base" });
+    hipoteses.push({ diag: "Apneia obstrutiva do sono", prob: "Moderada", cor: "warning", motivo: "Considerar rastreio se ronco, pausas respiratórias ou sonolência diurna associados" });
+  }
+
+  if (tem("prurido", "coceira")) {
+    hipoteses.push({ diag: "Xerose cutânea (pele seca)", prob: "Alta", cor: "info", motivo: "Causa mais comum em idosos — hidratação cutânea" });
+    if (labs.match(/tfg\D*(\d+)/i) || prob["DRC"]) hipoteses.push({ diag: "Prurido urêmico", prob: "Moderada", cor: "warning", motivo: "DRC conhecida — prurido pode indicar necessidade de otimizar manejo da DRC" });
+    if (labs.match(/bilirrubina/i)) hipoteses.push({ diag: "Prurido colestático", prob: "Moderada", cor: "warning", motivo: "Avaliar função hepática/biliar" });
+  }
+
+  if (tem("dor lombar", "lombalgia")) {
+    hipoteses.push({ diag: "Osteoartrose/espondiloartrose degenerativa", prob: "Alta", cor: "info", motivo: "Causa mais comum em idosos" });
+    if (prob["Osteoporose"]) hipoteses.push({ diag: "Fratura vertebral por compressão", prob: "Alta", cor: "danger", motivo: "Osteoporose conhecida — considerar RX de coluna se dor aguda/intensa" });
+    hipoteses.push({ diag: "Estenose de canal lombar", prob: "Moderada", cor: "warning", motivo: "Considerar se claudicação neurogênica associada (dor que piora ao caminhar, melhora ao sentar)" });
+  }
+
+  if (tem("febre", "febril") && !tem("tosse", "disúria", "diarreia")) {
+    hipoteses.push({ diag: "Investigar foco infeccioso oculto", prob: "Alta", cor: "warning", motivo: "Febre sem foco claro em idoso — considerar ITU atípica, endocardite, abscesso oculto" });
+  }
+
   const vistos = new Set();
   return hipoteses.filter(h => {
     if (vistos.has(h.diag)) return false;
@@ -5368,12 +5576,58 @@ function QueixasTab({ consulta, updateConsulta, patient }) {
           </div>
         </SectionCard>
       )}
+
+      {(() => {
+        const padroes = detectarPadroesMultissistemicos(consulta, patient);
+        if (padroes.length === 0) return null;
+        return (
+          <SectionCard title="🧩 Raciocínio clínico assistido — padrões detectados" icon="ti-puzzle" defaultOpen={true}>
+            <Alert type="info">Padrões multissistêmicos identificados a partir de queixas, comorbidades e labs registrados. Apoio ao raciocínio — não substitui avaliação clínica.</Alert>
+            {padroes.map((p, i) => (
+              <div key={i} style={{ background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "8px", padding: "12px 14px", marginBottom: "10px" }}>
+                <div style={{ fontWeight: 700, color: "var(--color-text-warning)", marginBottom: "6px" }}>⚠ {p.titulo}</div>
+                <div style={{ fontSize: "12px", marginBottom: "6px" }}>
+                  <strong>Achados combinados:</strong> {p.achados.join(" + ")}
+                </div>
+                <div style={{ fontSize: "13px" }}>{p.sugestao}</div>
+              </div>
+            ))}
+          </SectionCard>
+        );
+      })()}
     </div>
   );
 }
 
 function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
   const aga = consulta.aga || {};
+
+  // Busca o valor de um campo (ex: aga.meem) na consulta anterior mais recente que o tenha preenchido,
+  // para exibir "resultado prévio" ao lado da pontuação atual (MEEM, MoCA, PHQ-9 etc.)
+  function buscarPontuacaoAnterior(campo) {
+    const todasConsultas = (patient?.consultas || [])
+      .filter(c => !c.deletedAt && c.id !== consulta.id)
+      .sort((a, b) => new Date(b.data) - new Date(a.data));
+    for (const c of todasConsultas) {
+      const valor = (c.aga || {})[campo];
+      if (valor !== undefined && valor !== "" && valor !== null) {
+        return { valor, data: c.data };
+      }
+    }
+    return null;
+  }
+
+  function PontuacaoAnterior({ campo, sufixo }) {
+    const anterior = buscarPontuacaoAnterior(campo);
+    if (!anterior) return null;
+    return (
+      <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>
+        <i className="ti ti-history" aria-hidden="true"></i> Resultado anterior: <strong>{anterior.valor}{sufixo || ""}</strong> em {fmtDate(anterior.data)}
+      </div>
+    );
+  }
+
+
   // Campos que são radio/toggle e devem ser deletados quando desmarcados
   const CAMPOS_RADIO_AGA = new Set([
     "marcha","dispositivo","quedas","fraturas","tce","visao","visaoLentes",
@@ -5566,6 +5820,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
                       </span>
                       <span style={{ fontSize: "12px", color: "var(--color-text-secondary)" }}>Ponto de corte: {cutoff} {escolaridade ? `(${escolaridade}, ~${anosEscol} anos)` : "(escolaridade não informada — usando padrão)"}</span>
                     </div>
+                    <PontuacaoAnterior campo="meem" sufixo="/30" />
                     {total !== (parseInt(aga.meem) || 0) && (
                       <button onClick={() => set("meem", String(total))} style={{ marginTop: "6px", fontSize: "12px" }}>
                         Salvar pontuação ({total}) no campo MEEM
@@ -5648,6 +5903,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
                         MoCA: {total} {bonus ? `+1 (escolaridade) = ${totalCorrigido}` : ""}/30 {alterado ? "⚠ Abaixo de 26 — rastreio positivo" : "✓ Normal (≥ 26)"}
                       </div>
                     </div>
+                    <PontuacaoAnterior campo="moca" sufixo="/30" />
                     {totalCorrigido !== (parseInt(aga.moca) || 0) && (
                       <button onClick={() => set("moca", String(totalCorrigido))} style={{ marginTop: "6px", fontSize: "12px" }}>
                         Salvar pontuação ({totalCorrigido}) no campo MoCA
@@ -5966,6 +6222,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
                         )}
                       </div>
                     )}
+                    <PontuacaoAnterior campo="phq9" sufixo="/27" />
                     {pontos !== (parseInt(aga.phq9) || 0) && respondidas === 9 && (
                       <button onClick={() => set("phq9", String(pontos))} style={{ marginTop: "8px", fontSize: "12px" }}>
                         Salvar pontuação ({pontos}) no campo PHQ-9
@@ -6843,7 +7100,7 @@ function ExameTab({ consulta, updateConsulta, patient, todasConsultas }) {
     const peso = parseFloat(aga.peso || e.peso || 0);
     const altura = parseFloat(aga.altura || 0);
     const imc = peso && altura ? peso / (altura * altura) : null;
-    const meds = garantirString(consulta.medicacoesTexto).toLowerCase();
+    const meds = expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase();
     const temFA = prob["FA"] || prob["Flutter atrial"];
     const temHAS = prob["HAS"];
     const numAntihiper = (meds.match(/losartana|enalapril|captopril|ramipril|valsartana|anlodipino|hidroclorotiazida|furosemida|indapamida|metoprolol|atenolol|carvedilol|bisoprolol|amlodipino/g) || []).length;
@@ -7344,7 +7601,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   // Alertas de medicações contraindicadas/ajuste por TFG
   const alertasTFGMeds = (() => {
     if (!tfg) return [];
-    const meds = garantirString(consulta.medicacoesTexto).toLowerCase();
+    const meds = expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase();
     const alertas = [];
 
     if (tfg < 30 && meds.includes("metformina")) {
@@ -7642,25 +7899,6 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
 
   return (
     <div>
-      {(() => {
-        const padroes = detectarPadroesMultissistemicos(consulta, patient);
-        if (padroes.length === 0) return null;
-        return (
-          <SectionCard title="🧩 Raciocínio clínico assistido — padrões detectados" icon="ti-puzzle" defaultOpen={true}>
-            <Alert type="info">Padrões multissistêmicos identificados a partir de queixas, comorbidades e labs registrados. Apoio ao raciocínio — não substitui avaliação clínica.</Alert>
-            {padroes.map((p, i) => (
-              <div key={i} style={{ background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "8px", padding: "12px 14px", marginBottom: "10px" }}>
-                <div style={{ fontWeight: 700, color: "var(--color-text-warning)", marginBottom: "6px" }}>⚠ {p.titulo}</div>
-                <div style={{ fontSize: "12px", marginBottom: "6px" }}>
-                  <strong>Achados combinados:</strong> {p.achados.join(" + ")}
-                </div>
-                <div style={{ fontSize: "13px" }}>{p.sugestao}</div>
-              </div>
-            ))}
-          </SectionCard>
-        );
-      })()}
-
       <SectionCard title="Calculadoras de risco" icon="ti-calculator" defaultOpen={false}>
         <CardiovascularRisk consulta={consulta} patient={patient} />
         <FraxCalc consulta={consulta} patient={patient} />
@@ -9189,7 +9427,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   ]});
 
   // Osteoporose sem tratamento
-  if (ativos.includes("Osteoporose") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/alendronato|risedronato|ibandronato|zoledronato|denosumabe|teriparatida|romosozumabe/)) {
+  if (ativos.includes("Osteoporose") && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/alendronato|risedronato|ibandronato|zoledronato|denosumabe|teriparatida|romosozumabe/)) {
     sugestoes.push({ cat: "Osteoporose sem tratamento antirreabsortivo", items: [
       "Nenhum bisfosfonato ou outro antirreabsortivo identificado nas medicações",
       "Avaliar indicação de alendronato 70mg/semana (1ª linha) ou risedronato",
@@ -9207,7 +9445,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
     return temAlgumSemNegacao(textoCompleto, "sangramento ativo", "hemorragia ativa", "sangramento digestivo ativo",
       "hemorragia digestiva ativa", "AVC hemorrágico", "trombocitopenia grave", "varizes esofágicas sangrantes");
   })();
-  if ((ativos.includes("FA") || ativos.includes("Flutter atrial")) && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/varfarina|warfarina|acenocumarol|rivaroxabana|apixabana|dabigatrana|edoxabana/)) {
+  if ((ativos.includes("FA") || ativos.includes("Flutter atrial")) && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/varfarina|warfarina|acenocumarol|rivaroxabana|apixabana|dabigatrana|edoxabana/)) {
     if (temContraindicacaoAnticoagulacao) {
       sugestoes.push({ cat: "FA sem anticoagulante — possível contraindicação identificada", items: [
         "Fibrilação/Flutter atrial sem anticoagulante, MAS foi identificado texto sugestivo de contraindicação (sangramento/hemorragia) nos antecedentes ou queixas",
@@ -9225,13 +9463,13 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — DAC sem antiagregante/estatina
-  if (ativos.includes("DAC") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/\baas\b|ácido acetilsalicílico|aspirina|clopidogrel|ticagrelor|prasugrel/)) {
+  if (ativos.includes("DAC") && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/\baas\b|ácido acetilsalicílico|aspirina|clopidogrel|ticagrelor|prasugrel/)) {
     sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: DAC sem antiagregante", items: [
       "Doença arterial coronariana registrada sem AAS ou outro antiagregante identificado",
       "Prevenção secundária padrão inclui antiagregante — reavaliar indicação",
     ]});
   }
-  if (ativos.includes("DAC") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina|fluvastatina|pitavastatina/)) {
+  if (ativos.includes("DAC") && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina|fluvastatina|pitavastatina/)) {
     sugestoes.push({ cat: "⚠ GAP TERAPÊUTICO: DAC sem estatina", items: [
       "Doença arterial coronariana sem estatina identificada — indicação de alta intensidade em prevenção secundária",
       "Meta de LDL < 55 mg/dL (muito alto risco) — ver aba Exames",
@@ -9240,10 +9478,10 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
 
   // GAP TERAPÊUTICO — IC com FE reduzida sem terapia quádrupla
   if ((ativos.includes("Insuficiência cardíaca") || ativos.includes("IC"))) {
-    const temIECABRA = garantirString(consulta.medicacoesTexto).toLowerCase().match(/captopril|enalapril|lisinopril|ramipril|losartana|valsartana|sacubitril/);
-    const temBetabloq = garantirString(consulta.medicacoesTexto).toLowerCase().match(/metoprolol|carvedilol|bisoprolol|nebivolol/);
-    const temISGLT2 = garantirString(consulta.medicacoesTexto).toLowerCase().match(/dapagliflozina|empagliflozina/);
-    const temAntiMineralo = garantirString(consulta.medicacoesTexto).toLowerCase().match(/espironolactona|eplerenona/);
+    const temIECABRA = expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/captopril|enalapril|lisinopril|ramipril|losartana|valsartana|sacubitril/);
+    const temBetabloq = expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/metoprolol|carvedilol|bisoprolol|nebivolol/);
+    const temISGLT2 = expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/dapagliflozina|empagliflozina/);
+    const temAntiMineralo = expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/espironolactona|eplerenona/);
     const faltando = [];
     if (!temIECABRA) faltando.push("IECA/BRA ou sacubitril-valsartana");
     if (!temBetabloq) faltando.push("betabloqueador");
@@ -9259,7 +9497,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — DM2 sem estatina em prevenção primária (se >40 anos)
-  if (ativos.includes("DM2") && idade >= 40 && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina/)) {
+  if (ativos.includes("DM2") && idade >= 40 && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/sinvastatina|atorvastatina|rosuvastatina|pravastatina|lovastatina/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: DM2 sem estatina", items: [
       "DM2 em paciente ≥ 40 anos sem estatina identificada",
       "Diretrizes recomendam estatina em DM2 para prevenção cardiovascular, salvo contraindicação ou expectativa de vida muito reduzida",
@@ -9267,7 +9505,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — Asma/DPOC sem broncodilatador
-  if ((ativos.includes("DPOC") || ativos.includes("Asma")) && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/salbutamol|formoterol|salmeterol|tiotrópio|budesonida|beclometasona|fluticasona|indacaterol|glicopirrônio/)) {
+  if ((ativos.includes("DPOC") || ativos.includes("Asma")) && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/salbutamol|formoterol|salmeterol|tiotrópio|budesonida|beclometasona|fluticasona|indacaterol|glicopirrônio/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: DPOC/Asma sem broncodilatador/corticoide inalatório", items: [
       "Doença pulmonar obstrutiva registrada sem broncodilatador ou corticoide inalatório identificado",
       "Revisar necessidade de terapia inalatória de manutenção",
@@ -9275,7 +9513,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — Depressão sem tratamento
-  if (ativos.includes("Transtorno depressivo") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/fluoxetina|sertralina|escitalopram|citalopram|paroxetina|venlafaxina|duloxetina|mirtazapina|bupropiona|trazodona/)) {
+  if (ativos.includes("Transtorno depressivo") && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/fluoxetina|sertralina|escitalopram|citalopram|paroxetina|venlafaxina|duloxetina|mirtazapina|bupropiona|trazodona/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: Depressão sem antidepressivo", items: [
       "Transtorno depressivo registrado sem antidepressivo identificado nas medicações",
       "Avaliar se em tratamento não farmacológico exclusivo (psicoterapia) ou se há gap a corrigir",
@@ -9283,7 +9521,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // GAP TERAPÊUTICO — Hipotireoidismo sem levotiroxina
-  if (ativos.includes("Hipotireoidismo") && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/levotiroxina|puran|synthroid/)) {
+  if (ativos.includes("Hipotireoidismo") && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/levotiroxina|puran|synthroid/)) {
     sugestoes.push({ cat: "GAP TERAPÊUTICO: Hipotireoidismo sem reposição", items: [
       "Hipotireoidismo registrado sem levotiroxina identificada nas medicações — verificar se é um erro de registro ou gap real",
     ]});
@@ -9292,7 +9530,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   // Hipertireoidismo não tratado
   const mTSH2 = labs.match(/(?:tsh)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
   const tsh2 = mTSH2 ? parseFloat(mTSH2[1].replace(",",".")) : null;
-  if (tsh2 !== null && tsh2 < 0.1 && !garantirString(consulta.medicacoesTexto).toLowerCase().match(/metimazol|propiltiouracil|tireoidectomia/)) {
+  if (tsh2 !== null && tsh2 < 0.1 && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/metimazol|propiltiouracil|tireoidectomia/)) {
     sugestoes.push({ cat: "Hipertireoidismo — avaliar tratamento", items: [
       `TSH ${tsh2} — suprimido`,
       "Dosar T3 e T4 livre para confirmar hipertireoidismo",
