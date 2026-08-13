@@ -78,6 +78,45 @@ function getNomeAmbulatorio(ambulatorio) {
   return ambulatorio === 'residencia' ? 'AMBULATÓRIO DE GERIATRIA - HSE' : 'AMBULATÓRIO DE GERIATRIA - CEMPRE';
 }
 
+// ============================================================
+// SELETOR DE SERVIÇO DA RESIDÊNCIA — dropdown editável (permite adicionar
+// novas opções), preenchido no início da consulta, exibido no cabeçalho.
+// ============================================================
+function SeletorAmbulatorioResidencia({ valor, opcoes, onChange, onAdicionarOpcao }) {
+  const [adicionando, setAdicionando] = useState(false);
+  const [novaOpcao, setNovaOpcao] = useState("");
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+      {adicionando ? (
+        <>
+          <input
+            value={novaOpcao}
+            onChange={e => setNovaOpcao(e.target.value)}
+            placeholder="Nome do novo serviço/local..."
+            style={{ fontSize: "12px", padding: "3px 8px" }}
+            onKeyDown={e => { if (e.key === "Enter") { onAdicionarOpcao(novaOpcao); setNovaOpcao(""); setAdicionando(false); } }}
+          />
+          <button onClick={() => { onAdicionarOpcao(novaOpcao); setNovaOpcao(""); setAdicionando(false); }} style={{ fontSize: "11px", padding: "3px 8px" }}>
+            <i className="ti ti-check" aria-hidden="true"></i>
+          </button>
+          <button onClick={() => setAdicionando(false)} style={{ fontSize: "11px", padding: "3px 8px" }}>
+            <i className="ti ti-x" aria-hidden="true"></i>
+          </button>
+        </>
+      ) : (
+        <>
+          <select value={valor || ""} onChange={e => e.target.value === "__novo__" ? setAdicionando(true) : onChange(e.target.value)} style={{ fontSize: "12px", padding: "3px 8px" }}>
+            <option value="">Selecione o serviço/local da Residência...</option>
+            {opcoes.map(op => <option key={op} value={op}>{op}</option>)}
+            <option value="__novo__">+ Adicionar novo...</option>
+          </select>
+        </>
+      )}
+    </div>
+  );
+}
+
 let _driveToken = null;
 let _driveTokenExpiry = 0;
 
@@ -1940,6 +1979,27 @@ export default function App() {
 
   const [autenticado, setAutenticado] = useState(() => storageGet(sessionStorage, 'auth') === '1');
   const [ambulatorio, setAmbulatorio] = useState(() => storageGet(sessionStorage, 'ambulatorio', null));
+  const [nomeAmbResidencia, setNomeAmbResidencia] = useState(() => storageGet(sessionStorage, 'nomeAmbResidencia', ''));
+  const [opcoesAmbResidencia, setOpcoesAmbResidencia] = useState(() => {
+    try {
+      const raw = storageGet(localStorage, 'opcoes_amb_residencia');
+      return raw ? JSON.parse(raw) : ["Enfermaria", "Ambulatório", "Pronto Atendimento", "Interconsulta"];
+    } catch { return ["Enfermaria", "Ambulatório", "Pronto Atendimento", "Interconsulta"]; }
+  });
+
+  function atualizarNomeAmbResidencia(valor) {
+    setNomeAmbResidencia(valor);
+    storageSet(sessionStorage, 'nomeAmbResidencia', valor);
+  }
+
+  function adicionarOpcaoAmbResidencia(novaOpcao) {
+    if (!novaOpcao.trim() || opcoesAmbResidencia.includes(novaOpcao.trim())) return;
+    const novasOpcoes = [...opcoesAmbResidencia, novaOpcao.trim()];
+    setOpcoesAmbResidencia(novasOpcoes);
+    storageSet(localStorage, 'opcoes_amb_residencia', JSON.stringify(novasOpcoes));
+    atualizarNomeAmbResidencia(novaOpcao.trim());
+  }
+
   const [zoomNivel, setZoomNivel] = useState(() => parseFloat(storageGet(localStorage, 'prontuario_zoom')) || 0.88);
   const [avisoInatividade, setAvisoInatividade] = useState(false);
 
@@ -2734,6 +2794,14 @@ export default function App() {
         <div>
           <h1 style={{ margin: 0 }}>{ambulatorio === 'cempre' ? 'AMBULATÓRIO DE GERIATRIA — CEMPRE' : 'AMBULATÓRIO DE GERIATRIA — HSE'}</h1>
           <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-text-secondary)" }}>HSE-PE · dados salvos no Google Sheets</p>
+          {ambulatorio === 'residencia' && (
+            <SeletorAmbulatorioResidencia
+              valor={nomeAmbResidencia}
+              opcoes={opcoesAmbResidencia}
+              onChange={atualizarNomeAmbResidencia}
+              onAdicionarOpcao={adicionarOpcaoAmbResidencia}
+            />
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "2px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "6px", padding: "2px" }}>
@@ -5793,6 +5861,40 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
           <>
             <Field label="Descrição da queixa cognitiva"><textarea rows={2} value={aga.queixasCognitivasDescricao || ""} onChange={e => set("queixasCognitivasDescricao", e.target.value)} placeholder="ex: esquecimento de compromissos, dificuldade para encontrar palavras..." /></Field>
 
+            <SectionCard title="📋 Domínios cognitivos — guia de avaliação por sistemas" icon="ti-table" defaultOpen={false}>
+              <p style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: 0, marginBottom: "10px" }}>
+                Referência rápida para exame cognitivo à beira do leito, complementar às escalas estruturadas (MEEM, MoCA, Mini-Cog).
+              </p>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid var(--color-border-tertiary)" }}>
+                      <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 700 }}>Domínio</th>
+                      <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 700 }}>Perguntas/tarefas sugeridas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { dominio: "Atenção", perguntas: "Soletrar \"MUNDO\" de trás para frente; subtrair 7 seriadamente de 100; repetir dígitos em ordem direta e inversa." },
+                      { dominio: "Memória recente", perguntas: "Registrar 3 palavras não relacionadas e pedir para repetir após 5 minutos de distração; perguntar o que comeu no café da manhã." },
+                      { dominio: "Memória remota", perguntas: "Perguntar data de nascimento, nome de escola, eventos históricos marcantes vividos, nome de familiares próximos." },
+                      { dominio: "Linguagem", perguntas: "Nomear objetos comuns (relógio, caneta); repetir frase complexa; fluência verbal (nomear animais em 1 minuto); compreensão de comando simples." },
+                      { dominio: "Orientação temporal", perguntas: "Dia da semana, data, mês, ano, estação do ano." },
+                      { dominio: "Orientação espacial", perguntas: "Local atual (cidade, bairro, hospital/consultório), andar, país." },
+                      { dominio: "Praxias", perguntas: "Desenhar o relógio (teste do relógio); copiar figura geométrica (pentágonos entrelaçados); pantomima de uso de objeto (\"mostre como escova os dentes\")." },
+                      { dominio: "Função executiva", perguntas: "Trail Making (ligar números e letras alternadamente); fluência verbal por categoria; interpretação de provérbio/semelhanças; sequência de Luria (mão)." },
+                      { dominio: "Gnosia", perguntas: "Reconhecimento de objetos pelo tato (estereognosia); reconhecimento de faces familiares; identificar partes do corpo (autotopagnosia)." },
+                    ].map((row, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid var(--color-border-tertiary)" }}>
+                        <td style={{ padding: "6px 8px", fontWeight: 600, verticalAlign: "top", whiteSpace: "nowrap" }}>{row.dominio}</td>
+                        <td style={{ padding: "6px 8px", color: "var(--color-text-secondary)" }}>{row.perguntas}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </SectionCard>
+
             {/* MEEM estruturado */}
             <SectionCard title="MEEM — Mini Exame do Estado Mental" icon="ti-clipboard-list" defaultOpen={false}>
               {(() => {
@@ -6514,6 +6616,9 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
             <Field label="Em quanto tempo?"><input value={aga.perdaPesoTempo || ""} onChange={e => set("perdaPesoTempo", e.target.value)} placeholder="ex: 3 meses, 1 ano..." /></Field>
           </Row>
         )}
+        <Field label="Dieta">
+          <textarea rows={2} value={aga.dieta || ""} onChange={e => set("dieta", e.target.value)} placeholder="Descreva livremente: tipo de dieta, restrições, consistência dos alimentos, quem prepara, adesão..." />
+        </Field>
         <Row>
           <Field label="Apetite"><RadioGroup name="apetite" value={aga.apetite} onChange={v => set("apetite", v)} options={[{value:"preservado",label:"Preservado"},{value:"reduzido",label:"Reduzido"},{value:"aumentado",label:"Aumentado"}]} /></Field>
           <Field label="Disfagia"><RadioGroup name="disfagia" value={aga.disfagia} onChange={v => set("disfagia", v)} options={[{value:"ausente",label:"Ausente"},{value:"presente",label:"Presente"}]} /></Field>
@@ -8122,6 +8227,68 @@ function UploadFotosExame({ consulta, updateConsulta, patient }) {
   );
 }
 
+// ============================================================
+// GERAÇÃO AUTOMÁTICA DA IMPRESSÃO GERIÁTRICA — síntese clínica a partir
+// dos dados já registrados na consulta, editável pelo médico depois.
+// ============================================================
+function gerarImpressaoGeriatrica(consulta, patient) {
+  const i = patient?.ident || {};
+  const idade = calcIdade(i.dn);
+  const sexo = i.sexo === "F" ? "feminina" : i.sexo === "M" ? "masculino" : "";
+  const aga = consulta.aga || {};
+  const ef = consulta.exameFisico || {};
+  const prob = consulta.problemas || {};
+  const ativos = PROBLEMAS.filter(p => prob[p]);
+  const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
+  const todasComorbidades = [...ativos, ...customAtivos];
+
+  const linhas = [];
+
+  // Abertura
+  linhas.push(`Paciente ${sexo ? "do sexo " + sexo : ""}${idade != null ? `, ${idade} anos` : ""}${todasComorbidades.length > 0 ? `, portador(a) de ${todasComorbidades.join(", ")}` : ""}.`);
+
+  // Fragilidade
+  const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+  if (frailScore > 0 || aga.frail) {
+    const classe = frailScore === 0 ? "robusto(a)" : frailScore <= 2 ? "pré-frágil" : "frágil";
+    linhas.push(`Classificado(a) como ${classe} pelo fenótipo FRAIL (${frailScore}/5 critérios).`);
+  }
+
+  // Funcionalidade
+  const aivdCount = Object.values(aga.aivd || {}).filter(Boolean).length;
+  const abvdCount = Object.values(aga.abvd || {}).filter(Boolean).length;
+  if (Object.keys(aga.aivd || {}).length > 0 || Object.keys(aga.abvd || {}).length > 0) {
+    linhas.push(`Funcionalmente independente para ${abvdCount}/6 ABVDs e ${aivdCount}/9 AIVDs.`);
+  }
+
+  // Cognição
+  if (aga.meem) linhas.push(`MEEM: ${aga.meem} pontos.`);
+  if (aga.moca) linhas.push(`MoCA: ${aga.moca} pontos.`);
+  if (aga.cdrGlobal) linhas.push(`CDR global: ${aga.cdrGlobal}.`);
+
+  // Humor
+  if (aga.phq9) linhas.push(`PHQ-9: ${aga.phq9} pontos.`);
+
+  // Quedas
+  if (aga.quedas === "sim") linhas.push(`Relata quedas no último ano${aga.quedasNum ? ` (${aga.quedasNum})` : ""}.`);
+
+  // Sarcopenia/nutrição
+  if (aga.perdaPeso === "sim") linhas.push(`Perda de peso não intencional${aga.perdaPesoKg ? ` de ${aga.perdaPesoKg}kg` : ""}${aga.perdaPesoTempo ? ` em ${aga.perdaPesoTempo}` : ""}.`);
+
+  // Exame físico resumido
+  if (ef.paSentado) linhas.push(`Ao exame: PA ${ef.paSentado} mmHg${ef.fc ? `, FC ${ef.fc} bpm` : ""}.`);
+
+  // Polifarmácia
+  const numMeds = garantirString(consulta.medicacoesTexto).split("\n").filter(l => l.trim()).length;
+  if (numMeds > 0) linhas.push(`Em uso de ${numMeds} medicação(ões) contínua(s)${numMeds >= 5 ? " (polifarmácia)" : ""}.`);
+
+  // Plano resumido
+  const pl = consulta.plano || {};
+  if (pl.ajuste) linhas.push(`Conduta: ${pl.ajuste}`);
+
+  return linhas.join(" ");
+}
+
 function PlanoTab({ consulta, updateConsulta, patient }) {
   const pl = consulta.plano || {};
   const set = (k, v) => updateConsulta(p => ({ ...p, plano: { ...p.plano, [k]: v } }));
@@ -8392,6 +8559,23 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
             ))}
           </div>
         )}
+      </SectionCard>
+
+      <SectionCard title="🩺 Impressão Geriátrica" icon="ti-notes" defaultOpen={true}>
+        <p style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: 0, marginBottom: "10px" }}>
+          Síntese clínica da consulta — gere automaticamente a partir dos dados registrados e edite livremente conforme necessário.
+        </p>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+          <button onClick={() => set("impressaoGeriatrica", gerarImpressaoGeriatrica(consulta, patient))} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+            <i className="ti ti-wand" aria-hidden="true"></i>Gerar automaticamente
+          </button>
+        </div>
+        <textarea
+          rows={8}
+          value={pl.impressaoGeriatrica || ""}
+          onChange={e => set("impressaoGeriatrica", e.target.value)}
+          placeholder='Clique em "Gerar automaticamente" para uma síntese inicial a partir dos dados da consulta, ou escreva livremente...'
+        />
       </SectionCard>
     </div>
   );
@@ -10106,7 +10290,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
 
   return (
     <PrintShell title="Consulta completa" onClose={onClose} fileName={nomeArquivo} patient={patient} consulta={consulta}>
-      <div id="print-content">
+      <div id="print-content" style={{ lineHeight: 1.65 }}>
       {herdado && (
         <div style={{ background: "#f0f7ff", border: "1px solid #cce0ff", borderRadius: "8px", padding: "8px 12px", fontSize: "12px", marginBottom: "12px" }}>
           <i className="ti ti-info-circle" aria-hidden="true"></i> Comparando com a consulta anterior de <strong>{fmtDate(herdado.data)}</strong>. Trechos marcados <span style={{ background: "#fff3cd", padding: "1px 5px", borderRadius: "6px", color: "#856404", fontWeight: 600 }}>ATUALIZADO</span> foram alterados desde então; os demais foram mantidos sem edição.
@@ -10121,7 +10305,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       <div style={{ marginBottom: "4px" }}><span style={label}>Data da consulta:</span> {fmtDate(consulta.data)}</div>
 
       <div style={sectionTitle}>IDENTIFICAÇÃO</div>
-      <div>Prontuário: {i.prontuario || "—"} · CPF: {i.cpf || "—"} · Sexo: {i.sexo || "—"} · Idade: {idade != null ? idade + " anos" : "—"}</div>
+      <div>Prontuário: {i.prontuario || "—"} · CPF: {i.cpf || "—"} · Sexo: {i.sexo || "—"} · Data de nascimento: {i.dn ? fmtDate(i.dn) : "—"} · Idade: {idade != null ? idade + " anos" : "—"}</div>
       <div>Nome da mãe: {i.maeNome || "—"} · Naturalidade: {i.natural || "—"} · Procedência: {i.procedente || "—"}</div>
       <div>Profissão: {i.profissao || "—"} · Escolaridade: {i.escolaridade || "—"} · Estado civil: {i.estadoCivil || "—"}</div>
       <div>Acompanhante: {i.acompanhante || "—"} · Cuidador: {i.cuidador || "—"} · Mora com: {i.moraCom || "—"} · Pode contar com: {i.podeContarCom || "—"} · Telefone: {i.telefone || "—"}</div>
@@ -10462,6 +10646,13 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
           );
         })()}
       </div>
+
+      {pl.impressaoGeriatrica && (
+        <>
+          <div style={sectionTitle}>IMPRESSÃO GERIÁTRICA</div>
+          <div style={{ whiteSpace: "pre-wrap" }}>{pl.impressaoGeriatrica}</div>
+        </>
+      )}
 
       <div style={sectionTitle}>PENDÊNCIAS</div>
       {pend.length === 0 ? <div>Nenhuma pendência registrada.</div> : (
