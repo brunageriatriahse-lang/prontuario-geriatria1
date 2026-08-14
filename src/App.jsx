@@ -8606,7 +8606,19 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
         <p style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: 0, marginBottom: "10px" }}>
           Síntese clínica da consulta — gere automaticamente a partir dos dados registrados e edite livremente conforme necessário.
         </p>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "8px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+          <button
+            onClick={() => set("omitirImpressaoGeriatricaNaImpressao", !pl.omitirImpressaoGeriatricaNaImpressao)}
+            title={pl.omitirImpressaoGeriatricaNaImpressao ? "Esta seção não será incluída ao imprimir a consulta — clique para voltar a incluir" : "Clique para omitir esta seção ao imprimir a consulta (o texto continua salvo)"}
+            style={{
+              fontSize: "12px", display: "flex", alignItems: "center", gap: "6px",
+              background: pl.omitirImpressaoGeriatricaNaImpressao ? "var(--color-background-warning)" : "transparent",
+              color: pl.omitirImpressaoGeriatricaNaImpressao ? "var(--color-text-warning)" : undefined,
+            }}
+          >
+            <i className={pl.omitirImpressaoGeriatricaNaImpressao ? "ti ti-eye-off" : "ti ti-eye"} aria-hidden="true"></i>
+            {pl.omitirImpressaoGeriatricaNaImpressao ? "Omitida da impressão — clique para incluir" : "Omitir da impressão"}
+          </button>
           <button onClick={() => set("impressaoGeriatrica", gerarImpressaoGeriatrica(consulta, patient))} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
             <i className="ti ti-wand" aria-hidden="true"></i>Gerar automaticamente
           </button>
@@ -10693,7 +10705,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
         })()}
       </div>
 
-      {pl.impressaoGeriatrica && (
+      {pl.impressaoGeriatrica && !pl.omitirImpressaoGeriatricaNaImpressao && (
         <>
           <div style={sectionTitle}>IMPRESSÃO GERIÁTRICA</div>
           <div style={{ whiteSpace: "pre-wrap" }}>{pl.impressaoGeriatrica}</div>
