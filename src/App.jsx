@@ -8241,53 +8241,76 @@ function gerarImpressaoGeriatrica(consulta, patient) {
   const ativos = PROBLEMAS.filter(p => prob[p]);
   const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
   const todasComorbidades = [...ativos, ...customAtivos];
+  const pl = consulta.plano || {};
 
-  const linhas = [];
+  const blocos = [];
 
-  // Abertura
-  linhas.push(`Paciente ${sexo ? "do sexo " + sexo : ""}${idade != null ? `, ${idade} anos` : ""}${todasComorbidades.length > 0 ? `, portador(a) de ${todasComorbidades.join(", ")}` : ""}.`);
-
-  // Fragilidade
+  // ============================================================
+  // 1. RESUMO CLÍNICO — demografia + perfil de complexidade
+  // ============================================================
   const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
-  if (frailScore > 0 || aga.frail) {
-    const classe = frailScore === 0 ? "robusto(a)" : frailScore <= 2 ? "pré-frágil" : "frágil";
-    linhas.push(`Classificado(a) como ${classe} pelo fenótipo FRAIL (${frailScore}/5 critérios).`);
+  const classeFragilidade = frailScore === 0 ? "robusto(a)" : frailScore <= 2 ? "pré-frágil" : "frágil";
+  const numMeds = garantirString(consulta.medicacoesTexto).split("\n").filter(l => l.trim()).length;
+
+  let resumo = `Paciente ${sexo ? "do sexo " + sexo : ""}${idade != null ? `, ${idade} anos` : ""}`;
+  if (todasComorbidades.length > 0) resumo += `, portador(a) de ${todasComorbidades.join(", ")}`;
+  resumo += `. `;
+  if (Object.keys(aga.frail || {}).length > 0) resumo += `Classificado(a) como ${classeFragilidade} pelo fenótipo FRAIL (${frailScore}/5). `;
+  if (numMeds > 0) resumo += `Em uso de ${numMeds} medicação(ões) contínua(s)${numMeds >= 5 ? " (polifarmácia)" : ""}.`;
+  blocos.push("RESUMO CLÍNICO:\n" + resumo.trim());
+
+  // ============================================================
+  // 2. IMPRESSÃO DIAGNÓSTICA — apenas diagnósticos já confirmados/conhecidos
+  // (comorbidades ativas da Lista de Problemas), sem hipóteses de apoio
+  // diagnóstico nem padrões multissistêmicos (esses ficam só em "Apoio
+  // diagnóstico" e "Raciocínio clínico assistido", que são apoio à decisão,
+  // não diagnóstico firmado).
+  // ============================================================
+  if (todasComorbidades.length > 0) {
+    blocos.push("IMPRESSÃO DIAGNÓSTICA:\n" + `Comorbidades ativas em acompanhamento: ${todasComorbidades.join(", ")}.`);
   }
 
-  // Funcionalidade
+  // ============================================================
+  // 3. AVALIAÇÃO FUNCIONAL, COGNITIVA E NUTRICIONAL
+  // ============================================================
+  const linhasAvaliacao = [];
   const aivdCount = Object.values(aga.aivd || {}).filter(Boolean).length;
   const abvdCount = Object.values(aga.abvd || {}).filter(Boolean).length;
   if (Object.keys(aga.aivd || {}).length > 0 || Object.keys(aga.abvd || {}).length > 0) {
-    linhas.push(`Funcionalmente independente para ${abvdCount}/6 ABVDs e ${aivdCount}/9 AIVDs.`);
+    linhasAvaliacao.push(`Funcionalmente independente para ${abvdCount}/6 ABVDs e ${aivdCount}/9 AIVDs.`);
   }
+  const cognicaoPartes = [];
+  if (aga.meem) cognicaoPartes.push(`MEEM ${aga.meem}`);
+  if (aga.moca) cognicaoPartes.push(`MoCA ${aga.moca}`);
+  if (aga.cdrGlobal) cognicaoPartes.push(`CDR ${aga.cdrGlobal}`);
+  if (cognicaoPartes.length > 0) linhasAvaliacao.push(`Cognição: ${cognicaoPartes.join(", ")}.`);
+  if (aga.phq9) linhasAvaliacao.push(`Rastreio de humor (PHQ-9): ${aga.phq9} pontos.`);
+  if (aga.quedas === "sim") linhasAvaliacao.push(`Relata quedas no último ano${aga.quedasNum ? ` (${aga.quedasNum})` : ""}${aga.quedasDescricao ? ` — ${aga.quedasDescricao}` : ""}.`);
+  if (aga.perdaPeso === "sim") linhasAvaliacao.push(`Perda de peso não intencional${aga.perdaPesoKg ? ` de ${aga.perdaPesoKg}kg` : ""}${aga.perdaPesoTempo ? ` em ${aga.perdaPesoTempo}` : ""}.`);
+  if (ef.paSentado) linhasAvaliacao.push(`Sinais vitais: PA ${ef.paSentado} mmHg${ef.fc ? `, FC ${ef.fc} bpm` : ""}${ef.sato2 ? `, SatO2 ${ef.sato2}%` : ""}.`);
+  blocos.push("AVALIAÇÃO FUNCIONAL/COGNITIVA:\n" + (linhasAvaliacao.length > 0 ? linhasAvaliacao.join(" ") : "Sem dados de avaliação funcional/cognitiva registrados nesta consulta."));
 
-  // Cognição
-  if (aga.meem) linhas.push(`MEEM: ${aga.meem} pontos.`);
-  if (aga.moca) linhas.push(`MoCA: ${aga.moca} pontos.`);
-  if (aga.cdrGlobal) linhas.push(`CDR global: ${aga.cdrGlobal}.`);
+  // ============================================================
+  // 4. CONDUTA — todos os campos do Plano (ajuste medicamentoso, solicito,
+  // orientações, encaminhamentos e retorno(s) agendado(s)), não só ajuste/solicito.
+  // ============================================================
+  const linhasConduta = [];
+  if (pl.ajuste) linhasConduta.push(pl.ajuste.trim());
+  if (pl.solicito) linhasConduta.push(`Solicitado: ${pl.solicito.trim()}.`);
+  if (pl.orientacoes) linhasConduta.push(`Orientações: ${pl.orientacoes.trim()}.`);
+  if (pl.encaminhamentos) linhasConduta.push(`Encaminhamentos: ${pl.encaminhamentos.trim()}.`);
+  const retornosConduta = Array.isArray(pl.retornos) && pl.retornos.length > 0
+    ? pl.retornos.filter(r => r.data)
+    : (pl.retorno ? [{ data: pl.retorno, medico: "" }] : []);
+  if (retornosConduta.length > 0) {
+    const retornosTexto = retornosConduta.map(r => `${fmtDate(r.data)}${r.medico ? ` (Dr(a). ${r.medico})` : ""}`).join(", ");
+    linhasConduta.push(`Retorno agendado: ${retornosTexto}.`);
+  }
+  if (linhasConduta.length > 0) blocos.push("CONDUTA:\n" + linhasConduta.join(" "));
 
-  // Humor
-  if (aga.phq9) linhas.push(`PHQ-9: ${aga.phq9} pontos.`);
-
-  // Quedas
-  if (aga.quedas === "sim") linhas.push(`Relata quedas no último ano${aga.quedasNum ? ` (${aga.quedasNum})` : ""}.`);
-
-  // Sarcopenia/nutrição
-  if (aga.perdaPeso === "sim") linhas.push(`Perda de peso não intencional${aga.perdaPesoKg ? ` de ${aga.perdaPesoKg}kg` : ""}${aga.perdaPesoTempo ? ` em ${aga.perdaPesoTempo}` : ""}.`);
-
-  // Exame físico resumido
-  if (ef.paSentado) linhas.push(`Ao exame: PA ${ef.paSentado} mmHg${ef.fc ? `, FC ${ef.fc} bpm` : ""}.`);
-
-  // Polifarmácia
-  const numMeds = garantirString(consulta.medicacoesTexto).split("\n").filter(l => l.trim()).length;
-  if (numMeds > 0) linhas.push(`Em uso de ${numMeds} medicação(ões) contínua(s)${numMeds >= 5 ? " (polifarmácia)" : ""}.`);
-
-  // Plano resumido
-  const pl = consulta.plano || {};
-  if (pl.ajuste) linhas.push(`Conduta: ${pl.ajuste}`);
-
-  return linhas.join(" ");
+  return blocos.join("\n\n");
 }
+
 
 function PlanoTab({ consulta, updateConsulta, patient }) {
   const pl = consulta.plano || {};
