@@ -326,6 +326,46 @@ async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo, m
 
 const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática","DRC","DAC","IC","FA","AVC","DPOC","Asma","HPB","Incontinência urinária","DRGE","Constipação crônica","Osteoporose","Osteoartrose","Hipotireoidismo","Transtorno depressivo","TAG","Insônia","Síndrome demencial","Doença de Parkinson","Neoplasia","DHC","Insuficiência venosa crônica","DAOP","Catarata","Glaucoma","Déficit auditivo A/E"];
 
+// ============================================================
+// ORIENTAÇÕES PADRÃO POR COMORBIDADE — texto de orientação ao paciente
+// sugerido para cada uma das comorbidades da Lista de Problemas. Usado
+// como sugestão clicável no campo "Orientações" do Plano, conforme as
+// comorbidades ativas da consulta.
+// ============================================================
+const ORIENTACOES_POR_COMORBIDADE = {
+  "HAS": "Reduzir consumo de sal (evitar embutidos, temperos prontos); aferir PA regularmente em casa; manter atividade física regular; tomar a medicação anti-hipertensiva no mesmo horário todos os dias.",
+  "DM2": "Monitorar glicemia capilar conforme orientado; atenção a sinais de hipoglicemia (tremor, suor frio, tontura); cuidado com os pés (inspeção diária, calçados adequados); dieta com controle de carboidratos.",
+  "Dislipidemia": "Reduzir gorduras saturadas e frituras; priorizar azeite, peixes e fibras; manter atividade física regular; uso contínuo da estatina, sem interrupção sem orientação médica.",
+  "Obesidade": "Buscar reeducação alimentar gradual, sem dietas restritivas extremas; atividade física conforme capacidade funcional; acompanhamento nutricional se possível.",
+  "Esteatose hepática": "Evitar bebida alcoólica; controlar peso corporal; praticar atividade física regular; tratar fatores associados (diabetes, dislipidemia, obesidade).",
+  "DRC": "Evitar anti-inflamatórios (AINEs) sem orientação médica; atenção a medicações nefrotóxicas; controlar PA e glicemia rigorosamente; dieta com ajuste de proteína e potássio conforme estágio.",
+  "DAC": "Reconhecer sinais de alerta (dor torácica, falta de ar, sudorese) e procurar atendimento de urgência; manter uso regular de antiagregante/estatina; cessar tabagismo se aplicável.",
+  "IC": "Pesar-se diariamente e informar ganho de peso rápido (>2kg em poucos dias); restringir sal e líquidos conforme orientado; atenção a edema de pernas e falta de ar que piora deitado.",
+  "FA": "Uso rigoroso do anticoagulante, sem esquecer doses; atenção a sinais de sangramento (gengiva, urina escura, fezes escuras); evitar automedicação com AINEs.",
+  "AVC": "Manter reabilitação (fisioterapia, fonoaudiologia, terapia ocupacional) conforme indicado; controle rigoroso de PA e fatores de risco; atenção a sinais de novo AVC (fraqueza súbita, alteração de fala).",
+  "DPOC": "Evitar exposição à fumaça/poeira; manter vacinação em dia (influenza, pneumocócica); técnica correta de uso dos inaladores; reconhecer sinais de exacerbação (piora da falta de ar, mudança do escarro).",
+  "Asma": "Técnica correta de uso dos inaladores (bombinha/espaçador); identificar e evitar gatilhos; ter plano de ação para crises; manicô de resgate sempre disponível.",
+  "HPB": "Evitar segurar a urina por longos períodos; reduzir líquidos à noite; atenção a sinais de retenção urinária (incapacidade de urinar); relatar jato fraco ou hesitação ao médico.",
+  "Incontinência urinária": "Treino vesical (urinar em horários regulares); exercícios de assoalho pélvico; reduzir cafeína; uso de absorventes/fraldas se necessário para conforto e prevenção de quedas.",
+  "DRGE": "Evitar deitar logo após as refeições (aguardar 2-3h); elevar cabeceira da cama; evitar alimentos gordurosos, café, álcool e menta; fracionar refeições.",
+  "Constipação crônica": "Aumentar ingesta de fibras (frutas, verduras, cereais integrais) e água; estimular atividade física; não postergar o desejo de evacuar; evitar uso crônico de laxantes irritativos sem orientação.",
+  "Osteoporose": "Prevenção de quedas em casa (tapetes, iluminação, barras de apoio); exposição solar para vitamina D; ingesta adequada de cálcio; uso regular da medicação (bifosfonato conforme orientação de jejum/postura).",
+  "Osteoartrose": "Atividade física de baixo impacto (hidroginástica, caminhada); controle de peso para reduzir sobrecarga articular; uso de calçados adequados; compressas/analgesia conforme orientado.",
+  "Hipotireoidismo": "Tomar levotiroxina em jejum, 30-60 minutos antes do café da manhã, sem outros medicamentos/alimentos juntos; não interromper sem orientação; retorno para ajuste de dose conforme TSH.",
+  "Transtorno depressivo": "Manter uso regular da medicação mesmo sem melhora imediata (efeito em semanas); não interromper abruptamente; buscar suporte psicoterapêutico se possível; envolver família/cuidador no acompanhamento.",
+  "TAG": "Técnicas de manejo de ansiedade (respiração, relaxamento); reduzir cafeína; atividade física regular; buscar psicoterapia como complemento ao tratamento medicamentoso.",
+  "Insônia": "Higiene do sono: horários regulares, evitar telas antes de dormir, ambiente escuro e silencioso; evitar cafeína à tarde/noite; evitar cochilos longos durante o dia.",
+  "Síndrome demencial": "Manter rotina e ambiente familiar estável; estimulação cognitiva e social; supervisão para segurança (fogão, medicações, saídas); orientar cuidador sobre a progressão da doença.",
+  "Doença de Parkinson": "Tomar a medicação nos horários exatos (janela terapêutica estreita); atenção a quedas (ambiente seguro); fisioterapia/fonoterapia regular; atenção a sinais não-motores (constipação, sono, humor).",
+  "Neoplasia": "Manter acompanhamento oncológico regular; atenção a sinais de alerta orientados pela equipe; suporte nutricional conforme necessário; discutir metas de cuidado conforme estadiamento e prognóstico.",
+  "DHC": "Evitar álcool completamente; evitar medicações hepatotóxicas sem orientação; atenção a sinais de descompensação (icterícia, distensão abdominal, confusão mental).",
+  "Insuficiência venosa crônica": "Uso de meias de compressão conforme orientado; elevar as pernas quando possível; evitar longos períodos parado(a) em pé; cuidado com a pele para evitar lesões.",
+  "DAOP": "Cessar tabagismo (fator de risco principal); caminhada regular conforme tolerado (estimula circulação colateral); cuidado com os pés (inspeção diária); atenção a dor em repouso ou lesões que não cicatrizam.",
+  "Catarata": "Uso de óculos de sol para proteção; boa iluminação para leitura e atividades; avaliar risco de quedas por déficit visual; acompanhamento oftalmológico para definir momento cirúrgico.",
+  "Glaucoma": "Uso rigoroso e contínuo do colírio, sem interrupção (mesmo sem sintomas); não atrasar horários das gotas; acompanhamento oftalmológico regular para controle da pressão intraocular.",
+  "Déficit auditivo A/E": "Uso do aparelho auditivo se prescrito; falar de frente e pausadamente ao se comunicar; ambiente com menos ruído de fundo; avaliar risco de isolamento social associado.",
+};
+
 const PREVENCAO_ESPECIFICA = {
   "HAS": ["MAPA 24h","ECG","ECOTT (se HVE ou IC)","BNP (se suspeita de IC)","Polissonografia (se suspeita de SAOS)"],
   "DM2": ["Fundoscopia (anual)","ECG","Exame dos pés (toda consulta)","Microalbuminúria / RAC urinária"],
@@ -8493,6 +8533,35 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
               </span>
             ))}
           </div>
+          {(() => {
+            const problemasAtivos = PROBLEMAS.filter(p => (consulta.problemas || {})[p] && ORIENTACOES_POR_COMORBIDADE[p]);
+            if (problemasAtivos.length === 0) return null;
+            return (
+              <div style={{ marginTop: "8px", marginBottom: "8px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px" }}>
+                <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px", color: "var(--color-text-secondary)" }}>
+                  <i className="ti ti-list-details" aria-hidden="true"></i> Orientações sugeridas por comorbidade ativa (clique para inserir):
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  {problemasAtivos.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => {
+                        const atual = pl.orientacoes || "";
+                        const textoOrientacao = ORIENTACOES_POR_COMORBIDADE[p];
+                        if (atual.includes(textoOrientacao)) return;
+                        const separador = atual.trim() ? "\n" : "";
+                        set("orientacoes", atual + separador + `${p}: ${textoOrientacao}`);
+                      }}
+                      style={{ textAlign: "left", fontSize: "11px", padding: "5px 9px", background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "6px" }}
+                      title={ORIENTACOES_POR_COMORBIDADE[p]}
+                    >
+                      <strong>+ {p}</strong> — {ORIENTACOES_POR_COMORBIDADE[p].slice(0, 70)}...
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <textarea rows={3} value={pl.orientacoes || ""} onChange={e => set("orientacoes", e.target.value)} placeholder="Orientações adicionais..." />
         </Field>
 
