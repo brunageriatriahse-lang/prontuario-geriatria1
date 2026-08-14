@@ -107,7 +107,7 @@ function SeletorAmbulatorioResidencia({ valor, opcoes, onChange, onAdicionarOpca
       ) : (
         <>
           <select value={valor || ""} onChange={e => e.target.value === "__novo__" ? setAdicionando(true) : onChange(e.target.value)} style={{ fontSize: "12px", padding: "3px 8px" }}>
-            <option value="">Selecione o serviço/local da Residência...</option>
+            <option value="">Selecione o nome do ambulatório/serviço...</option>
             {opcoes.map(op => <option key={op} value={op}>{op}</option>)}
             <option value="__novo__">+ Adicionar novo...</option>
           </select>
@@ -2794,14 +2794,12 @@ export default function App() {
         <div>
           <h1 style={{ margin: 0 }}>{ambulatorio === 'cempre' ? 'AMBULATÓRIO DE GERIATRIA — CEMPRE' : 'AMBULATÓRIO DE GERIATRIA — HSE'}</h1>
           <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-text-secondary)" }}>HSE-PE · dados salvos no Google Sheets</p>
-          {ambulatorio === 'residencia' && (
-            <SeletorAmbulatorioResidencia
-              valor={nomeAmbResidencia}
-              opcoes={opcoesAmbResidencia}
-              onChange={atualizarNomeAmbResidencia}
-              onAdicionarOpcao={adicionarOpcaoAmbResidencia}
-            />
-          )}
+          <SeletorAmbulatorioResidencia
+            valor={nomeAmbResidencia}
+            opcoes={opcoesAmbResidencia}
+            onChange={atualizarNomeAmbResidencia}
+            onAdicionarOpcao={adicionarOpcaoAmbResidencia}
+          />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "2px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "6px", padding: "2px" }}>
@@ -2939,7 +2937,7 @@ export default function App() {
 
       {printDoc && (
         <ErrorBoundary onVoltar={() => setPrintDoc(null)}>
-          <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} ambulatorio={ambulatorio} />
+          <PrintDocRenderer doc={printDoc} patient={activePatient} consulta={activeConsulta} onClose={() => setPrintDoc(null)} ambulatorio={ambulatorio} nomeAmbulatorioSelecionado={nomeAmbResidencia} />
         </ErrorBoundary>
       )}
 
@@ -8234,7 +8232,7 @@ function UploadFotosExame({ consulta, updateConsulta, patient }) {
 function gerarImpressaoGeriatrica(consulta, patient) {
   const i = patient?.ident || {};
   const idade = calcIdade(i.dn);
-  const sexo = i.sexo === "F" ? "feminina" : i.sexo === "M" ? "masculino" : "";
+  const sexo = i.sexo === "F" ? "sexo feminino" : i.sexo === "M" ? "sexo masculino" : "";
   const aga = consulta.aga || {};
   const ef = consulta.exameFisico || {};
   const prob = consulta.problemas || {};
@@ -8242,75 +8240,95 @@ function gerarImpressaoGeriatrica(consulta, patient) {
   const customAtivos = (consulta.problemasCustom || []).filter(c => c.checked).map(c => c.nome);
   const todasComorbidades = [...ativos, ...customAtivos];
   const pl = consulta.plano || {};
+  const numMeds = garantirString(consulta.medicacoesTexto).split("\n").filter(l => l.trim()).length;
 
   const blocos = [];
 
   // ============================================================
-  // 1. RESUMO CLÍNICO — demografia + perfil de complexidade
+  // 1. RESUMO CLÍNICO — linha de abertura enxuta + tópicos objetivos
   // ============================================================
-  const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
-  const classeFragilidade = frailScore === 0 ? "robusto(a)" : frailScore <= 2 ? "pré-frágil" : "frágil";
-  const numMeds = garantirString(consulta.medicacoesTexto).split("\n").filter(l => l.trim()).length;
+  const partesAbertura = [];
+  if (idade != null) partesAbertura.push(`${idade} anos`);
+  if (sexo) partesAbertura.push(sexo);
+  let abertura = "Paciente" + (partesAbertura.length > 0 ? `, ${partesAbertura.join(", ")}` : "") + ".";
 
-  let resumo = `Paciente ${sexo ? "do sexo " + sexo : ""}${idade != null ? `, ${idade} anos` : ""}`;
-  if (todasComorbidades.length > 0) resumo += `, portador(a) de ${todasComorbidades.join(", ")}`;
-  resumo += `. `;
-  if (Object.keys(aga.frail || {}).length > 0) resumo += `Classificado(a) como ${classeFragilidade} pelo fenótipo FRAIL (${frailScore}/5). `;
-  if (numMeds > 0) resumo += `Em uso de ${numMeds} medicação(ões) contínua(s)${numMeds >= 5 ? " (polifarmácia)" : ""}.`;
-  blocos.push("RESUMO CLÍNICO:\n" + resumo.trim());
+  const topicosResumo = [];
+  if (todasComorbidades.length > 0) topicosResumo.push(`Comorbidades: ${todasComorbidades.join(", ")}.`);
+  if (Object.keys(aga.frail || {}).length > 0) {
+    const frailScore = Object.values(aga.frail || {}).filter(Boolean).length;
+    const classeFragilidade = frailScore === 0 ? "robusto(a)" : frailScore <= 2 ? "pré-frágil" : "frágil";
+    topicosResumo.push(`Fragilidade (FRAIL): ${classeFragilidade} (${frailScore}/5).`);
+  }
+  if (numMeds > 0) topicosResumo.push(`Polifarmácia: ${numMeds} medicação(ões) contínua(s)${numMeds >= 5 ? " — atenção a interações/desprescrição" : ""}.`);
+
+  blocos.push("RESUMO CLÍNICO\n" + abertura + (topicosResumo.length > 0 ? "\n" + topicosResumo.map(t => `• ${t}`).join("\n") : ""));
 
   // ============================================================
   // 2. IMPRESSÃO DIAGNÓSTICA — apenas diagnósticos já confirmados/conhecidos
-  // (comorbidades ativas da Lista de Problemas), sem hipóteses de apoio
-  // diagnóstico nem padrões multissistêmicos (esses ficam só em "Apoio
-  // diagnóstico" e "Raciocínio clínico assistido", que são apoio à decisão,
-  // não diagnóstico firmado).
+  // (comorbidades ativas da Lista de Problemas). Não inclui hipóteses de
+  // apoio diagnóstico nem padrões multissistêmicos — esses são apoio à
+  // decisão (ficam em "Apoio diagnóstico"/"Raciocínio clínico assistido"),
+  // não diagnóstico firmado.
   // ============================================================
-  if (todasComorbidades.length > 0) {
-    blocos.push("IMPRESSÃO DIAGNÓSTICA:\n" + `Comorbidades ativas em acompanhamento: ${todasComorbidades.join(", ")}.`);
-  }
+  blocos.push(
+    "IMPRESSÃO DIAGNÓSTICA\n" +
+    (todasComorbidades.length > 0
+      ? todasComorbidades.map(c => `• ${c}`).join("\n")
+      : "• Sem diagnóstico ativo registrado na Lista de Problemas até o momento.")
+  );
 
   // ============================================================
-  // 3. AVALIAÇÃO FUNCIONAL, COGNITIVA E NUTRICIONAL
+  // 3. AVALIAÇÃO FUNCIONAL/COGNITIVA — cada achado em tópico próprio
   // ============================================================
-  const linhasAvaliacao = [];
+  const topicosAvaliacao = [];
   const aivdCount = Object.values(aga.aivd || {}).filter(Boolean).length;
   const abvdCount = Object.values(aga.abvd || {}).filter(Boolean).length;
   if (Object.keys(aga.aivd || {}).length > 0 || Object.keys(aga.abvd || {}).length > 0) {
-    linhasAvaliacao.push(`Funcionalmente independente para ${abvdCount}/6 ABVDs e ${aivdCount}/9 AIVDs.`);
+    topicosAvaliacao.push(`Funcionalidade: independente para ${abvdCount}/6 ABVDs e ${aivdCount}/9 AIVDs.`);
   }
   const cognicaoPartes = [];
   if (aga.meem) cognicaoPartes.push(`MEEM ${aga.meem}`);
   if (aga.moca) cognicaoPartes.push(`MoCA ${aga.moca}`);
   if (aga.cdrGlobal) cognicaoPartes.push(`CDR ${aga.cdrGlobal}`);
-  if (cognicaoPartes.length > 0) linhasAvaliacao.push(`Cognição: ${cognicaoPartes.join(", ")}.`);
-  if (aga.phq9) linhasAvaliacao.push(`Rastreio de humor (PHQ-9): ${aga.phq9} pontos.`);
-  if (aga.quedas === "sim") linhasAvaliacao.push(`Relata quedas no último ano${aga.quedasNum ? ` (${aga.quedasNum})` : ""}${aga.quedasDescricao ? ` — ${aga.quedasDescricao}` : ""}.`);
-  if (aga.perdaPeso === "sim") linhasAvaliacao.push(`Perda de peso não intencional${aga.perdaPesoKg ? ` de ${aga.perdaPesoKg}kg` : ""}${aga.perdaPesoTempo ? ` em ${aga.perdaPesoTempo}` : ""}.`);
-  if (ef.paSentado) linhasAvaliacao.push(`Sinais vitais: PA ${ef.paSentado} mmHg${ef.fc ? `, FC ${ef.fc} bpm` : ""}${ef.sato2 ? `, SatO2 ${ef.sato2}%` : ""}.`);
-  blocos.push("AVALIAÇÃO FUNCIONAL/COGNITIVA:\n" + (linhasAvaliacao.length > 0 ? linhasAvaliacao.join(" ") : "Sem dados de avaliação funcional/cognitiva registrados nesta consulta."));
+  if (cognicaoPartes.length > 0) topicosAvaliacao.push(`Cognição: ${cognicaoPartes.join(", ")}.`);
+  if (aga.phq9) topicosAvaliacao.push(`Rastreio de humor (PHQ-9): ${aga.phq9} pontos.`);
+  if (aga.quedas === "sim") topicosAvaliacao.push(`Quedas: relatadas no último ano${aga.quedasNum ? ` (${aga.quedasNum})` : ""}${aga.quedasDescricao ? ` — ${aga.quedasDescricao}` : ""}.`);
+  if (aga.perdaPeso === "sim") topicosAvaliacao.push(`Peso: perda não intencional${aga.perdaPesoKg ? ` de ${aga.perdaPesoKg}kg` : ""}${aga.perdaPesoTempo ? ` em ${aga.perdaPesoTempo}` : ""}.`);
+  if (ef.paSentado) topicosAvaliacao.push(`Sinais vitais: PA ${ef.paSentado} mmHg${ef.fc ? `, FC ${ef.fc} bpm` : ""}${ef.sato2 ? `, SatO2 ${ef.sato2}%` : ""}.`);
+
+  blocos.push(
+    "AVALIAÇÃO FUNCIONAL/COGNITIVA\n" +
+    (topicosAvaliacao.length > 0
+      ? topicosAvaliacao.map(t => `• ${t}`).join("\n")
+      : "• Sem dados de avaliação funcional/cognitiva registrados nesta consulta.")
+  );
 
   // ============================================================
-  // 4. CONDUTA — todos os campos do Plano (ajuste medicamentoso, solicito,
-  // orientações, encaminhamentos e retorno(s) agendado(s)), não só ajuste/solicito.
+  // 4. CONDUTA — todos os campos do Plano, um tópico por item
   // ============================================================
-  const linhasConduta = [];
-  if (pl.ajuste) linhasConduta.push(pl.ajuste.trim());
-  if (pl.solicito) linhasConduta.push(`Solicitado: ${pl.solicito.trim()}.`);
-  if (pl.orientacoes) linhasConduta.push(`Orientações: ${pl.orientacoes.trim()}.`);
-  if (pl.encaminhamentos) linhasConduta.push(`Encaminhamentos: ${pl.encaminhamentos.trim()}.`);
+  const topicosConduta = [];
+  if (pl.ajuste) topicosConduta.push(`Ajuste medicamentoso: ${pl.ajuste.trim()}`);
+  if (pl.solicito) topicosConduta.push(`Solicitado: ${pl.solicito.trim()}`);
+  if (pl.orientacoes) topicosConduta.push(`Orientações: ${pl.orientacoes.trim()}`);
+  if (pl.encaminhamentos) topicosConduta.push(`Encaminhamentos: ${pl.encaminhamentos.trim()}`);
   const retornosConduta = Array.isArray(pl.retornos) && pl.retornos.length > 0
     ? pl.retornos.filter(r => r.data)
     : (pl.retorno ? [{ data: pl.retorno, medico: "" }] : []);
   if (retornosConduta.length > 0) {
-    const retornosTexto = retornosConduta.map(r => `${fmtDate(r.data)}${r.medico ? ` (Dr(a). ${r.medico})` : ""}`).join(", ");
-    linhasConduta.push(`Retorno agendado: ${retornosTexto}.`);
+    const retornosTexto = retornosConduta.map(r => {
+      const medicoTrim = (r.medico || "").trim();
+      const medicoFmt = medicoTrim ? (/^dr/i.test(medicoTrim) ? medicoTrim : `Dr(a). ${medicoTrim}`) : "";
+      return `${fmtDate(r.data)}${medicoFmt ? ` (${medicoFmt})` : ""}`;
+    }).join(", ");
+    topicosConduta.push(`Retorno agendado: ${retornosTexto}`);
   }
-  if (linhasConduta.length > 0) blocos.push("CONDUTA:\n" + linhasConduta.join(" "));
+
+  if (topicosConduta.length > 0) {
+    blocos.push("CONDUTA\n" + topicosConduta.map(t => `• ${t}`).join("\n"));
+  }
 
   return blocos.join("\n\n");
 }
-
 
 function PlanoTab({ consulta, updateConsulta, patient }) {
   const pl = consulta.plano || {};
@@ -9969,8 +9987,8 @@ function ListaMedicacoesSimplificada({ patient, consulta, onClose }) {
   );
 }
 
-function PrintDocRenderer({ doc, patient, consulta, onClose, ambulatorio }) {
-  if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} ambulatorio={ambulatorio} />;
+function PrintDocRenderer({ doc, patient, consulta, onClose, ambulatorio, nomeAmbulatorioSelecionado }) {
+  if (doc.type === "consultaCompleta") return <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={onClose} ambulatorio={ambulatorio} nomeAmbulatorioSelecionado={nomeAmbulatorioSelecionado} />;
   if (doc.type === "sugestoesIA") return <SugestoesCondutaIA patient={patient} consulta={consulta} onClose={onClose} />;
   if (doc.type === "listaMedicacoesSimplificada") return <ListaMedicacoesSimplificada patient={patient} consulta={consulta} onClose={onClose} />;
   return null;
@@ -10234,7 +10252,7 @@ function VacinacaoPrint({ patient, consulta, onClose }) {
   );
 }
 
-function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
+function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAmbulatorioSelecionado }) {
   const idade = calcIdade(patient.ident.dn);
   const i = patient.ident;
   const a = consulta.antecedentes || {};
@@ -10321,7 +10339,12 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio }) {
       )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
         <img src={`data:image/png;base64,${LOGO_HSE_BASE64}`} alt="HSE" style={{ height: "48px", objectFit: "contain" }} />
-        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>{getNomeAmbulatorio(ambulatorio || storageGet(sessionStorage, "ambulatorio") || "cempre")}</div>
+        <div style={{ textAlign: "center", flex: 1, fontWeight: 700, fontSize: "14px", letterSpacing: "0.3px" }}>
+          {getNomeAmbulatorio(ambulatorio || storageGet(sessionStorage, "ambulatorio") || "cempre")}
+          {nomeAmbulatorioSelecionado && (
+            <div style={{ fontSize: "11px", fontWeight: 400, marginTop: "2px" }}>{nomeAmbulatorioSelecionado}</div>
+          )}
+        </div>
         <img src={`data:image/png;base64,${LOGO_GERIATRIA_BASE64}`} alt="Geriatria" style={{ height: "48px", objectFit: "contain" }} />
       </div>
       <div style={{ marginBottom: "4px" }}><span style={label}>Paciente:</span> {i.nome || "—"}</div>
