@@ -934,7 +934,7 @@ function checkInteracoes(texto) {
   INTERACOES.forEach(({ grupos, msg }) => {
     const todosGruposPresentes = grupos.every(grupo =>
       grupo.some(drug => {
-        const regex = new RegExp(`(^|\\s|,|;|\\+|-|\\()${drug.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`, 'i');
+        const regex = new RegExp(`(^|\\s|,|;|\\+|-|\\()${drug.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}(?![a-zà-öø-ÿ])`, 'i');
         return regex.test(lower);
       })
     );
@@ -1029,14 +1029,14 @@ function verificarDoseMaximaDiaria(texto) {
   return alertas;
 }
 
-function checkAlertasEspeciais(texto) {
+function checkAlertasEspeciais(texto, temHepatopatia) {
   if (!texto) return [];
   const lower = texto.toLowerCase();
   const alerts = [];
 
   function temAlgum(lista) {
     return lista.some(drug => {
-      const regex = new RegExp("(^|\\s|,|;|\\+|-|\\()" + drug.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&"), "i");
+      const regex = new RegExp("(^|\\s|,|;|\\+|-|\\()" + drug.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&") + "(?![a-zà-öø-ÿ])", "i");
       return regex.test(lower);
     });
   }
@@ -1112,9 +1112,10 @@ function checkAlertasEspeciais(texto) {
     }
   });
 
-  // 6. FUNÇÃO HEPÁTICA — drogas de alto metabolismo hepático
-  const temHepatopatia = texto._problemas?.["Hepatopatia"] || texto._problemas?.["Cirrose"] || false;
-  // Nota: passamos problemas via objeto auxiliar se disponível
+  // 6. FUNÇÃO HEPÁTICA — drogas de alto metabolismo hepático (alertas mais
+  // específicos quando o paciente tem DHC/hepatopatia conhecida; alertas gerais
+  // de cautela para os demais, já que essas drogas merecem atenção hepática
+  // básica mesmo sem diagnóstico prévio)
   const HEPATOTOXICOS = [
     { drugs: ["paracetamol","acetaminofeno"], msg: "Paracetamol: limite ≤ 2g/dia em hepatopatia (≤ 0,5–1g em cirrose grave) — hepatotóxico em doses altas" },
     { drugs: ["sinvastatina","atorvastatina","lovastatina"], msg: "Estatina: contraindicada em hepatopatia ativa (transaminases > 3x LSN) — monitorar TGO/TGP" },
@@ -1126,20 +1127,12 @@ function checkAlertasEspeciais(texto) {
   ];
   HEPATOTOXICOS.forEach(({ drugs, msg }) => {
     if (temAlgum(drugs)) {
-      alerts.push({ tipo: "info", msg: `ℹ ATENÇÃO HEPÁTICA: ${msg}` });
+      const prefixo = temHepatopatia ? "⚠ ATENÇÃO HEPÁTICA (paciente com DHC/hepatopatia conhecida): " : "ℹ ATENÇÃO HEPÁTICA: ";
+      alerts.push({ tipo: temHepatopatia ? "warning" : "info", msg: prefixo + msg });
     }
   });
 
   return alerts;
-}
-
-// Wrapper que passa problemas para checkAlertasEspeciais quando disponível
-function checkAlertasEspeciaisComContexto(texto, problemas) {
-  const textoObj = Object.create(null);
-  textoObj._problemas = problemas || {};
-  Object.assign(textoObj, { toString: () => texto });
-  // Chama versão simplificada — problemas já passados via param
-  return checkAlertasEspeciais(texto);
 }
 
 // RadioToggle — permite clicar novamente para desmarcar
@@ -4547,7 +4540,13 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
   const beersAlerts = linhas.filter(l => checkBeers(l));
   const interacoes = checkInteracoes(texto);
-  const alertasEspeciais = checkAlertasEspeciais(texto);
+  const temHepatopatiaAtiva = (() => {
+    const prob = consulta.problemas || {};
+    if (prob["DHC"]) return true;
+    const custom = (consulta.problemasCustom || []).filter(c => c.checked).map(c => (c.nome || "").toLowerCase());
+    return custom.some(nome => /\bhepatopatia\b|\bcirrose\b|\bdhc\b/i.test(nome));
+  })();
+  const alertasEspeciais = checkAlertasEspeciais(texto, temHepatopatiaAtiva);
   const [showDisponibilidadeSUS, setShowDisponibilidadeSUS] = useState(false);
   const disponibilidadeSUS = verificarDisponibilidadeSUS(texto);
   const [showCustoMensal, setShowCustoMensal] = useState(false);
