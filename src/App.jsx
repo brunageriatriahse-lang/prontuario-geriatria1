@@ -251,6 +251,68 @@ async function salvarNoDrive(blob, nomePaciente, nomeArquivo) {
 async function salvarReceitasNoDrive() { return { ok:false, error:"deprecated" }; }
 
 
+// ============================================================
+// CONVERSÃO DE POSOLOGIA PARA FRASE DE RECEITUÁRIO — transforma o padrão
+// numérico "0-1-0" (manhã-almoço-noite) em texto por extenso adequado
+// para impressão na receita (ex: "Tomar 1 comprimido no almoço"), em vez
+// de copiar os números literalmente. Aceita 3 ou 4 posições e doses
+// fracionadas (0.5 = meio comprimido).
+// ============================================================
+function parseValorPosologia(v) {
+  if (v.includes("/")) {
+    const [num, den] = v.split("/").map(Number);
+    return den ? num / den : NaN;
+  }
+  return parseFloat(v.replace(",", "."));
+}
+
+function converterPosologiaParaFrase(linha) {
+  const slot = "(\\d+\\/\\d+|\\d+(?:[.,]\\d+)?)";
+  const regex = new RegExp(slot + "\\s*-\\s*" + slot + "\\s*-\\s*" + slot + "(?:\\s*-\\s*" + slot + ")?");
+  const m = linha.match(regex);
+  if (!m) return linha;
+
+  const valoresRaw = [m[1], m[2], m[3], m[4]].filter(v => v !== undefined);
+  const valores = valoresRaw.map(parseValorPosologia);
+  if (valores.some(v => isNaN(v))) return linha;
+  const horarios3 = ["após o café da manhã", "após o almoço", "após o jantar"];
+  const horarios4 = ["após o café da manhã", "após o almoço", "à tarde", "após o jantar"];
+  const horarios = valores.length === 4 ? horarios4 : horarios3;
+
+  function qtdParaTexto(n) {
+    if (n === 0.25) return "um quarto de comprimido";
+    if (n === 0.5) return "meio comprimido";
+    if (n === 0.75) return "três quartos de comprimido";
+    if (n === 1) return "1 comprimido";
+    return `${n} comprimidos`;
+  }
+
+  const partes = [];
+  valores.forEach((v, i) => {
+    if (v > 0) partes.push(`${qtdParaTexto(v)} ${horarios[i]}`);
+  });
+  if (partes.length === 0) return linha; // ex: 0-0-0 — mantém texto original por segurança
+
+  let frase;
+  if (partes.length === 1) frase = partes[0];
+  else if (partes.length === 2) frase = `${partes[0]} e ${partes[1]}`;
+  else frase = `${partes.slice(0, -1).join(", ")} e ${partes[partes.length - 1]}`;
+
+  const nomeDose = linha.slice(0, m.index).trim();
+  const depois = linha.slice(m.index + m[0].length).trim();
+
+  const linha1 = `${nomeDose.toUpperCase()} --------------- CONTÍNUO`;
+  const linha2 = `TOMAR ${frase}${depois ? " " + depois : ""}.`.toUpperCase();
+  return linha1 + "\n" + linha2;
+}
+
+function transformarPosologiaTexto(medicacoesTexto) {
+  return garantirString(medicacoesTexto)
+    .split("\n")
+    .map(linha => linha.trim() ? converterPosologiaParaFrase(linha) : linha)
+    .join("\n");
+}
+
 async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo, medicacoes }) {
   if (!window.JSZip) {
     await new Promise((res, rej) => {
@@ -420,6 +482,73 @@ const RASTREIO_GERAL = [
   { nome: "TC tórax baixa dose", criterio: "Tabagista ≥20 maços-ano, cessação <15 anos, 50–80 anos; anual", requerTabagismo: true },
   { nome: "USG aorta abdominal", criterio: "Tabagista 65–75 anos; única vez", requerTabagismo: true, sexo: "M" },
 ];
+
+// ============================================================
+// ACB SCALE — Anticholinergic Cognitive Burden Scale (Boustani et al.)
+// Escore 1 = atividade anticolinérgica leve/possível; Escore 2 = moderada;
+// Escore 3 = alta/definida (maior associação com declínio cognitivo,
+// especialmente com carga total ≥3). Diferente do Beers (que é binário
+// "evitar/não evitar"), aqui somamos a carga cumulativa de TODAS as
+// medicações em uso, já que o efeito anticolinérgico é aditivo.
+// ============================================================
+const ACB_SCALE = [
+  // Escore 3 — atividade anticolinérgica alta/definida
+  { nome: "Amitriptilina", regex: /amitriptilina/i, escore: 3 },
+  { nome: "Nortriptilina", regex: /nortriptilina/i, escore: 3 },
+  { nome: "Imipramina", regex: /imipramina/i, escore: 3 },
+  { nome: "Clorpromazina", regex: /clorpromazina/i, escore: 3 },
+  { nome: "Difenidramina", regex: /difenidramina/i, escore: 3 },
+  { nome: "Hidroxizina", regex: /hidroxizina/i, escore: 3 },
+  { nome: "Oxibutinina", regex: /oxibutinina/i, escore: 3 },
+  { nome: "Tolterodina", regex: /tolterodina/i, escore: 3 },
+  { nome: "Paroxetina", regex: /paroxetina/i, escore: 3 },
+  { nome: "Prometazina", regex: /prometazina/i, escore: 3 },
+  { nome: "Biperideno", regex: /biperideno/i, escore: 3 },
+  { nome: "Escopolamina", regex: /escopolamina/i, escore: 3 },
+  { nome: "Clozapina", regex: /clozapina/i, escore: 3 },
+  { nome: "Dimenidrinato", regex: /dimenidrinato/i, escore: 3 },
+  // Escore 2 — atividade anticolinérgica moderada
+  { nome: "Carbamazepina", regex: /carbamazepina/i, escore: 2 },
+  { nome: "Ciclobenzaprina", regex: /ciclobenzaprina/i, escore: 2 },
+  { nome: "Loperamida", regex: /loperamida/i, escore: 2 },
+  { nome: "Loratadina", regex: /loratadina/i, escore: 2 },
+  { nome: "Prednisolona", regex: /prednisolona/i, escore: 2 },
+  // Escore 1 — atividade anticolinérgica leve/possível
+  { nome: "Alprazolam", regex: /alprazolam/i, escore: 1 },
+  { nome: "Captopril", regex: /captopril/i, escore: 1 },
+  { nome: "Cetirizina", regex: /cetirizina/i, escore: 1 },
+  { nome: "Codeína", regex: /codeína/i, escore: 1 },
+  { nome: "Digoxina", regex: /digoxina/i, escore: 1 },
+  { nome: "Furosemida", regex: /furosemida/i, escore: 1 },
+  { nome: "Haloperidol", regex: /haloperidol/i, escore: 1 },
+  { nome: "Metoprolol", regex: /metoprolol/i, escore: 1 },
+  { nome: "Mirtazapina", regex: /mirtazapina/i, escore: 1 },
+  { nome: "Morfina", regex: /morfina/i, escore: 1 },
+  { nome: "Ranitidina", regex: /ranitidina/i, escore: 1 },
+  { nome: "Risperidona", regex: /risperidona/i, escore: 1 },
+  { nome: "Trazodona", regex: /trazodona/i, escore: 1 },
+  { nome: "Varfarina", regex: /varfarina|warfarina/i, escore: 1 },
+  { nome: "Sertralina", regex: /sertralina/i, escore: 1 },
+  { nome: "Quetiapina", regex: /quetiapina/i, escore: 1 },
+];
+
+function calcularCargaAnticolinergica(medicacoesTexto) {
+  const textoExpandido = expandirNomesComerciais(garantirString(medicacoesTexto));
+  const linhas = textoExpandido.split("\n").map(l => l.trim()).filter(Boolean);
+  const encontrados = [];
+  linhas.forEach(linha => {
+    for (const item of ACB_SCALE) {
+      if (item.regex.test(linha)) {
+        encontrados.push({ nome: item.nome, escore: item.escore, linha });
+        break; // evita contar a mesma linha duas vezes se casar com mais de um item
+      }
+    }
+  });
+  const total = encontrados.reduce((s, e) => s + e.escore, 0);
+  const risco = total === 0 ? "Sem carga anticolinérgica identificada" : total <= 2 ? "Carga baixa" : total <= 4 ? "Carga moderada — risco de efeitos cognitivos" : "Carga ALTA — risco significativo de declínio cognitivo, quedas, delirium";
+  const corRisco = total === 0 ? "success" : total <= 2 ? "info" : total <= 4 ? "warning" : "danger";
+  return { total, encontrados, risco, corRisco };
+}
 
 const BEERS_LIST = [
   // Anticolinérgicos — Beers 2023 (risco cognitivo, queda, constipação, retenção urinária)
@@ -1001,6 +1130,133 @@ const DOSES_MAXIMAS_DIARIAS = [
   { nome: "Furosemida", regex: /furosemida/i, doseUnitariaMg: 40, maxMg: 600, maxMgIdoso: 160, obs: "Doses altas aumentam risco de distúrbio eletrolítico e lesão renal" },
   { nome: "Colchicina", regex: /colchicina/i, doseUnitariaMg: 0.5, maxMg: 1.8, maxMgIdoso: 1, obs: "Ajustar por TFG — toxicidade neuromuscular em idosos" },
 ];
+
+// ============================================================
+// START — Screening Tool to Alert to Right Treatment (critérios europeus,
+// complementares ao STOPP/Beers). Diferente dos alertas de "gap terapêutico"
+// já existentes em outras telas (que cobrem FA/Osteoporose/DAC/Hipotireoidismo
+// isoladamente), esta função centraliza um conjunto mais amplo de omissões
+// terapêuticas potenciais com base nas comorbidades ativas — sinaliza o que
+// PODE estar faltando, não substitui julgamento clínico sobre risco-benefício.
+// ============================================================
+function verificarOmissoesSTART(consulta, patient) {
+  const meds = expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase();
+  const prob = consulta.problemas || {};
+  const idade = calcIdade(patient?.ident?.dn);
+  const omissoes = [];
+
+  function temMed(regex) { return regex.test(meds); }
+
+  if (prob["FA"] && !temMed(/varfarina|warfarina|acenocumarol|rivaroxabana|apixabana|dabigatrana|edoxabana/)) {
+    omissoes.push({ comorbidade: "FA", texto: "Anticoagulante oral (avaliar CHA₂DS₂-VASc e risco de sangramento antes de indicar)" });
+  }
+  if ((prob["DAC"] || prob["AVC"]) && !temMed(/\baas\b|ácido acetilsalicílico|aspirina|clopidogrel/)) {
+    omissoes.push({ comorbidade: prob["DAC"] ? "DAC" : "AVC", texto: "Antiagregante plaquetário (AAS ou clopidogrel), salvo contraindicação" });
+  }
+  if (prob["IC"] && !temMed(/captopril|enalapril|lisinopril|ramipril|perindopril|losartana|valsartana|telmisartana/)) {
+    omissoes.push({ comorbidade: "IC", texto: "IECA/BRA (redução de mortalidade em IC com fração de ejeção reduzida)" });
+  }
+  if (prob["IC"] && !temMed(/carvedilol|bisoprolol|metoprolol/)) {
+    omissoes.push({ comorbidade: "IC", texto: "Betabloqueador (carvedilol/bisoprolol/metoprolol) — benefício de mortalidade em IC" });
+  }
+  if (prob["Osteoporose"] && !temMed(/alendronato|risedronato|zoledrônico|denosumabe|raloxifeno/)) {
+    omissoes.push({ comorbidade: "Osteoporose", texto: "Terapia antirreabsortiva (bifosfonato ou denosumabe)" });
+  }
+  if (prob["Osteoporose"] && !temMed(/cálcio|carbonato de cálcio|colecalciferol|vitamina d/)) {
+    omissoes.push({ comorbidade: "Osteoporose", texto: "Suplementação de cálcio/vitamina D" });
+  }
+  if (prob["Hipotireoidismo"] && !temMed(/levotiroxina/)) {
+    omissoes.push({ comorbidade: "Hipotireoidismo", texto: "Levotiroxina" });
+  }
+  if (prob["DM2"] && !temMed(/metformina|glibenclamida|gliclazida|dapagliflozina|empagliflozina|sitagliptina|insulina/)) {
+    omissoes.push({ comorbidade: "DM2", texto: "Terapia hipoglicemiante — verificar se HbA1c está fora da meta sem tratamento" });
+  }
+  if (prob["DPOC"] && !temMed(/salbutamol|formoterol|salmeterol|tiotrópio|budesonida|beclometasona|fluticasona/)) {
+    omissoes.push({ comorbidade: "DPOC", texto: "Broncodilatador de longa duração (LABA/LAMA) ou corticoide inalatório, conforme estágio" });
+  }
+  if (prob["Transtorno depressivo"] && !temMed(/fluoxetina|sertralina|escitalopram|citalopram|paroxetina|venlafaxina|duloxetina|mirtazapina|amitriptilina/)) {
+    omissoes.push({ comorbidade: "Transtorno depressivo", texto: "Antidepressivo, salvo se em remissão sustentada sem indicação de manutenção" });
+  }
+  if (prob["DAOP"] && !temMed(/\baas\b|ácido acetilsalicílico|aspirina|clopidogrel|sinvastatina|atorvastatina|rosuvastatina/)) {
+    omissoes.push({ comorbidade: "DAOP", texto: "Antiagregante + estatina (redução de eventos cardiovasculares)" });
+  }
+  if ((prob["DAC"] || prob["AVC"] || prob["DAOP"]) && !temMed(/sinvastatina|atorvastatina|rosuvastatina|pravastatina/)) {
+    omissoes.push({ comorbidade: "Doença aterosclerótica", texto: "Estatina (prevenção secundária)" });
+  }
+
+  return omissoes;
+}
+
+// ============================================================
+// AJUSTE RENAL POR TFG — cruza a TFG (calculada por CKD-EPI ou extraída
+// dos labs) com a lista de medicações em uso, sinalizando quais precisam
+// de ajuste de dose ou estão contraindicadas conforme a faixa de função
+// renal. Pontos de corte de referência (não exaustivo — checar bula/
+// protocolo institucional para casos limítrofes).
+// ============================================================
+const AJUSTE_RENAL = [
+  { nome: "Metformina", regex: /metformina/i, regras: [
+    { tfgMax: 30, msg: "Metformina CONTRAINDICADA com TFG < 30 mL/min — suspender" },
+    { tfgMax: 45, msg: "Metformina: reduzir dose e monitorar com TFG 30–45 mL/min; não iniciar novo tratamento" },
+  ]},
+  { nome: "Dabigatrana", regex: /dabigatrana/i, regras: [
+    { tfgMax: 30, msg: "Dabigatrana CONTRAINDICADA com TFG < 30 mL/min — considerar trocar por anticoagulante com menor eliminação renal" },
+    { tfgMax: 50, msg: "Dabigatrana: considerar redução de dose (110mg 2x/dia) com TFG 30–50 mL/min" },
+  ]},
+  { nome: "Rivaroxabana", regex: /rivaroxabana/i, regras: [
+    { tfgMax: 15, msg: "Rivaroxabana CONTRAINDICADA com TFG < 15 mL/min" },
+    { tfgMax: 50, msg: "Rivaroxabana: considerar redução de dose com TFG 15–50 mL/min (conforme indicação)" },
+  ]},
+  { nome: "Apixabana", regex: /apixabana/i, regras: [
+    { tfgMax: 15, msg: "Apixabana: uso com cautela e TFG < 15 mL/min — avaliar risco-benefício individualizado" },
+  ]},
+  { nome: "Digoxina", regex: /digoxina/i, regras: [
+    { tfgMax: 30, msg: "Digoxina: reduzir dose significativamente com TFG < 30 mL/min — risco de intoxicação digitálica" },
+    { tfgMax: 60, msg: "Digoxina: ajustar dose com TFG 30–60 mL/min e monitorar nível sérico" },
+  ]},
+  { nome: "Gabapentina", regex: /gabapentina/i, regras: [
+    { tfgMax: 30, msg: "Gabapentina: reduzir dose significativamente com TFG < 30 mL/min — risco de sedação/encefalopatia" },
+    { tfgMax: 60, msg: "Gabapentina: ajustar dose com TFG 30–60 mL/min" },
+  ]},
+  { nome: "Pregabalina", regex: /pregabalina/i, regras: [
+    { tfgMax: 30, msg: "Pregabalina: reduzir dose significativamente com TFG < 30 mL/min" },
+    { tfgMax: 60, msg: "Pregabalina: ajustar dose com TFG 30–60 mL/min" },
+  ]},
+  { nome: "Espironolactona", regex: /espironolactona/i, regras: [
+    { tfgMax: 30, msg: "Espironolactona: evitar ou usar com extrema cautela com TFG < 30 mL/min — risco de hipercalemia grave" },
+  ]},
+  { nome: "AAS/AINE", regex: /\baas\b|ibuprofeno|diclofenaco|naproxeno|nimesulida|cetorolaco/i, regras: [
+    { tfgMax: 30, msg: "AINE/AAS em dose anti-inflamatória: evitar com TFG < 30 mL/min — risco de piora da função renal" },
+  ]},
+  { nome: "Sitagliptina", regex: /sitagliptina/i, regras: [
+    { tfgMax: 50, msg: "Sitagliptina: reduzir dose com TFG < 50 mL/min" },
+  ]},
+  { nome: "Dapagliflozina/Empagliflozina", regex: /dapagliflozina|empagliflozina/i, regras: [
+    { tfgMax: 20, msg: "iSGLT2: eficácia glicêmica reduzida com TFG < 20 mL/min, mas pode manter benefício cardiorrenal — reavaliar indicação" },
+  ]},
+  { nome: "Enoxaparina", regex: /enoxaparina/i, regras: [
+    { tfgMax: 30, msg: "Enoxaparina: ajustar dose com TFG < 30 mL/min — risco de acúmulo/sangramento" },
+  ]},
+  { nome: "Alopurinol", regex: /alopurinol/i, regras: [
+    { tfgMax: 30, msg: "Alopurinol: reduzir dose com TFG < 30 mL/min" },
+  ]},
+  { nome: "Tramadol", regex: /tramadol/i, regras: [
+    { tfgMax: 30, msg: "Tramadol: aumentar intervalo entre doses com TFG < 30 mL/min" },
+  ]},
+];
+
+function verificarAjusteRenal(medicacoesTexto, tfgVal) {
+  if (!tfgVal || tfgVal <= 0) return [];
+  const textoExpandido = expandirNomesComerciais(garantirString(medicacoesTexto)).toLowerCase();
+  const alertas = [];
+  AJUSTE_RENAL.forEach(({ nome, regex, regras }) => {
+    if (!regex.test(textoExpandido)) return;
+    // Usa a regra mais específica cujo corte a TFG atual ainda está abaixo (ordenadas do mais restritivo ao menos)
+    const regraAplicavel = regras.find(r => tfgVal < r.tfgMax);
+    if (regraAplicavel) alertas.push({ nome, msg: regraAplicavel.msg });
+  });
+  return alertas;
+}
 
 function verificarDoseMaximaDiaria(texto) {
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
@@ -2696,7 +2952,7 @@ export default function App() {
       maeNome: patient.ident.maeNome || '',
       idade: idade != null ? idade : '',
       sexo: patient.ident.sexo || '',
-      medicacoes: (activeConsulta && activeConsulta.medicacoesTexto) || '',
+      medicacoes: transformarPosologiaTexto((activeConsulta && activeConsulta.medicacoesTexto) || ''),
     }).then(async blob => {
       // Download local
       const url = URL.createObjectURL(blob);
@@ -3642,7 +3898,7 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "ident" && <IdentTab patient={patient} updatePatient={updatePatient} />}
       {activeTab === "problemas" && <ProblemasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "antecedentes" && <AntecedentesTab consulta={consulta} updateConsulta={updateConsulta} />}
-      {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} />}
+      {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} sexoPaciente={patient.ident.sexo || ""} patient={patient} />}
       {activeTab === "prevencao" && <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
@@ -4535,7 +4791,32 @@ function estimarCustoMensal(medicacoesTexto) {
   return { identificados, naoIdentificados, total };
 }
 
-function MedicacoesTab({ consulta, updateConsulta }) {
+// ============================================================
+// EXTRAÇÃO/CÁLCULO DE TFG — centraliza a lógica já usada em outras telas
+// (extrai dos labs se disponível, senão calcula por CKD-EPI 2021 a partir
+// da creatinina), para reuso em verificações como ajuste renal de dose.
+// ============================================================
+function extrairOuCalcularTFG(labsTexto, idade, sexo) {
+  const labs = garantirString(labsTexto).toLowerCase();
+  const mTFG = labs.match(/(?:tfg|tgf|egfr|taxa de filtra)[^\d]*(\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
+  let tfg = mTFG ? parseInt(mTFG[1]) : null;
+  if (!tfg && idade) {
+    const mCr = labs.match(/\b(?:cr(?:eatinina)?)\b[^\d]*(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
+    if (mCr) {
+      const cr = parseFloat(mCr[1].replace(',', '.'));
+      if (cr > 0 && cr < 20) {
+        const kappa = sexo === "F" ? 0.7 : 0.9;
+        const alpha = sexo === "F" ? -0.241 : -0.302;
+        const crK = cr / kappa;
+        const tfgCalc = 142 * Math.pow(Math.min(crK, 1), alpha) * Math.pow(Math.max(crK, 1), -1.200) * Math.pow(0.9938, idade) * (sexo === "F" ? 1.012 : 1);
+        tfg = Math.round(tfgCalc);
+      }
+    }
+  }
+  return tfg;
+}
+
+function MedicacoesTab({ consulta, updateConsulta, patient }) {
   const texto = consulta.medicacoesTexto || "";
   const linhas = texto.split("\n").map(l => l.trim()).filter(Boolean);
   const beersAlerts = linhas.filter(l => checkBeers(l));
@@ -4552,6 +4833,21 @@ function MedicacoesTab({ consulta, updateConsulta }) {
   const [showCustoMensal, setShowCustoMensal] = useState(false);
   const custoMensal = estimarCustoMensal(consulta.medicacoesTexto);
   const alertasDoseMaxima = verificarDoseMaximaDiaria(texto);
+
+  // Carga anticolinérgica (ACB Scale)
+  const [showACB, setShowACB] = useState(false);
+  const cargaACB = calcularCargaAnticolinergica(consulta.medicacoesTexto);
+
+  // Omissões terapêuticas (START)
+  const [showSTART, setShowSTART] = useState(false);
+  const omissoesSTART = verificarOmissoesSTART(consulta, patient);
+
+  // Ajuste de dose por função renal (TFG)
+  const idadePaciente = calcIdade(patient?.ident?.dn);
+  const sexoPaciente = patient?.ident?.sexo || "";
+  const tfgAtual = extrairOuCalcularTFG(consulta.labsTexto, idadePaciente, sexoPaciente);
+  const [showAjusteRenal, setShowAjusteRenal] = useState(false);
+  const alertasAjusteRenal = verificarAjusteRenal(consulta.medicacoesTexto, tfgAtual);
 
   // Checagem cruzada: alergias medicamentosas registradas vs. medicações prescritas
   const alergiasTexto = (consulta.antecedentes || {}).alergias || "";
@@ -4905,6 +5201,89 @@ function MedicacoesTab({ consulta, updateConsulta }) {
                 )}
                 <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
                   Valores aproximados de referência (genérico, preço médio de mercado) — apenas para dar noção da carga financeira ao paciente. Não substitui consulta de preço real na farmácia. Muitos itens podem estar disponíveis gratuitamente pelo SUS/Farmácia Popular (ver acima).
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {linhas.length > 0 && (
+          <div style={{ marginBottom: "10px" }}>
+            <button onClick={() => setShowACB(!showACB)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-brain" aria-hidden="true"></i>
+              {showACB ? "Ocultar" : "Calcular"} carga anticolinérgica (ACB Scale)
+            </button>
+            {showACB && (
+              <div style={{ marginTop: "8px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px", fontSize: "12px" }}>
+                {cargaACB.encontrados.length > 0 ? (
+                  <div style={{ marginBottom: "8px" }}>
+                    {cargaACB.encontrados.map((item, i) => (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                        <span>{item.nome}</span>
+                        <span style={{ color: "var(--color-text-secondary)" }}>escore {item.escore}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: "var(--color-text-tertiary)" }}>Nenhuma medicação com atividade anticolinérgica conhecida identificada.</div>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "13px", paddingTop: "6px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+                  <span>Carga total (ACB)</span>
+                  <span style={{ color: `var(--color-text-${cargaACB.corRisco})` }}>{cargaACB.total} — {cargaACB.risco}</span>
+                </div>
+                <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                  Escala ACB (Boustani et al.) — carga cumulativa ≥3 associada a maior risco de declínio cognitivo, quedas e delirium em idosos. Diferente do Beers (que avalia cada droga isoladamente), aqui o efeito é somado entre todas as medicações em uso.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {linhas.length > 0 && (
+          <div style={{ marginBottom: "10px" }}>
+            <button onClick={() => setShowSTART(!showSTART)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-list-check" aria-hidden="true"></i>
+              {showSTART ? "Ocultar" : "Verificar"} possíveis omissões terapêuticas (START)
+            </button>
+            {showSTART && (
+              <div style={{ marginTop: "8px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px", fontSize: "12px" }}>
+                {omissoesSTART.length > 0 ? (
+                  <div style={{ display: "grid", gap: "6px" }}>
+                    {omissoesSTART.map((o, i) => (
+                      <div key={i} style={{ background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "6px", padding: "8px 10px" }}>
+                        <strong>{o.comorbidade}:</strong> {o.texto}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: "var(--color-text-tertiary)" }}>Nenhuma omissão terapêutica identificada com base nas comorbidades ativas e medicações em uso.</div>
+                )}
+                <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                  Baseado nos critérios START (Screening Tool to Alert to Right Treatment) — sinaliza terapias potencialmente indicadas que podem estar faltando. Requer avaliação individual: pode haver contraindicação, decisão compartilhada ou meta de cuidado que justifique a omissão.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {linhas.length > 0 && tfgAtual != null && (
+          <div style={{ marginBottom: "10px" }}>
+            <button onClick={() => setShowAjusteRenal(!showAjusteRenal)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <i className="ti ti-droplet-half-2" aria-hidden="true"></i>
+              {showAjusteRenal ? "Ocultar" : "Verificar"} ajuste de dose por função renal (TFG {tfgAtual} mL/min)
+            </button>
+            {showAjusteRenal && (
+              <div style={{ marginTop: "8px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "8px", fontSize: "12px" }}>
+                {alertasAjusteRenal.length > 0 ? (
+                  <div style={{ display: "grid", gap: "6px" }}>
+                    {alertasAjusteRenal.map((a, i) => (
+                      <div key={i} style={{ background: "#f8d7da", border: "0.5px solid #dc3545", borderRadius: "6px", padding: "8px 10px" }}>
+                        <strong>{a.nome}:</strong> {a.msg}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: "var(--color-text-tertiary)" }}>Nenhuma medicação em uso com necessidade de ajuste renal identificada para a TFG atual.</div>
+                )}
+                <div style={{ fontSize: "10px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                  TFG {tfgAtual >= 60 ? "extraída dos exames laboratoriais ou calculada por CKD-EPI" : "calculada/extraída"} — cortes de referência, não exaustivo. Confirmar em bula ou protocolo institucional para casos limítrofes.
                 </div>
               </div>
             )}
@@ -5755,7 +6134,7 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
     "tabagismo","etilismo","atividadeFisica","minicogRelogio","cdrGlobal",
     "npiImpactoCuidador","sarcfForca","sarcfCaminhada","sarcfLevantarCadeira",
     "sarcfEscadas","sarcfQuedas","mnaPerdaApetite","mnaPerdaPeso","mnaMobilidade",
-    "mnaEstresse","mnaCognicao",
+    "mnaEstresse","mnaCognicao","perguntaSurpresa",
     // FRAIL
     "fatigue","resistance","ambulation","illness","loss",
   ]);
@@ -6390,7 +6769,71 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
         )}
       </SectionCard>
 
+      <SectionCard title="Zarit (ZBI-12) — sobrecarga do cuidador" icon="ti-hand-heart" defaultOpen={false}>
+        <p style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: 0, marginBottom: "10px" }}>
+          Versão curta validada (12 itens) do Zarit Burden Interview. Aplicar com o cuidador principal quando houver dependência funcional/cognitiva relevante. Cada item: 0 (nunca) a 4 (quase sempre).
+        </p>
+        {(() => {
+          const ITENS_ZARIT = [
+            "Sente que seu familiar pede mais ajuda do que precisa?",
+            "Sente que, por causa do tempo que gasta com seu familiar, não tem tempo suficiente para si mesmo?",
+            "Sente-se estressado(a) entre cuidar do seu familiar e as outras responsabilidades (trabalho/família)?",
+            "Sente-se envergonhado(a) com o comportamento do seu familiar?",
+            "Sente-se irritado(a) quando está perto do seu familiar?",
+            "Sente que sua saúde foi afetada por cuidar do seu familiar?",
+            "Sente que não tem tanta privacidade quanto gostaria por causa do seu familiar?",
+            "Sente que sua vida social foi prejudicada por cuidar do seu familiar?",
+            "Sente-se inseguro(a) sobre o que fazer com seu familiar?",
+            "Sente que deveria estar fazendo mais pelo seu familiar?",
+            "Sente que poderia cuidar melhor do seu familiar?",
+            "De um modo geral, o quanto se sente sobrecarregado(a) por cuidar do seu familiar?",
+          ];
+          const respostas = aga.zarit || {};
+          const setResposta = (i, valor) => updateConsulta(p => ({ ...p, aga: { ...p.aga, zarit: { ...(p.aga.zarit || {}), [i]: valor } } }));
+          const respondidas = Object.keys(respostas).filter(k => respostas[k] !== undefined && respostas[k] !== "").length;
+          const total = Object.values(respostas).reduce((s, v) => s + (parseInt(v) || 0), 0);
+          const classificacao = total <= 20 ? "Sobrecarga ausente/leve" : total <= 40 ? "Sobrecarga moderada" : "Sobrecarga severa";
+          const corClassificacao = total <= 20 ? "success" : total <= 40 ? "warning" : "danger";
 
+          return (
+            <div>
+              {ITENS_ZARIT.map((pergunta, i) => (
+                <div key={i} style={{ marginBottom: "10px", paddingBottom: "8px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                  <div style={{ fontSize: "13px", marginBottom: "4px" }}>{i + 1}. {pergunta}</div>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                    {["0", "1", "2", "3", "4"].map(v => (
+                      <button
+                        key={v}
+                        onClick={() => setResposta(i, respostas[i] === v ? "" : v)}
+                        style={{
+                          fontSize: "12px", padding: "3px 10px", borderRadius: "14px",
+                          background: respostas[i] === v ? "var(--color-background-warning)" : "var(--color-background-secondary)",
+                          border: `1px solid ${respostas[i] === v ? "var(--color-border-warning)" : "var(--color-border-tertiary)"}`,
+                        }}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {respondidas > 0 && (
+                <div style={{ marginTop: "10px", padding: "10px", background: `var(--color-background-${corClassificacao})`, borderRadius: "8px" }}>
+                  <div style={{ fontWeight: 700, color: `var(--color-text-${corClassificacao})` }}>
+                    Zarit: {total}/48 ({respondidas}/12 itens respondidos) — {classificacao}
+                  </div>
+                  {respondidas === 12 && total !== (parseInt(aga.zaritTotal) || 0) && (
+                    <button onClick={() => set("zaritTotal", String(total))} style={{ marginTop: "6px", fontSize: "12px" }}>
+                      Salvar pontuação ({total}) no campo Zarit
+                    </button>
+                  )}
+                </div>
+              )}
+              <PontuacaoAnterior campo="zaritTotal" sufixo="/48" />
+            </div>
+          );
+        })()}
+      </SectionCard>
 
       <SectionCard title="Sono" icon="ti-moon">
         <Field label="">
@@ -6702,6 +7145,25 @@ function AgaTab({ consulta, updateConsulta, sexoPaciente, patient }) {
           onChange={v => set("sexualidade", v)}
           opcoes={["Atividade sexual", "Libido", "Disfunção sexual", "Dor durante relação", "IST prévias"]}
         />
+      </SectionCard>
+
+      <SectionCard title="Cuidados paliativos — triagem" icon="ti-flower">
+        <Field label="Pergunta surpresa" hint='"Você se surpreenderia se este paciente morresse no próximo ano?"'>
+          <RadioGroup
+            name="perguntaSurpresa"
+            value={aga.perguntaSurpresa}
+            onChange={v => set("perguntaSurpresa", v)}
+            options={[{ value: "sim", label: "Sim, me surpreenderia" }, { value: "nao", label: "Não me surpreenderia" }]}
+          />
+        </Field>
+        {aga.perguntaSurpresa === "nao" && (
+          <Alert type="warning">
+            Resposta "Não me surpreenderia" sugere prognóstico limitado — considerar discussão sobre metas de cuidado, diretivas antecipadas de vontade e revisão de intervenções/rastreios com o paciente/família (evitar tratamento excessivamente agressivo sem alinhamento de objetivos).
+          </Alert>
+        )}
+        <Field label="Observações sobre metas de cuidado (opcional)">
+          <textarea rows={2} value={aga.metasDeCuidadoObs || ""} onChange={e => set("metasDeCuidadoObs", e.target.value)} placeholder="Ex: discutido com família, paciente prefere foco em conforto, diretiva antecipada registrada..." />
+        </Field>
       </SectionCard>
     </div>
   );
@@ -8920,7 +9382,70 @@ function FraxCalc({ consulta, patient }) {
 // ============================================================
 // DASHBOARD ESTATÍSTICO MELHORADO
 // ============================================================
+// ============================================================
+// RELATÓRIO PDF DO DASHBOARD — resumo executivo das estatísticas
+// da população de pacientes, para compartilhar com a coordenação
+// da residência/preceptoria. Reaproveita o PrintShell (exportação
+// PDF via html2canvas + jsPDF já implementada para os prontuários).
+// ============================================================
+function RelatorioDashboardPrint({ stats, onClose }) {
+  const hoje = new Date().toLocaleDateString("pt-BR");
+  const sectionTitle = { fontWeight: 700, fontSize: "13px", marginTop: "16px", marginBottom: "6px", borderBottom: "1px solid #ccc", paddingBottom: "3px" };
+  const row = { display: "flex", justifyContent: "space-between", fontSize: "12px", padding: "3px 0" };
+
+  return (
+    <PrintShell title="Relatório do Dashboard" onClose={onClose} fileName={`Relatorio_Dashboard_${hoje.replace(/\//g, "-")}`}>
+      <div id="print-content">
+        <div style={{ textAlign: "center", marginBottom: "16px" }}>
+          <div style={{ fontWeight: 700, fontSize: "16px" }}>Relatório Executivo — Ambulatório de Geriatria</div>
+          <div style={{ fontSize: "12px", color: "#555" }}>Gerado em {hoje}</div>
+        </div>
+
+        <div style={sectionTitle}>RESUMO GERAL</div>
+        <div style={row}><span>Total de pacientes ativos</span><strong>{stats.total}</strong></div>
+        <div style={row}><span>Média de medicamentos por paciente</span><strong>{stats.mediaMeds}</strong></div>
+        <div style={row}><span>Média de comorbidades por paciente</span><strong>{stats.mediaComorbidades}</strong></div>
+        <div style={row}><span>Polifarmácia (≥5 medicações)</span><strong>{stats.polifarmacia} ({stats.pct(stats.polifarmacia)}%)</strong></div>
+        <div style={row}><span>Pacientes frágeis (FRAIL)</span><strong>{stats.fragil} ({stats.pct(stats.fragil)}%)</strong></div>
+        <div style={row}><span>Pacientes complexos</span><strong>{stats.complexos} ({stats.pct(stats.complexos)}%)</strong></div>
+        <div style={row}><span>Retornos vencidos</span><strong>{stats.retornoVencido}</strong></div>
+        <div style={row}><span>Sarcopenia provável</span><strong>{stats.comSarcopenia} ({stats.pct(stats.comSarcopenia)}%)</strong></div>
+
+        <div style={sectionTitle}>PERFIL DE FRAGILIDADE (FRAIL)</div>
+        <div style={row}><span>Robusto</span><strong>{stats.robusto} ({stats.pct(stats.robusto)}%)</strong></div>
+        <div style={row}><span>Pré-frágil</span><strong>{stats.prefragil} ({stats.pct(stats.prefragil)}%)</strong></div>
+        <div style={row}><span>Frágil</span><strong>{stats.fragil} ({stats.pct(stats.fragil)}%)</strong></div>
+
+        <div style={sectionTitle}>DISTRIBUIÇÃO POR FAIXA ETÁRIA</div>
+        {Object.entries(stats.fx).map(([faixa, n]) => (
+          <div key={faixa} style={row}><span>{faixa} anos</span><strong>{n} ({stats.pct(n)}%)</strong></div>
+        ))}
+
+        <div style={sectionTitle}>SEXO</div>
+        <div style={row}><span>Feminino</span><strong>{stats.nF} ({stats.pct(stats.nF)}%)</strong></div>
+        <div style={row}><span>Masculino</span><strong>{stats.nM} ({stats.pct(stats.nM)}%)</strong></div>
+
+        <div style={sectionTitle}>COMORBIDADES MAIS PREVALENTES</div>
+        {stats.topComorbidades.map(([nome, n]) => (
+          <div key={nome} style={row}><span>{nome}</span><strong>{n} ({stats.pct(n)}%)</strong></div>
+        ))}
+
+        <div style={sectionTitle}>MÉDIAS CLÍNICAS POR SUBGRUPO</div>
+        <div style={row}><span>HbA1c média (DM2)</span><strong>{stats.mediaHbA1c ? `${stats.mediaHbA1c}%` : "—"}</strong></div>
+        <div style={row}><span>PA média (HAS)</span><strong>{stats.mediaPA && stats.mediaPAD ? `${stats.mediaPA}/${stats.mediaPAD} mmHg` : "—"}</strong></div>
+        <div style={row}><span>TFG média (DRC)</span><strong>{stats.mediaTFG ? `${stats.mediaTFG} mL/min` : "—"}</strong></div>
+
+        <div style={{ fontSize: "10px", color: "#888", marginTop: "20px", borderTop: "1px solid #ddd", paddingTop: "8px" }}>
+          Relatório gerado automaticamente a partir dos dados registrados no prontuário eletrônico. Estatísticas descritivas — não substituem revisão clínica individualizada.
+        </div>
+      </div>
+    </PrintShell>
+  );
+}
+
 function Dashboard({ patients }) {
+  const [showRelatorioPDF, setShowRelatorioPDF] = useState(false);
+
   function exportarExcel() {
     const ativos = patients.filter(p => !p.deletedAt);
     const headers = [
@@ -9037,9 +9562,9 @@ function Dashboard({ patients }) {
         prob["DAC"] ? "Sim" : "Não", prob["AVC"] ? "Sim" : "Não",
         prob["DRC"] ? "Sim" : "Não", prob["Dislipidemia"] ? "Sim" : "Não",
         prob["Hipotireoidismo"] ? "Sim" : "Não", prob["Osteoporose"] ? "Sim" : "Não",
-        prob["Insuficiência cardíaca"] ? "Sim" : "Não", prob["FA"] ? "Sim" : "Não",
+        prob["IC"] ? "Sim" : "Não", prob["FA"] ? "Sim" : "Não",
         prob["DPOC"] ? "Sim" : "Não",
-        (prob["Demência"] || prob["Síndrome demencial"] || prob["Doença de Alzheimer"]) ? "Sim" : "Não",
+        temDiagnosticoDemencia(ult) ? "Sim" : "Não",
         // Plano
         pl.solicito || "", pl.orientacoes || "", pl.encaminhamentos || "", pl.retorno || "",
         // Vacinas
@@ -9122,6 +9647,7 @@ function Dashboard({ patients }) {
       problemas, custom, meds, frail, idade, sexo, imc, sarcopenia, sarcopeniaForca, sarcopeniaCirc,
       numComorbidades, dataUltConsulta, retornoVencido, nome: p.ident.nome, id: p.id,
       hba1c, pas, pad, tfgVal, dataCriacao,
+      temDadosForca: !isNaN(forcaNum), temDadosCirc: !isNaN(circNum),
     };
   });
 
@@ -9150,7 +9676,7 @@ function Dashboard({ patients }) {
   const comSarcopenia = dados.filter(d => d.sarcopenia).length;
   const comSarcopeniaForca = dados.filter(d => d.sarcopeniaForca).length;
   const comSarcopeniaCirc = dados.filter(d => d.sarcopeniaCirc).length;
-  const semDadosSarcopenia = dados.filter(d => isNaN(parseFloat(d.sarcopeniaForca)) && isNaN(parseFloat(d.sarcopeniaCirc))).length;
+  const semDadosSarcopenia = dados.filter(d => !d.temDadosForca && !d.temDadosCirc).length;
 
   // Crescimento mensal — últimos 12 meses
   const agora = new Date();
@@ -9416,7 +9942,20 @@ function Dashboard({ patients }) {
         <button onClick={backupJSON} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
           <i className="ti ti-database-export" aria-hidden="true"></i>Backup completo (JSON)
         </button>
+        <button onClick={() => setShowRelatorioPDF(true)} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px" }}>
+          <i className="ti ti-file-report" aria-hidden="true"></i>Exportar relatório (PDF)
+        </button>
       </div>
+      {showRelatorioPDF && (
+        <RelatorioDashboardPrint
+          stats={{
+            total, mediaMeds, mediaComorbidades, polifarmacia, fragil, complexos,
+            retornoVencido: retornoVencido.length, comSarcopenia, robusto, prefragil, fx, nF, nM,
+            topComorbidades, mediaHbA1c, mediaPA, mediaPAD, mediaTFG, pct,
+          }}
+          onClose={() => setShowRelatorioPDF(false)}
+        />
+      )}
     </div>
   );
 }
