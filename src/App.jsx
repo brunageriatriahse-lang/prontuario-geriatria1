@@ -7257,19 +7257,6 @@ const VACINA_SUGESTOES = {
 };
 
 function PrevencaoTab({ patient, consulta, updateConsulta }) {
-  const vac = consulta.vacinas || {};
-  const setVacField = (nome, campo, v) => {
-    updateConsulta(p => {
-      const vacinaAtual = { ...((p.vacinas || {})[nome] || {}), [campo]: v };
-      const sugestao = VACINA_SUGESTOES[nome] && VACINA_SUGESTOES[nome][campo];
-      const dataValida = v && /^\d{4}-\d{2}-\d{2}$/.test(v) && parseInt(v.slice(0, 4), 10) >= 2015;
-      if (sugestao && dataValida && !vacinaAtual[sugestao.campoDestino]) {
-        const sugerida = addMonths(v, sugestao.meses);
-        if (sugerida) vacinaAtual[sugestao.campoDestino] = sugerida;
-      }
-      return { ...p, vacinas: { ...p.vacinas, [nome]: vacinaAtual } };
-    });
-  };
   const rg = consulta.rastreioGeral || {};
   const addRgRegistro = (nome) => updateConsulta(p => {
     const atuais = Array.isArray((p.rastreioGeral || {})[nome]) ? p.rastreioGeral[nome] : [];
