@@ -1805,10 +1805,9 @@ const TABS = [
   { id: "medicacoes", label: "Medicações", icon: "ti-pill" },
   { id: "queixas", label: "Queixas", icon: "ti-message" },
   { id: "aga", label: "AGA", icon: "ti-clipboard-heart" },
-  { id: "prevencao", label: "Prevenção", icon: "ti-shield-check" },
   { id: "vacinas", label: "Vacinas", icon: "ti-vaccine" },
   { id: "exame", label: "Exame físico", icon: "ti-stethoscope" },
-  { id: "exames", label: "Exames", icon: "ti-flask" },
+  { id: "exames", label: "Exames / Prevenção", icon: "ti-flask" },
   { id: "plano", label: "Plano", icon: "ti-target-arrow" },
 ];
 
@@ -3901,7 +3900,6 @@ function RecordView({ patient, updatePatient, consulta, updateConsulta, activeTa
       {activeTab === "medicacoes" && <MedicacoesTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "queixas" && <QueixasTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
       {activeTab === "aga" && <AgaTab consulta={consulta} updateConsulta={updateConsulta} sexoPaciente={patient.ident.sexo || ""} patient={patient} />}
-      {activeTab === "prevencao" && <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "vacinas" && <VacinasTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />}
       {activeTab === "exame" && <ExameTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} todasConsultas={patient?.consultas || []} />}
       {activeTab === "exames" && <ExamesTab consulta={consulta} updateConsulta={updateConsulta} patient={patient} />}
@@ -8615,6 +8613,13 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
         />
         <UploadFotosExame consulta={consulta} updateConsulta={updateConsulta} patient={patient} />
       </SectionCard>
+
+      <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "2px solid var(--color-border-tertiary)" }}>
+        <div style={{ fontSize: "15px", fontWeight: 600, marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+          <i className="ti ti-shield-check" aria-hidden="true"></i>Prevenção
+        </div>
+        <PrevencaoTab patient={patient} consulta={consulta} updateConsulta={updateConsulta} />
+      </div>
     </div>
   );
 }
