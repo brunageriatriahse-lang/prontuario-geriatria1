@@ -3278,7 +3278,7 @@ export default function App() {
                 preencherReceitasDocx({
                   nome: i.nome || "", prontuario: i.prontuario || "",
                   maeNome: i.maeNome || "", idade: idade != null ? idade : "",
-                  sexo: i.sexo || "", medicacoes: todasMeds.join("\n"),
+                  sexo: i.sexo || "", medicacoes: transformarPosologiaTexto(todasMeds.join("\n")),
                 }).then(blob => {
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
@@ -8861,7 +8861,7 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
       maeNome: patient?.ident?.maeNome || "",
       idade: idade != null ? idade : "",
       sexo: patient?.ident?.sexo || "",
-      medicacoes: todasMeds.join("\n"),
+      medicacoes: transformarPosologiaTexto(todasMeds.join("\n")),
     }).then(blob => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
