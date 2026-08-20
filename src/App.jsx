@@ -550,6 +550,44 @@ function calcularCargaAnticolinergica(medicacoesTexto) {
   return { total, encontrados, risco, corRisco };
 }
 
+// ============================================================
+// ÍNDICE COMPOSTO DE CARGA MEDICAMENTOSA — combina ACB + nº de alertas
+// Beers + nº de interações + polifarmácia num único score de 0-10,
+// mais fácil de comunicar rapidamente do que checar 3 painéis separados.
+// Pontuação: cada componente contribui proporcionalmente, com pesos
+// baseados na força de associação com desfechos adversos em idosos.
+// ============================================================
+function calcularIndiceCargaMedicamentosa(medicacoesTexto) {
+  const textoExpandido = expandirNomesComerciais(garantirString(medicacoesTexto));
+  const linhas = textoExpandido.split("\n").map(l => l.trim()).filter(Boolean);
+  const numMeds = linhas.length;
+
+  const acb = calcularCargaAnticolinergica(medicacoesTexto);
+  const numBeers = linhas.filter(l => checkBeers(l)).length;
+  const interacoes = checkInteracoes(textoExpandido);
+  const numInteracoes = interacoes.length;
+
+  // Cada componente é normalizado em uma escala de 0-2.5 e somado (máx teórico ~10)
+  const pontosACB = acb.total === 0 ? 0 : acb.total <= 2 ? 0.8 : acb.total <= 4 ? 1.6 : 2.5;
+  const pontosBeers = numBeers === 0 ? 0 : numBeers === 1 ? 1.2 : 2.5;
+  const pontosInteracoes = numInteracoes === 0 ? 0 : numInteracoes === 1 ? 1.2 : 2.5;
+  const pontosPolifarmacia = numMeds < 5 ? 0 : numMeds < 10 ? 1.2 : 2.5;
+
+  const indice = Math.round((pontosACB + pontosBeers + pontosInteracoes + pontosPolifarmacia) * 10) / 10;
+  const classificacao = indice < 2.5 ? "Baixo risco" : indice < 5 ? "Risco moderado" : indice < 7.5 ? "Risco elevado" : "Risco muito elevado";
+  const cor = indice < 2.5 ? "success" : indice < 5 ? "info" : indice < 7.5 ? "warning" : "danger";
+
+  return {
+    indice, classificacao, cor,
+    componentes: {
+      acb: { valor: acb.total, pontos: pontosACB },
+      beers: { valor: numBeers, pontos: pontosBeers },
+      interacoes: { valor: numInteracoes, pontos: pontosInteracoes },
+      polifarmacia: { valor: numMeds, pontos: pontosPolifarmacia },
+    },
+  };
+}
+
 const BEERS_LIST = [
   // Anticolinérgicos — Beers 2023 (risco cognitivo, queda, constipação, retenção urinária)
   "amitriptilina","nortriptilina","imipramina","doxepina","clorpromazina","tioridazina","prometazina",
@@ -4835,6 +4873,7 @@ function MedicacoesTab({ consulta, updateConsulta, patient }) {
   // Carga anticolinérgica (ACB Scale)
   const [showACB, setShowACB] = useState(false);
   const cargaACB = calcularCargaAnticolinergica(consulta.medicacoesTexto);
+  const indiceCarga = calcularIndiceCargaMedicamentosa(consulta.medicacoesTexto);
 
   // Omissões terapêuticas (START)
   const [showSTART, setShowSTART] = useState(false);
@@ -5350,6 +5389,21 @@ function MedicacoesTab({ consulta, updateConsulta, patient }) {
                 ))}
               </div>
             )}
+          </div>
+        )}
+        {linhas.length > 0 && (
+          <div style={{
+            marginBottom: "14px", padding: "12px 14px", borderRadius: "10px",
+            background: `var(--color-background-${indiceCarga.cor})`, border: `1px solid var(--color-border-${indiceCarga.cor})`,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontWeight: 700, fontSize: "14px", color: `var(--color-text-${indiceCarga.cor})` }}>
+                <i className="ti ti-gauge" aria-hidden="true"></i> Índice de carga medicamentosa: {indiceCarga.indice}/10 — {indiceCarga.classificacao}
+              </div>
+            </div>
+            <div style={{ fontSize: "11px", color: `var(--color-text-${indiceCarga.cor})`, marginTop: "4px" }}>
+              Composto por: ACB {indiceCarga.componentes.acb.valor} pts · Beers {indiceCarga.componentes.beers.valor} alerta(s) · Interações {indiceCarga.componentes.interacoes.valor} · Polifarmácia {indiceCarga.componentes.polifarmacia.valor} medicação(ões). Visão rápida — consulte os painéis abaixo para detalhes de cada componente.
+            </div>
           </div>
         )}
         {beersAlerts.length > 0 && (
@@ -6044,7 +6098,7 @@ function QueixasTab({ consulta, updateConsulta, patient }) {
       )}
 
       {hipoteses.length > 0 && (
-        <SectionCard title={`Apoio diagnóstico (${hipoteses.length} hipóteses identificadas)`} icon="ti-bulb" defaultOpen={false}>
+        <SectionCard title={`Apoio diagnóstico (${hipoteses.length} hipóteses identificadas)`} icon="ti-bulb" defaultOpen={true}>
           <Alert type="info">
             ⚠ Sugestões automáticas baseadas nas queixas, labs e comorbidades registradas. <strong>Não substituem o raciocínio clínico.</strong> Sempre considere o contexto completo do paciente.
           </Alert>
@@ -10999,8 +11053,8 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
         [a.cirurgias, aHerdado.cirurgias], [a.internamentos, aHerdado.internamentos],
         [a.alergias, aHerdado.alergias], [a.historicoFamiliar, aHerdado.historicoFamiliar],
       ]} /></div>
-      <div>Tabagismo: {a.tabagismo || "—"}{a.tabagismo && a.tabagismo !== "Nunca fumou" && (a.macosAno || a.macosDia) ? ` — ${a.macosDia || "?"}mç/dia, ${a.macosAno || "?"}mç-ano${a.tabagismoInicio ? `, início ${a.tabagismoInicio}` : ""}${a.tabagismoCessou ? `, cessou ${a.tabagismoCessou}` : ""}` : ""}</div>
-      <div>Etilismo: {a.etilismo || "—"}{a.etilismo && a.etilismo !== "Nega" ? ` — ${a.etilismoTipo || ""}${a.etilismoFrequencia ? `, ${a.etilismoFrequencia}` : ""}${a.etilismoInicio ? `, início ${a.etilismoInicio}` : ""}${a.etilismoCessou ? `, cessou ${a.etilismoCessou}` : ""}` : ""}</div>
+      <div>Tabagismo: {a.tabagismo || "—"}{a.tabagismo && a.tabagismo !== "Nunca fumou" && (a.macosAno || a.macosDia) ? ` — ${a.macosDia || "?"}mç/dia, ${a.macosAno || "?"}mç-ano${a.tabagismoInicio ? `, início ${a.tabagismoInicio}` : ""}${a.tabagismoCessou ? `, cessou ${a.tabagismoCessou}` : ""}` : ""}{a.tabagismoObs ? ` — ${a.tabagismoObs}` : ""}</div>
+      <div>Etilismo: {a.etilismo || "—"}{a.etilismo && a.etilismo !== "Nega" ? ` — ${a.etilismoTipo || ""}${a.etilismoFrequencia ? `, ${a.etilismoFrequencia}` : ""}${a.etilismoInicio ? `, início ${a.etilismoInicio}` : ""}${a.etilismoCessou ? `, cessou ${a.etilismoCessou}` : ""}` : ""}{a.etilismoObs ? ` — ${a.etilismoObs}` : ""}</div>
       <div>Cirurgias prévias:</div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.cirurgias || "—"}</div>
       <div>Internamentos no último ano:</div>
@@ -11043,8 +11097,19 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
         [aga.sonoObservacoes, agaHerdado.sonoObservacoes], [aga.higieneSono, agaHerdado.higieneSono],
       ]} /></div>
       <div>AIVD independentes: {Object.values(aga.aivd || {}).filter(Boolean).length}/9 ({Object.keys(aga.aivd || {}).filter(k => aga.aivd[k]).join(", ") || "—"})</div>
+      {aga.aivdJustificativa && <div style={{ fontSize: "11px", marginLeft: "8px" }}>Obs. AIVD: {aga.aivdJustificativa}</div>}
       <div>ABVD independentes: {Object.values(aga.abvd || {}).filter(Boolean).length}/6 ({Object.keys(aga.abvd || {}).filter(k => aga.abvd[k]).join(", ") || "—"})</div>
-      <div>Marcha: {aga.marcha || "—"} · Dispositivo: {aga.dispositivo || "—"}</div>
+      {aga.abvdJustificativa && <div style={{ fontSize: "11px", marginLeft: "8px" }}>Obs. ABVD: {aga.abvdJustificativa}</div>}
+      <div>Marcha: {aga.marcha || "—"}{aga.marcha === "auxilio" && aga.marchaAuxilioDescricao ? ` — ${aga.marchaAuxilioDescricao}` : ""} · Dispositivo: {aga.dispositivo || "—"}</div>
+      {(aga.tug || aga.sppbEquilibrio || aga.sppbMarcha || aga.sppbLevantarSentar) && (
+        <div>
+          {aga.tug && <>TUG: {aga.tug}s{parseFloat(aga.tug) >= 20 ? " (risco elevado de queda)" : ""} · </>}
+          {(aga.sppbEquilibrio || aga.sppbMarcha || aga.sppbLevantarSentar) && (() => {
+            const total = (parseInt(aga.sppbEquilibrio) || 0) + (parseInt(aga.sppbMarcha) || 0) + (parseInt(aga.sppbLevantarSentar) || 0);
+            return <>SPPB: {total}/12 (equilíbrio {aga.sppbEquilibrio ?? "—"}, marcha {aga.sppbMarcha ?? "—"}, levantar/sentar {aga.sppbLevantarSentar ?? "—"})</>;
+          })()}
+        </div>
+      )}
       <div>Quedas: {aga.quedas === "sim" ? `Sim (${aga.quedasNum || "?"})${aga.quedasDescricao ? " — " + aga.quedasDescricao : ""}` : "Não"}</div>
       {aga.fraturas === "sim" && <div>Fraturas: Sim{aga.fraturasDescricao ? ` — ${aga.fraturasDescricao}` : ""}</div>}
       {aga.tce === "sim" && <div>TCE: Sim{aga.tceDescricao ? ` — ${aga.tceDescricao}` : ""}</div>}
@@ -11209,7 +11274,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
         </div>
       )}
       <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}{aga.sonoObservacoes ? ` — ${aga.sonoObservacoes}` : ""}</div>
-      <div>Visão: {aga.visao || "—"}{aga.visaoLentes === "sim" ? " (usa lentes corretivas)" : ""} · Audição: {aga.audicao || "—"}{aga.audicaoAparelho === "sim" ? " (usa aparelho auditivo)" : ""}</div>
+      <div>Visão: {aga.visao || "—"}{aga.visaoLentes === "sim" ? " (usa lentes corretivas)" : ""}{aga.visao === "alterada" && aga.visaoDescricao ? ` — ${aga.visaoDescricao}` : ""} · Audição: {aga.audicao || "—"}{aga.audicaoAparelho === "sim" ? " (usa aparelho auditivo)" : ""}{aga.audicao === "alterada" && aga.audicaoDescricao ? ` — ${aga.audicaoDescricao}` : ""}</div>
       <div>Incontinência urinária: {aga.incontinenciaUrinaria === "sim" ? `Sim${aga.incontinenciaUrinariaDes ? " — " + aga.incontinenciaUrinariaDes : ""}` : "Não"} · Incontinência fecal: {aga.incontinenciaFecal === "sim" ? `Sim${aga.incontinenciaFecalDes ? " — " + aga.incontinenciaFecalDes : ""}` : "Não"} · Constipação: {aga.constipacao === "sim" ? `Sim${aga.constipacaoDescricao ? " — " + aga.constipacaoDescricao : ""}` : "Não"}</div>
       <div>Peso: {aga.peso || "—"} kg · Peso habitual: {aga.pesoHabitual || "—"} kg · Altura: {aga.altura || "—"} m · IMC: {calcIMC(aga.peso, aga.altura) || "—"}</div>
       <div>Perda de peso: {aga.perdaPeso === "sim" ? `Sim — ${aga.perdaPesoKg || "?"} kg${aga.perdaPesoTempo ? ` em ${aga.perdaPesoTempo}` : ""}` : "Não"}</div>
@@ -11303,7 +11368,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
         [ef.abd, efHerdado.abd], [ef.ext, efHerdado.ext], [ef.sn, efHerdado.sn],
         [ef.pele, efHerdado.pele], [ef.outros, efHerdado.outros],
       ]} /></div>
-      <div>PA sentado: {ef.paSentado || "—"} · PA em pé (3 min): {ef.paEmPe || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}</div>
+      <div>PA sentado: {ef.paSentado || "—"} · PA em pé (3 min): {ef.paEmPe || "—"} · FC: {ef.fc || "—"} · FR: {ef.fr || "—"} · SatO2: {ef.sato2 || "—"} · Temp: {ef.temp || "—"}{ef.eva !== undefined && ef.eva !== "" ? ` · Dor (EVA): ${ef.eva}/10` : ""}</div>
       {(ef.peso || ef.hgt) && <div>Peso: {ef.peso || "—"} kg · HGT: {ef.hgt || "—"} mg/dL</div>}
       <div>Geral: {ef.geral || "—"}</div>
       <div>ACV: {ef.acv || "—"}</div>
