@@ -11183,6 +11183,31 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
           </div>
         );
       })()}
+      {/* FAST — independente de queixa de humor/cognição, pode estar preenchido mesmo sem elas */}
+      {aga.fastEstagio && (() => {
+        const numero = parseInt(aga.fastEstagio);
+        const estagioTexto = numero <= 3 ? "Envelhecimento normal / Comprometimento muito leve" : numero === 4 ? "Demência leve" : numero === 5 ? "Demência moderada" : numero === 6 ? "Demência moderadamente grave" : "Demência muito grave";
+        const elegivelPaliativo = ["7a","7b","7c","7d","7e","7f"].includes(aga.fastEstagio);
+        return (
+          <div>
+            <strong>FAST:</strong> Estágio {aga.fastEstagio} — {estagioTexto}
+            {elegivelPaliativo && <div style={{ fontSize: "11px", fontWeight: 700 }}>⚕ FAST ≥ 7a: critério funcional compatível com elegibilidade para cuidados paliativos/hospice.</div>}
+          </div>
+        );
+      })()}
+      {/* Zarit (ZBI-12) — sobrecarga do cuidador */}
+      {aga.zaritTotal && (() => {
+        const total = parseInt(aga.zaritTotal);
+        const classificacao = total <= 20 ? "Sobrecarga ausente/leve" : total <= 40 ? "Sobrecarga moderada" : "Sobrecarga severa";
+        return <div><strong>Zarit (ZBI-12):</strong> {total}/48 — {classificacao}</div>;
+      })()}
+      {/* Pergunta Surpresa — triagem paliativa */}
+      {aga.perguntaSurpresa && (
+        <div>
+          <strong>Pergunta Surpresa:</strong> {aga.perguntaSurpresa === "sim" ? "Se surpreenderia se o paciente morresse no próximo ano" : "NÃO se surpreenderia se o paciente morresse no próximo ano"}
+          {aga.metasDeCuidadoObs && <div style={{ fontSize: "11px" }}>Metas de cuidado: {aga.metasDeCuidadoObs}</div>}
+        </div>
+      )}
       <div>Sono: {aga.semQueixasSono ? "Sem queixas de sono" : `Roncos: ${aga.roncos || "—"} · Sonolência diurna: ${aga.sonolenciaDiurna || "—"} · Higiene do sono: ${aga.higieneSono || "—"}`}{aga.sonoObservacoes ? ` — ${aga.sonoObservacoes}` : ""}</div>
       <div>Visão: {aga.visao || "—"}{aga.visaoLentes === "sim" ? " (usa lentes corretivas)" : ""} · Audição: {aga.audicao || "—"}{aga.audicaoAparelho === "sim" ? " (usa aparelho auditivo)" : ""}</div>
       <div>Incontinência urinária: {aga.incontinenciaUrinaria === "sim" ? `Sim${aga.incontinenciaUrinariaDes ? " — " + aga.incontinenciaUrinariaDes : ""}` : "Não"} · Incontinência fecal: {aga.incontinenciaFecal === "sim" ? `Sim${aga.incontinenciaFecalDes ? " — " + aga.incontinenciaFecalDes : ""}` : "Não"} · Constipação: {aga.constipacao === "sim" ? `Sim${aga.constipacaoDescricao ? " — " + aga.constipacaoDescricao : ""}` : "Não"}</div>
@@ -11191,6 +11216,26 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
       <div>Apetite: {aga.apetite || "—"} · Disfagia: {aga.disfagia || "—"}{aga.disfagiaDieta ? ` (${aga.disfagiaDieta})` : ""}</div>
       <div>Problemas dentários: {aga.problemasDentarios === "sim" ? `Sim${aga.problemasDentariosDes ? " — " + aga.problemasDentariosDes : ""}` : "Não"} · Prótese dentária: {aga.proteseDentaria === "sim" ? "Sim" : "Não"}</div>
       <div>Teste de força: {aga.testeForca || "—"} kgf · Circunferência da panturrilha: {aga.circPanturrilha || "—"} cm · Atividade física: {aga.atividadeFisica || "—"}</div>
+      {aga.dieta && <div><strong>Dieta:</strong> {aga.dieta}</div>}
+      {(() => {
+        const sarcfKeys = ["sarcfForca","sarcfCaminhada","sarcfLevantarCadeira","sarcfEscadas","sarcfQuedas"];
+        const temSARCF = sarcfKeys.some(k => aga[k] !== undefined && aga[k] !== "");
+        if (!temSARCF) return null;
+        const total = sarcfKeys.reduce((s, k) => s + (parseInt(aga[k]) || 0), 0);
+        const positivo = total >= 4;
+        return <div><strong>SARC-F:</strong> {total}/10 — {positivo ? "Rastreio POSITIVO para sarcopenia (≥4 pontos)" : "Rastreio negativo (<4 pontos)"}</div>;
+      })()}
+      {(() => {
+        const mnaKeys = ["mnaPerdaApetite","mnaPerdaPeso","mnaMobilidade","mnaEstresse","mnaCognicao"];
+        const temMNA = mnaKeys.some(k => aga[k] !== undefined && aga[k] !== "");
+        if (!temMNA) return null;
+        const imcMna = parseFloat(calcIMC(aga.peso, aga.altura));
+        const qImc = !isNaN(imcMna) ? (imcMna < 19 ? 0 : imcMna < 21 ? 1 : imcMna < 23 ? 2 : 3) : 0;
+        const total = mnaKeys.reduce((s, k) => s + (parseInt(aga[k]) || 0), 0) + qImc;
+        const status = total <= 7 ? "Desnutrição" : total <= 11 ? "Risco de desnutrição" : "Estado nutricional normal";
+        return <div><strong>MNA (triagem):</strong> {total}/14 — {status}</div>;
+      })()}
+      {aga.sexualidade && <div><strong>Sexualidade:</strong> {aga.sexualidade}</div>}
 
       <div style={sectionTitle}>PREVENÇÃO E VACINAS<SeloSecao campos={[
         [JSON.stringify(consulta.rastreioGeral || {}), JSON.stringify(herdado?.rastreioGeral || {})],
