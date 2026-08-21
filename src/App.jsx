@@ -2305,7 +2305,7 @@ export default function App() {
 
   const [autenticado, setAutenticado] = useState(() => storageGet(sessionStorage, 'auth') === '1');
   const [ambulatorio, setAmbulatorio] = useState(() => storageGet(sessionStorage, 'ambulatorio', null));
-  const [nomeAmbResidencia, setNomeAmbResidencia] = useState(() => storageGet(sessionStorage, 'nomeAmbResidencia', ''));
+  const [nomeAmbResidencia, setNomeAmbResidencia] = useState(() => storageGet(localStorage, 'nomeAmbResidencia', ''));
   const [opcoesAmbResidencia, setOpcoesAmbResidencia] = useState(() => {
     try {
       const raw = storageGet(localStorage, 'opcoes_amb_residencia');
@@ -2315,7 +2315,7 @@ export default function App() {
 
   function atualizarNomeAmbResidencia(valor) {
     setNomeAmbResidencia(valor);
-    storageSet(sessionStorage, 'nomeAmbResidencia', valor);
+    storageSet(localStorage, 'nomeAmbResidencia', valor);
   }
 
   function adicionarOpcaoAmbResidencia(novaOpcao) {
@@ -9339,7 +9339,19 @@ function FraxCalc({ consulta, patient }) {
   const peso = parseFloat(aga.peso) || 0;
   const altura = parseFloat(aga.altura) * 100 || 0; // em cm
 
-  if (!idade || !sexo || !peso || !altura) return null;
+  const faltando = [];
+  if (!idade) faltando.push("data de nascimento do paciente");
+  if (!sexo) faltando.push("sexo do paciente");
+  if (!peso) faltando.push("peso (aba AGA)");
+  if (!altura) faltando.push("altura (aba AGA)");
+
+  if (faltando.length > 0) {
+    return (
+      <div style={{ marginBottom: "10px", fontSize: "12px", color: "var(--color-text-tertiary)", padding: "8px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
+        🦴 FRAX (risco de fratura): preencha {faltando.join(", ")} para calcular.
+      </div>
+    );
+  }
 
   // FRAX simplificado sem DXA (estimativa clínica)
   // Baseado nos coeficientes da versão Brasil
