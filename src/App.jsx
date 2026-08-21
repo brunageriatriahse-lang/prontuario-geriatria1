@@ -384,6 +384,78 @@ async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo, m
   return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 }
 
+// ============================================================
+// SOLICITAÇÃO DE EXAMES ESPECIAIS — modelo oficial HSE (logo, título,
+// tabela de identificação e seção "EXAME SOLICITADO"), preenchido com os
+// mesmos dados do paciente e o conteúdo do campo "2. Solicito" do Plano.
+// Segue o mesmo mecanismo de Content Controls (SDT) usado nas receitas.
+// ============================================================
+async function preencherExamesDocx({ nome, prontuario, maeNome, idade, sexo, exames }) {
+  if (!window.JSZip) {
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = res;
+      s.onerror = () => rej(new Error('Falha ao carregar JSZip'));
+      document.head.appendChild(s);
+    });
+  }
+  const resp = await fetch('/exames.docx');
+  if (!resp.ok) throw new Error('Modelo Word de exames nao encontrado');
+  const buf = await resp.arrayBuffer();
+  const zip = await window.JSZip.loadAsync(buf);
+  let xml = await zip.file('word/document.xml').async('string');
+
+  const campos = {
+    BM_PACIENTE:    (nome || '').toUpperCase(),
+    BM_PRONTUARIO:  String(prontuario || ''),
+    BM_MAE:         (maeNome || '').toUpperCase(),
+    BM_IDADE:       String(idade != null ? idade : ''),
+    BM_SEXO:        sexo || '',
+    BM_EXAMES:      exames || '',
+  };
+
+  Object.entries(campos).forEach(([alias, valor]) => {
+    const esc = valor.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const partes = xml.split('<w:sdt>');
+    xml = partes.map((parte, i) => {
+      if (i === 0) return parte;
+      if (!parte.includes('w:alias w:val="' + alias + '"')) return '<w:sdt>' + parte;
+      const sdtContentIdx = parte.indexOf('<w:sdtContent>');
+      const sdtEndIdx = parte.indexOf('</w:sdtContent>');
+      if (sdtContentIdx === -1 || sdtEndIdx === -1) return '<w:sdt>' + parte;
+      const antes = parte.slice(0, sdtContentIdx + 14);
+      const content = parte.slice(sdtContentIdx + 14, sdtEndIdx);
+      const depois = parte.slice(sdtEndIdx);
+
+      let novoContent;
+      if (alias === 'BM_EXAMES') {
+        // Campo multi-linha: cada exame solicitado vira um w:t separado por w:br
+        const rPrMatch = content.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+        const rPr = rPrMatch ? rPrMatch[0] : '';
+        let linhas = valor.split('\n').map(l => l.trim()).filter(Boolean);
+        if (linhas.length === 0) linhas = ['.'];
+        novoContent = linhas.map((linha, idx) => {
+          const escLinha = linha.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const quebra = idx > 0 ? ('<w:r>' + rPr + '<w:br/></w:r>') : '';
+          return quebra + '<w:r>' + rPr + '<w:t xml:space="preserve">' + escLinha + '</w:t></w:r>';
+        }).join('');
+      } else {
+        let first = true;
+        novoContent = content.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, (m, attrs) => {
+          if (first) { first = false; return '<w:t' + attrs + '>' + esc + '</w:t>'; }
+          return '<w:t' + attrs + '></w:t>';
+        });
+      }
+      return '<w:sdt>' + antes + novoContent + depois;
+    }).join('');
+  });
+
+  zip.file('word/document.xml', xml);
+  const out = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
+  return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+
 
 
 const PROBLEMAS = ["HAS","DM2","Dislipidemia","Obesidade","Esteatose hepática","DRC","DAC","IC","FA","AVC","DPOC","Asma","HPB","Incontinência urinária","DRGE","Constipação crônica","Osteoporose","Osteoartrose","Hipotireoidismo","Transtorno depressivo","TAG","Insônia","Síndrome demencial","Doença de Parkinson","Neoplasia","DHC","Insuficiência venosa crônica","DAOP","Catarata","Glaucoma","Déficit auditivo A/E"];
@@ -3244,6 +3316,39 @@ export default function App() {
               }}
             >
               <i className="ti ti-file-spreadsheet" aria-hidden="true"></i>Receituários (Excel)
+            </button>
+            <button
+              onClick={async () => {
+                const i = activePatient.ident;
+                const idadeAtual = calcIdade(i.dn);
+                const examesTexto = (activeConsulta.plano || {}).solicito || "";
+                if (!examesTexto.trim()) { alert('Nenhum exame preenchido no campo "2. Solicito" do Plano ainda.'); return; }
+                try {
+                  const blob = await preencherExamesDocx({
+                    nome: i.nome || "", prontuario: i.prontuario || "",
+                    maeNome: i.maeNome || "", idade: idadeAtual != null ? idadeAtual : "",
+                    sexo: i.sexo || "", exames: examesTexto,
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `Solicitacao_Exames_${(i.nome || 'paciente').replace(/\s+/g, '_')}.docx`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch (e) {
+                  console.error(e);
+                  alert('Erro ao gerar solicitação de exames: ' + e.message);
+                }
+              }}
+              style={{
+                padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
+                border: "0.5px solid var(--color-border-tertiary)",
+                background: "transparent",
+                color: "var(--color-text-primary)",
+                display: "flex", alignItems: "center", gap: "6px"
+              }}
+            >
+              <i className="ti ti-file-word" aria-hidden="true"></i>Solicitação de exames (Word)
             </button>
           </div>
           <div style={{ fontSize: "14px", fontWeight: 500, marginBottom: "10px" }}>
@@ -8927,7 +9032,7 @@ function PlanoTab({ consulta, updateConsulta, patient }) {
     return t && t !== "Nunca fumou";
   })();
 
-  // Opções de Solicito (itens 5)
+  // Opções de Solicito (item 2)
   const SOLICITO_OPTS = [
     { label: "Laboratório", sempre: true },
     { label: "EAS", sempre: true },
