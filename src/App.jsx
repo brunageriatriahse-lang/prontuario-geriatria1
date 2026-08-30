@@ -85,6 +85,7 @@ function getNomeAmbulatorio(ambulatorio) {
 function SeletorAmbulatorioResidencia({ valor, opcoes, onChange, onAdicionarOpcao }) {
   const [adicionando, setAdicionando] = useState(false);
   const [novaOpcao, setNovaOpcao] = useState("");
+  const cancelandoRef = useRef(false);
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
@@ -95,12 +96,28 @@ function SeletorAmbulatorioResidencia({ valor, opcoes, onChange, onAdicionarOpca
             onChange={e => setNovaOpcao(e.target.value)}
             placeholder="Nome do novo serviço/local..."
             style={{ fontSize: "12px", padding: "3px 8px" }}
-            onKeyDown={e => { if (e.key === "Enter") { onAdicionarOpcao(novaOpcao); setNovaOpcao(""); setAdicionando(false); } }}
+            autoFocus
+            onKeyDown={e => {
+              if (e.key === "Enter") { onAdicionarOpcao(novaOpcao); setNovaOpcao(""); setAdicionando(false); }
+              if (e.key === "Escape") { cancelandoRef.current = true; setNovaOpcao(""); setAdicionando(false); }
+            }}
+            onBlur={() => {
+              // Salva automaticamente ao clicar fora, para não perder o que foi digitado
+              // caso o usuário não clique explicitamente no botão de confirmar (✓).
+              // Não salva se o blur foi causado pelo clique no botão Cancelar (✗).
+              if (cancelandoRef.current) { cancelandoRef.current = false; return; }
+              if (novaOpcao.trim()) { onAdicionarOpcao(novaOpcao); setNovaOpcao(""); }
+              setAdicionando(false);
+            }}
           />
           <button onClick={() => { onAdicionarOpcao(novaOpcao); setNovaOpcao(""); setAdicionando(false); }} style={{ fontSize: "11px", padding: "3px 8px" }}>
             <i className="ti ti-check" aria-hidden="true"></i>
           </button>
-          <button onClick={() => setAdicionando(false)} style={{ fontSize: "11px", padding: "3px 8px" }}>
+          <button
+            onMouseDown={() => { cancelandoRef.current = true; }}
+            onClick={() => { setNovaOpcao(""); setAdicionando(false); }}
+            style={{ fontSize: "11px", padding: "3px 8px" }}
+          >
             <i className="ti ti-x" aria-hidden="true"></i>
           </button>
         </>
@@ -1335,8 +1352,8 @@ const AJUSTE_RENAL = [
   { nome: "Espironolactona", regex: /espironolactona/i, regras: [
     { tfgMax: 30, msg: "Espironolactona: evitar ou usar com extrema cautela com TFG < 30 mL/min — risco de hipercalemia grave" },
   ]},
-  { nome: "AAS/AINE", regex: /\baas\b|ibuprofeno|diclofenaco|naproxeno|nimesulida|cetorolaco/i, regras: [
-    { tfgMax: 30, msg: "AINE/AAS em dose anti-inflamatória: evitar com TFG < 30 mL/min — risco de piora da função renal" },
+  { nome: "AINE", regex: /ibuprofeno|diclofenaco|naproxeno|nimesulida|cetorolaco/i, regras: [
+    { tfgMax: 30, msg: "AINE em dose anti-inflamatória: evitar com TFG < 30 mL/min — risco de piora da função renal" },
   ]},
   { nome: "Sitagliptina", regex: /sitagliptina/i, regras: [
     { tfgMax: 50, msg: "Sitagliptina: reduzir dose com TFG < 50 mL/min" },
@@ -4623,6 +4640,20 @@ function AntecedentesTab({ consulta, updateConsulta }) {
           </Field>
         </>
       )}
+      <Field label="">
+        <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", cursor: "pointer" }}>
+          <input type="checkbox" checked={!!a.tabagismoPassivo} onChange={e => set("tabagismoPassivo", e.target.checked)} />
+          Tabagismo passivo (exposição à fumaça de outras pessoas)
+        </label>
+        {a.tabagismoPassivo && (
+          <input
+            value={a.tabagismoPassivoObs || ""}
+            onChange={e => set("tabagismoPassivoObs", e.target.value)}
+            placeholder="Ex: cônjuge fumante em casa, ambiente de trabalho..."
+            style={{ marginTop: "6px" }}
+          />
+        )}
+      </Field>
       <Field label="Etilismo">
         <RadioGroup name="etilismo" value={a.etilismo || ""} onChange={v => set("etilismo", v)}
           options={["Nega","Social","Abuso/dependência","Etilista inativo"].map(o => ({ value: o, label: o }))} />
@@ -11170,7 +11201,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
         [a.cirurgias, aHerdado.cirurgias], [a.internamentos, aHerdado.internamentos],
         [a.alergias, aHerdado.alergias], [a.historicoFamiliar, aHerdado.historicoFamiliar],
       ]} /></div>
-      <div>Tabagismo: {a.tabagismo || "—"}{a.tabagismo && a.tabagismo !== "Nunca fumou" && (a.macosAno || a.macosDia) ? ` — ${a.macosDia || "?"}mç/dia, ${a.macosAno || "?"}mç-ano${a.tabagismoInicio ? `, início ${a.tabagismoInicio}` : ""}${a.tabagismoCessou ? `, cessou ${a.tabagismoCessou}` : ""}` : ""}{a.tabagismoObs ? ` — ${a.tabagismoObs}` : ""}</div>
+      <div>Tabagismo: {a.tabagismo || "—"}{a.tabagismo && a.tabagismo !== "Nunca fumou" && (a.macosAno || a.macosDia) ? ` — ${a.macosDia || "?"}mç/dia, ${a.macosAno || "?"}mç-ano${a.tabagismoInicio ? `, início ${a.tabagismoInicio}` : ""}${a.tabagismoCessou ? `, cessou ${a.tabagismoCessou}` : ""}` : ""}{a.tabagismoObs ? ` — ${a.tabagismoObs}` : ""}{a.tabagismoPassivo ? ` · Tabagismo passivo: Sim${a.tabagismoPassivoObs ? ` (${a.tabagismoPassivoObs})` : ""}` : ""}</div>
       <div>Etilismo: {a.etilismo || "—"}{a.etilismo && a.etilismo !== "Nega" ? ` — ${a.etilismoTipo || ""}${a.etilismoFrequencia ? `, ${a.etilismoFrequencia}` : ""}${a.etilismoInicio ? `, início ${a.etilismoInicio}` : ""}${a.etilismoCessou ? `, cessou ${a.etilismoCessou}` : ""}` : ""}{a.etilismoObs ? ` — ${a.etilismoObs}` : ""}</div>
       <div>Cirurgias prévias:</div>
       <div style={{ whiteSpace: "pre-wrap", marginBottom: "6px" }}>{a.cirurgias || "—"}</div>
