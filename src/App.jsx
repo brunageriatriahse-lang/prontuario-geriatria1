@@ -463,54 +463,75 @@ async function preencherExamesDocx({ nome, prontuario, maeNome, idade, sexo, exa
   if (!resp.ok) throw new Error('Modelo Word de exames nao encontrado');
   const buf = await resp.arrayBuffer();
   const zip = await window.JSZip.loadAsync(buf);
-  let xml = await zip.file('word/document.xml').async('string');
+  const xmlOriginal = await zip.file('word/document.xml').async('string');
 
-  const campos = {
-    BM_PACIENTE:    (nome || '').toUpperCase(),
-    BM_PRONTUARIO:  String(prontuario || ''),
-    BM_MAE:         (maeNome || '').toUpperCase(),
-    BM_IDADE:       String(idade != null ? idade : ''),
-    BM_SEXO:        sexo || '',
-    BM_EXAMES:      exames || '',
-  };
+  // Separa o conteúdo do formulário (tudo que se repete a cada via) das
+  // propriedades finais de seção do documento (margens, cabeçalho, rodapé),
+  // que aparecem uma única vez, no final, após todas as vias.
+  const marcadorBody = '<w:body>';
+  const idxBodyStart = xmlOriginal.indexOf(marcadorBody) + marcadorBody.length;
+  const idxSectPrFinal = xmlOriginal.lastIndexOf('<w:sectPr');
+  const prefixo = xmlOriginal.slice(0, idxBodyStart);
+  const conteudoFormulario = xmlOriginal.slice(idxBodyStart, idxSectPrFinal);
+  const sufixo = xmlOriginal.slice(idxSectPrFinal); // <w:sectPr>...</w:sectPr></w:body></w:document>
 
-  Object.entries(campos).forEach(([alias, valor]) => {
-    const esc = valor.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    const partes = xml.split('<w:sdt>');
-    xml = partes.map((parte, i) => {
-      if (i === 0) return parte;
-      if (!parte.includes('w:alias w:val="' + alias + '"')) return '<w:sdt>' + parte;
-      const sdtContentIdx = parte.indexOf('<w:sdtContent>');
-      const sdtEndIdx = parte.indexOf('</w:sdtContent>');
-      if (sdtContentIdx === -1 || sdtEndIdx === -1) return '<w:sdt>' + parte;
-      const antes = parte.slice(0, sdtContentIdx + 14);
-      const content = parte.slice(sdtContentIdx + 14, sdtEndIdx);
-      const depois = parte.slice(sdtEndIdx);
+  // Preenche uma via (cópia do formulário) com os dados do paciente (iguais
+  // em todas as vias) e um único exame no campo "EXAME SOLICITADO". paginaIdx
+  // torna os IDs dos content controls únicos por via, evitando IDs duplicados
+  // repetidos no documento final (uma via por exame).
+  function preencherVia(conteudo, exameUnico, paginaIdx) {
+    const campos = {
+      BM_PACIENTE:   (nome || '').toUpperCase(),
+      BM_PRONTUARIO: String(prontuario || ''),
+      BM_MAE:        (maeNome || '').toUpperCase(),
+      BM_IDADE:      String(idade != null ? idade : ''),
+      BM_SEXO:       sexo || '',
+      BM_EXAMES:     exameUnico || '',
+    };
+    let xmlVia = conteudo.replace(/(<w:id w:val=")(\d+)("\/>)/g, (m, a, n, c) => a + (parseInt(n) + paginaIdx * 1000) + c);
 
-      let novoContent;
-      if (alias === 'BM_EXAMES') {
-        // Campo multi-linha: cada exame solicitado vira um w:t separado por w:br
-        const rPrMatch = content.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
-        const rPr = rPrMatch ? rPrMatch[0] : '';
-        let linhas = valor.split('\n').map(l => l.trim()).filter(Boolean);
-        if (linhas.length === 0) linhas = ['.'];
-        novoContent = linhas.map((linha, idx) => {
-          const escLinha = linha.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          const quebra = idx > 0 ? ('<w:r>' + rPr + '<w:br/></w:r>') : '';
-          return quebra + '<w:r>' + rPr + '<w:t xml:space="preserve">' + escLinha + '</w:t></w:r>';
-        }).join('');
-      } else {
+    Object.entries(campos).forEach(([alias, valor]) => {
+      const esc = String(valor).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const partes = xmlVia.split('<w:sdt>');
+      xmlVia = partes.map((parte, i) => {
+        if (i === 0) return parte;
+        if (!parte.includes('w:alias w:val="' + alias + '"')) return '<w:sdt>' + parte;
+        const sdtContentIdx = parte.indexOf('<w:sdtContent>');
+        const sdtEndIdx = parte.indexOf('</w:sdtContent>');
+        if (sdtContentIdx === -1 || sdtEndIdx === -1) return '<w:sdt>' + parte;
+        const antes = parte.slice(0, sdtContentIdx + 14);
+        const content = parte.slice(sdtContentIdx + 14, sdtEndIdx);
+        const depois = parte.slice(sdtEndIdx);
         let first = true;
-        novoContent = content.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, (m, attrs) => {
+        const novoContent = content.replace(/<w:t([^>]*)>[^<]*<\/w:t>/g, (m, attrs) => {
           if (first) { first = false; return '<w:t' + attrs + '>' + esc + '</w:t>'; }
           return '<w:t' + attrs + '></w:t>';
         });
-      }
-      return '<w:sdt>' + antes + novoContent + depois;
-    }).join('');
-  });
+        return '<w:sdt>' + antes + novoContent + depois;
+      }).join('');
+    });
+    return xmlVia;
+  }
 
-  zip.file('word/document.xml', xml);
+  const listaExames = garantirString(exames).split('\n').map(l => l.trim()).filter(Boolean);
+  const examesFinal = listaExames.length > 0 ? listaExames : ['.'];
+
+  const vias = examesFinal.map((exameUnico, idx) => {
+    let via = preencherVia(conteudoFormulario, exameUnico, idx);
+    // Insere a quebra de página DENTRO do último parágrafo da via (como um
+    // run adicional), em vez de criar um parágrafo novo — evita uma página
+    // em branco extra entre cada via impressa.
+    if (idx < examesFinal.length - 1) {
+      const idxUltimoFechamento = via.lastIndexOf('</w:p>');
+      via = via.slice(0, idxUltimoFechamento) + '<w:r><w:br w:type="page"/></w:r>' + via.slice(idxUltimoFechamento);
+    }
+    return via;
+  });
+  const corpoFinal = vias.join('');
+
+  const xmlFinal = prefixo + corpoFinal + sufixo;
+
+  zip.file('word/document.xml', xmlFinal);
   const out = await zip.generateAsync({ type: 'arraybuffer', compression: 'DEFLATE' });
   return new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
 }
