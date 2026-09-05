@@ -2677,6 +2677,12 @@ export default function App() {
   const [gerandoExames, setGerandoExames] = useState(false);
   const [medicacoesSelecionadasHeader, setMedicacoesSelecionadasHeader] = useState([]);
   const [medicacoesAdicionaisHeader, setMedicacoesAdicionaisHeader] = useState("");
+  const [showReceitaControlada, setShowReceitaControlada] = useState(false);
+  const [gerandoReceitaControlada, setGerandoReceitaControlada] = useState(false);
+  const [medicoNomeCtrl, setMedicoNomeCtrl] = useState(() => storageGet(localStorage, 'medicoNomeReceitaControlada', ''));
+  const [medicoCrmCtrl, setMedicoCrmCtrl] = useState(() => storageGet(localStorage, 'medicoCrmReceitaControlada', ''));
+  function salvarMedicoNomeCtrl(v) { setMedicoNomeCtrl(v); storageSet(localStorage, 'medicoNomeReceitaControlada', v); }
+  function salvarMedicoCrmCtrl(v) { setMedicoCrmCtrl(v); storageSet(localStorage, 'medicoCrmReceitaControlada', v); }
 
   const saveTimers = useRef({});
 
@@ -3521,6 +3527,20 @@ export default function App() {
             >
               <i className="ti ti-file-word" aria-hidden="true"></i>Gerar receita
             </button>
+            {activeConsulta && detectarMedicacoesControladas(activeConsulta.medicacoesTexto).length > 0 && (
+              <button
+                onClick={() => setShowReceitaControlada(true)}
+                style={{
+                  padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
+                  border: "0.5px solid var(--color-border-warning)",
+                  background: "var(--color-background-warning)",
+                  color: "var(--color-text-warning)",
+                  display: "flex", alignItems: "center", gap: "6px"
+                }}
+              >
+                <i className="ti ti-shield-lock" aria-hidden="true"></i>Receituário Controlado ({detectarMedicacoesControladas(activeConsulta.medicacoesTexto).length})
+              </button>
+            )}
             <button
               onClick={() => baixarReceituarios(activePatient)}
               style={{
@@ -3688,6 +3708,68 @@ export default function App() {
           </div>
         </div>
       )}
+      {showReceitaControlada && activePatient && activeConsulta && (() => {
+        const medicacoesControladasAtual = detectarMedicacoesControladas(activeConsulta.medicacoesTexto);
+        const prescricaoSugerida = transformarPosologiaTexto(medicacoesControladasAtual.map(m => m.linha).join("\n"));
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", overflowY: "auto" }}>
+            <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "560px", padding: "24px", maxHeight: "90vh", overflowY: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <div style={{ fontWeight: 600, fontSize: "15px" }}>🔒 Receituário de Controle Especial</div>
+                <button onClick={() => setShowReceitaControlada(false)}><i className="ti ti-x" aria-hidden="true"></i></button>
+              </div>
+              <p style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: 0 }}>
+                Gera 2 vias idênticas (1ª via farmácia, 2ª via paciente) no layout oficial HSE. Confira os dados antes de gerar — a responsabilidade pelo enquadramento e preenchimento correto é do prescritor.
+              </p>
+              <div style={{ fontSize: "12px", marginBottom: "10px" }}>
+                <strong>Medicações controladas detectadas:</strong> {medicacoesControladasAtual.map((m, i) => (
+                  <span key={i} style={{ marginRight: "8px" }}>{m.nome} (Lista {m.lista})</span>
+                ))}
+              </div>
+              <Row cols="1fr 1fr">
+                <Field label="Nome completo do médico"><input value={medicoNomeCtrl} onChange={e => salvarMedicoNomeCtrl(e.target.value)} placeholder="Dra. Bruna Maia" /></Field>
+                <Field label="CRM/UF"><input value={medicoCrmCtrl} onChange={e => salvarMedicoCrmCtrl(e.target.value)} placeholder="Ex: 12345 PE" /></Field>
+              </Row>
+              <Field label="Prescrição (edite se necessário)">
+                <textarea rows={6} value={prescricaoSugerida} readOnly style={{ background: "var(--color-background-secondary)" }} />
+              </Field>
+              <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "10px" }}>
+                Campo "Endereço" do paciente e demais campos manuais (identificação do comprador/fornecedor) ficam em branco no documento para preenchimento no ato da dispensação, conforme o modelo oficial.
+              </div>
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <button onClick={() => setShowReceitaControlada(false)} style={{ fontSize: "13px" }}>Cancelar</button>
+                <button
+                  disabled={gerandoReceitaControlada}
+                  onClick={async () => {
+                    if (!medicoNomeCtrl.trim() || !medicoCrmCtrl.trim()) { alert("Preencha nome do médico e CRM/UF antes de gerar."); return; }
+                    setGerandoReceitaControlada(true);
+                    try {
+                      const blob = await preencherReceitaControladaDocx({
+                        medicoNome: medicoNomeCtrl, medicoCrm: medicoCrmCtrl, paciente: activePatient?.ident?.nome || "", prescricao: prescricaoSugerida,
+                      });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `Receituario_Controle_Especial_${(activePatient?.ident?.nome || 'paciente').replace(/\s+/g, '_')}.docx`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                      setShowReceitaControlada(false);
+                    } catch (e) {
+                      console.error(e);
+                      alert('Erro ao gerar receituário controlado: ' + e.message);
+                    } finally {
+                      setGerandoReceitaControlada(false);
+                    }
+                  }}
+                  style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px", opacity: gerandoReceitaControlada ? 0.6 : 1 }}
+                >
+                  <i className={gerandoReceitaControlada ? "ti ti-loader-2" : "ti ti-file-word"} aria-hidden="true"></i>{gerandoReceitaControlada ? "Gerando..." : "Baixar Word (2 vias)"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }
@@ -5228,17 +5310,6 @@ function MedicacoesTab({ consulta, updateConsulta, patient }) {
   const beersAlerts = linhas.filter(l => checkBeers(l));
   const interacoes = checkInteracoes(texto);
 
-  // Receituário de Controle Especial — detecção automática + dados do
-  // médico (persistidos localmente, já que este app é usado por vários
-  // residentes; nome/CRM raramente mudam para o mesmo usuário/navegador)
-  const medicacoesControladas = detectarMedicacoesControladas(texto);
-  const [showReceitaControlada, setShowReceitaControlada] = useState(false);
-  const [gerandoReceitaControlada, setGerandoReceitaControlada] = useState(false);
-  const [medicoNome, setMedicoNome] = useState(() => storageGet(localStorage, 'medicoNomeReceitaControlada', ''));
-  const [medicoCrm, setMedicoCrm] = useState(() => storageGet(localStorage, 'medicoCrmReceitaControlada', ''));
-  function salvarMedicoNome(v) { setMedicoNome(v); storageSet(localStorage, 'medicoNomeReceitaControlada', v); }
-  function salvarMedicoCrm(v) { setMedicoCrm(v); storageSet(localStorage, 'medicoCrmReceitaControlada', v); }
-
   const temHepatopatiaAtiva = (() => {
     const prob = consulta.problemas || {};
     if (prob["DHC"]) return true;
@@ -5546,77 +5617,6 @@ function MedicacoesTab({ consulta, updateConsulta, patient }) {
   return (
     <div>
       <SectionCard title="Medicações em uso" icon="ti-pill">
-        {medicacoesControladas.length > 0 && (
-          <div style={{ marginBottom: "14px", padding: "10px 12px", background: "var(--color-background-warning)", border: "0.5px solid var(--color-border-warning)", borderRadius: "8px" }}>
-            <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "6px", color: "var(--color-text-warning)" }}>
-              <i className="ti ti-shield-lock" aria-hidden="true"></i> {medicacoesControladas.length} medicação(ões) controlada(s) detectada(s) — exige Receituário de Controle Especial:
-            </div>
-            <div style={{ fontSize: "12px", marginBottom: "8px" }}>
-              {medicacoesControladas.map((m, i) => (
-                <span key={i} style={{ marginRight: "10px" }}><strong>{m.nome}</strong> (Lista {m.lista})</span>
-              ))}
-            </div>
-            <button onClick={() => setShowReceitaControlada(true)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
-              <i className="ti ti-file-word" aria-hidden="true"></i>Gerar Receituário de Controle Especial (Word)
-            </button>
-          </div>
-        )}
-        {showReceitaControlada && (() => {
-          const prescricaoSugerida = transformarPosologiaTexto(medicacoesControladas.map(m => m.linha).join("\n"));
-          return (
-            <div style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px", overflowY: "auto" }}>
-              <div style={{ background: "var(--color-background-primary)", borderRadius: "12px", width: "100%", maxWidth: "560px", padding: "24px", maxHeight: "90vh", overflowY: "auto" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                  <div style={{ fontWeight: 600, fontSize: "15px" }}>🔒 Receituário de Controle Especial</div>
-                  <button onClick={() => setShowReceitaControlada(false)}><i className="ti ti-x" aria-hidden="true"></i></button>
-                </div>
-                <p style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginTop: 0 }}>
-                  Gera 2 vias idênticas (1ª via farmácia, 2ª via paciente) no layout oficial HSE. Confira os dados antes de gerar — a responsabilidade pelo enquadramento e preenchimento correto é do prescritor.
-                </p>
-                <Row cols="1fr 1fr">
-                  <Field label="Nome completo do médico"><input value={medicoNome} onChange={e => salvarMedicoNome(e.target.value)} placeholder="Dra. Bruna Maia" /></Field>
-                  <Field label="CRM/UF"><input value={medicoCrm} onChange={e => salvarMedicoCrm(e.target.value)} placeholder="Ex: 12345 PE" /></Field>
-                </Row>
-                <Field label="Prescrição (edite se necessário)">
-                  <textarea rows={6} value={prescricaoSugerida} readOnly style={{ background: "var(--color-background-secondary)" }} />
-                </Field>
-                <div style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "10px" }}>
-                  Campo "Endereço" do paciente e demais campos manuais (identificação do comprador/fornecedor) ficam em branco no documento para preenchimento no ato da dispensação, conforme o modelo oficial.
-                </div>
-                <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-                  <button onClick={() => setShowReceitaControlada(false)} style={{ fontSize: "13px" }}>Cancelar</button>
-                  <button
-                    disabled={gerandoReceitaControlada}
-                    onClick={async () => {
-                      if (!medicoNome.trim() || !medicoCrm.trim()) { alert("Preencha nome do médico e CRM/UF antes de gerar."); return; }
-                      setGerandoReceitaControlada(true);
-                      try {
-                        const blob = await preencherReceitaControladaDocx({
-                          medicoNome, medicoCrm, paciente: patient?.ident?.nome || "", prescricao: prescricaoSugerida,
-                        });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `Receituario_Controle_Especial_${(patient?.ident?.nome || 'paciente').replace(/\s+/g, '_')}.docx`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                        setShowReceitaControlada(false);
-                      } catch (e) {
-                        console.error(e);
-                        alert('Erro ao gerar receituário controlado: ' + e.message);
-                      } finally {
-                        setGerandoReceitaControlada(false);
-                      }
-                    }}
-                    style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px", opacity: gerandoReceitaControlada ? 0.6 : 1 }}
-                  >
-                    <i className={gerandoReceitaControlada ? "ti ti-loader-2" : "ti ti-file-word"} aria-hidden="true"></i>{gerandoReceitaControlada ? "Gerando..." : "Baixar Word (2 vias)"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
         {linhas.length > 0 && (
           <div style={{ marginBottom: "10px" }}>
             <button onClick={() => setShowDisponibilidadeSUS(!showDisponibilidadeSUS)} style={{ fontSize: "12px", display: "flex", alignItems: "center", gap: "6px" }}>
