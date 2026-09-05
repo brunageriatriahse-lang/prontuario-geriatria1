@@ -2518,6 +2518,7 @@ export default function App() {
   const [printDoc, setPrintDoc] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [showPrescricaoHeader, setShowPrescricaoHeader] = useState(false);
+  const [gerandoExames, setGerandoExames] = useState(false);
   const [medicacoesSelecionadasHeader, setMedicacoesSelecionadasHeader] = useState([]);
   const [medicacoesAdicionaisHeader, setMedicacoesAdicionaisHeader] = useState("");
 
@@ -3377,11 +3378,13 @@ export default function App() {
               <i className="ti ti-file-spreadsheet" aria-hidden="true"></i>Receituários (Excel)
             </button>
             <button
+              disabled={gerandoExames}
               onClick={async () => {
                 const i = activePatient.ident;
                 const idadeAtual = calcIdade(i.dn);
                 const examesTexto = (activeConsulta.plano || {}).solicito || "";
                 if (!examesTexto.trim()) { alert('Nenhum exame preenchido no campo "2. Solicito" do Plano ainda.'); return; }
+                setGerandoExames(true);
                 try {
                   const blob = await preencherExamesDocx({
                     nome: i.nome || "", prontuario: i.prontuario || "",
@@ -3397,6 +3400,8 @@ export default function App() {
                 } catch (e) {
                   console.error(e);
                   alert('Erro ao gerar solicitação de exames: ' + e.message);
+                } finally {
+                  setGerandoExames(false);
                 }
               }}
               style={{
@@ -3404,10 +3409,11 @@ export default function App() {
                 border: "0.5px solid var(--color-border-tertiary)",
                 background: "transparent",
                 color: "var(--color-text-primary)",
-                display: "flex", alignItems: "center", gap: "6px"
+                display: "flex", alignItems: "center", gap: "6px",
+                opacity: gerandoExames ? 0.6 : 1,
               }}
             >
-              <i className="ti ti-file-word" aria-hidden="true"></i>Solicitação de exames (Word)
+              <i className={gerandoExames ? "ti ti-loader-2" : "ti ti-file-word"} aria-hidden="true"></i>{gerandoExames ? "Gerando..." : "Solicitação de exames (Word)"}
             </button>
           </div>
           <div style={{ fontSize: "14px", fontWeight: 500, marginBottom: "10px" }}>
