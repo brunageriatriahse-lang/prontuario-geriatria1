@@ -283,18 +283,60 @@ function parseValorPosologia(v) {
   return parseFloat(v.replace(",", "."));
 }
 
+// Retorna o motivo pelo qual uma linha NÃO deve ser convertida automaticamente
+// (dose variável, uso PRN, dosagem em unidades), ou null se a linha é elegível
+// para conversão. Reutilizada pela função de conversão e pela prévia visual.
+function motivoNaoConversaoPosologia(linha) {
+  const linhaLower = linha.toLowerCase();
+  if (/\bconforme\b|\bajustar\b|\brni\b|\bindividualiz/i.test(linhaLower)) return "dose variável/individualizada";
+  if (/se necess[aá]rio|se dor|se febre|\bsos\b|\bs\/n\b|se n[aá]usea|se enj[oô]o|se agita[çc][aã]o|se insônia/i.test(linhaLower)) return "uso conforme necessário (PRN)";
+  if (/\bui\b|unidades?|\binsulina\b|\bheparina\b/i.test(linhaLower)) return "dosagem em unidades (não comprimidos)";
+  return null;
+}
+
+// Converte padrão de dose semanal (ex: "1x/semana", "2x por semana") em frase
+// de receituário. Retorna null se a linha não tiver esse padrão.
+function converterDoseSemanal(linha) {
+  const regex = /(\d+)\s*x\s*(?:\/|\bpor\b|\bna\b)?\s*semana/i;
+  const m = linha.match(regex);
+  if (!m) return null;
+  const vezes = parseInt(m[1]);
+  if (isNaN(vezes) || vezes < 1 || vezes > 7) return null;
+  const nomeDose = linha.slice(0, m.index).trim();
+  const depois = linha.slice(m.index + m[0].length).trim();
+  const vezesTexto = vezes === 1 ? "1 vez por semana" : `${vezes} vezes por semana`;
+  const linha1 = `${nomeDose.toUpperCase()} --------------- CONTÍNUO`;
+  const linha2 = `TOMAR 1 COMPRIMIDO ${vezesTexto.toUpperCase()}${depois ? " " + depois.toUpperCase() : ""}.`;
+  return linha1 + "\n" + linha2;
+}
+
 function converterPosologiaParaFrase(linha) {
+  if (motivoNaoConversaoPosologia(linha)) return linha;
+
+  const doseSemanal = converterDoseSemanal(linha);
+  if (doseSemanal) return doseSemanal;
+
   const slot = "(\\d+\\/\\d+|\\d+(?:[.,]\\d+)?)";
-  const regex = new RegExp(slot + "\\s*-\\s*" + slot + "\\s*-\\s*" + slot + "(?:\\s*-\\s*" + slot + ")?");
+  const regex = new RegExp(slot + "\\s*-\\s*" + slot + "\\s*-\\s*" + slot + "(?:\\s*-\\s*" + slot + ")?(?:\\s*-\\s*" + slot + ")?");
   const m = linha.match(regex);
   if (!m) return linha;
 
-  const valoresRaw = [m[1], m[2], m[3], m[4]].filter(v => v !== undefined);
+  // Rejeita se houver uma 6ª posição encadeada (padrão não suportado — só
+  // aceitamos até 5 horários: manhã/almoço/tarde/jantar/ao deitar)
+  const posAposMatch = linha.slice(m.index + m[0].length);
+  if (/^\s*-\s*\d/.test(posAposMatch)) return linha;
+
+  const valoresRaw = [m[1], m[2], m[3], m[4], m[5]].filter(v => v !== undefined);
   const valores = valoresRaw.map(parseValorPosologia);
   if (valores.some(v => isNaN(v))) return linha;
+  // Rejeita valores clinicamente implausíveis para nº de comprimidos por dose
+  // (protege contra falsos positivos como números de telefone/registro)
+  if (valores.some(v => v > 20)) return linha;
+
   const horarios3 = ["após o café da manhã", "após o almoço", "após o jantar"];
   const horarios4 = ["após o café da manhã", "após o almoço", "à tarde", "após o jantar"];
-  const horarios = valores.length === 4 ? horarios4 : horarios3;
+  const horarios5 = ["após o café da manhã", "após o almoço", "à tarde", "após o jantar", "ao deitar"];
+  const horarios = valores.length === 5 ? horarios5 : valores.length === 4 ? horarios4 : horarios3;
 
   function qtdParaTexto(n) {
     if (n === 0.25) return "um quarto de comprimido";
@@ -3424,6 +3466,36 @@ export default function App() {
             <Field label="Medicações adicionais (opcional — uma por linha)">
               <textarea rows={4} value={medicacoesAdicionaisHeader} onChange={e => setMedicacoesAdicionaisHeader(e.target.value)} placeholder="Ex: Dipirona 500mg - 1cp se dor ou febre..." />
             </Field>
+            {(() => {
+              const todasMedsPreview = [...medicacoesSelecionadasHeader, ...medicacoesAdicionaisHeader.split("\n").filter(l => l.trim())];
+              if (todasMedsPreview.length === 0) return null;
+              return (
+                <div style={{ marginTop: "10px", marginBottom: "4px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px", color: "var(--color-text-secondary)" }}>
+                    <i className="ti ti-eye" aria-hidden="true"></i> Prévia de como sairá na receita:
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "160px", overflowY: "auto" }}>
+                    {todasMedsPreview.map((linha, i) => {
+                      const motivo = motivoNaoConversaoPosologia(linha);
+                      const convertido = converterPosologiaParaFrase(linha);
+                      const foiConvertido = convertido !== linha;
+                      return (
+                        <div key={i} style={{ fontSize: "11px", padding: "6px 8px", borderRadius: "6px", background: "var(--color-background-secondary)" }}>
+                          {foiConvertido ? (
+                            <span style={{ whiteSpace: "pre-wrap" }}>{convertido}</span>
+                          ) : (
+                            <span>
+                              {linha}
+                              {motivo && <span style={{ color: "var(--color-text-warning)" }}> — 🛈 mantido como está ({motivo})</span>}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "12px" }}>
               <button onClick={() => { setShowPrescricaoHeader(false); setMedicacoesAdicionaisHeader(""); }} style={{ fontSize: "13px" }}>Cancelar</button>
               <button onClick={() => {
