@@ -8618,7 +8618,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   const alertasLabs = [];
 
   // Hemoglobina / Anemia
-  const mHb = labs.match(/(?:hb|hemoglobina|hgb)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)(?!\s*a1c|\s*glicada)/i);
+  const mHb = labs.match(/(?:hb|hemoglobina|hgb)(?:\s*(?:de|em|[:=])?\s*)(\d+[,.]\d+|\d+)(?!\s*a1c|\s*glicada)/i);
   if (mHb) {
     const hb = parseFloat(mHb[1].replace(',', '.'));
     const limiteAnemia = sexoPac === "F" ? 12 : 13;
@@ -8637,7 +8637,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   }
 
   // Sódio — hiponatremia
-  const mNa = labs.match(/\b(?:na\+|na|s[oó]dio)(?:\s*[:=]?\s*)(\d+)/i);
+  const mNa = labs.match(/\b(?:na\+|na|s[oó]dio)(?:\s*(?:de|em|[:=])?\s*)(\d+)/i);
   if (mNa) {
     const na = parseInt(mNa[1]);
     if (na < 135) {
@@ -8655,7 +8655,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   }
 
   // Potássio — hipercalemia e hipocalemia
-  const mK = labs.match(/\b(?:k|pot[aá]ssio|k\+)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
+  const mK = labs.match(/\b(?:k|pot[aá]ssio|k\+)(?:\s*(?:de|em|[:=])?\s*)(\d+[,.]\d+|\d+)/i);
   if (mK) {
     const k = parseFloat(mK[1].replace(',', '.'));
     if (k > 5.5) {
@@ -8682,7 +8682,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   }
 
   // Vitamina B12
-  const mB12 = labs.match(/(?:b12|vitamina\s*b12|cobalamina)(?:\s*[:=]?\s*)(\d+)/i);
+  const mB12 = labs.match(/(?:b12|vitamina\s*b12|cobalamina)(?:\s*(?:de|em|[:=])?\s*)(\d+)/i);
   if (mB12) {
     const b12 = parseInt(mB12[1]);
     if (b12 < 300) {
@@ -8706,7 +8706,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   }
 
   // TSH
-  const mTSH = labs.match(/(?:tsh)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
+  const mTSH = labs.match(/(?:tsh)(?:\s*(?:de|em|[:=])?\s*)(\d+[,.]\d+|\d+)/i);
   if (mTSH) {
     const tsh = parseFloat(mTSH[1].replace(',', '.'));
     if (tsh > 10) {
@@ -8744,7 +8744,7 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
   }
 
   // Albumina
-  const mAlb = labs.match(/(?:albumina)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
+  const mAlb = labs.match(/(?:albumina)(?:\s*(?:de|em|[:=])?\s*)(\d+[,.]\d+|\d+)\b(?!\s*(?:dia|dias|m[êe]s|meses|ano|anos|semana|semanas|hora|horas|min|minutos)\b)/i);
   if (mAlb) {
     const alb = parseFloat(mAlb[1].replace(',', '.'));
     if (alb < 3.5) {
@@ -8811,6 +8811,11 @@ function ExamesTab({ consulta, updateConsulta, patient }) {
             </div>
             <div>HbA1c: <strong>{metaGlicemica.hba1c}</strong> · Jejum: <strong>{metaGlicemica.jejum}</strong> · Pós-prandial 2h: <strong>{metaGlicemica.posPrandial}</strong></div>
             {ehFragil && <div style={{ fontSize: "12px", marginTop: "4px", color: "var(--color-text-warning)" }}>⚠ Evitar hipoglicemia em paciente frágil — alvo menos rigoroso é preferível</div>}
+          </div>
+        )}
+        {temDM2 && !calcInsulina && (
+          <div style={{ fontSize: "12px", color: "var(--color-text-tertiary)", padding: "8px 10px", background: "var(--color-background-secondary)", borderRadius: "6px", marginBottom: "10px" }}>
+            💉 Estimativa de dose de insulina: preencha peso (aba AGA) para calcular.
           </div>
         )}
         {calcInsulina && (
@@ -9441,7 +9446,20 @@ function CardiovascularRisk({ consulta, patient }) {
   const HDL = matchHDL ? parseInt(matchHDL[1]) : null;
   const PAS = matchPA ? parseInt(matchPA[1]) : null;
 
-  if (!idade || !CT || !HDL || !PAS || !sexo) return null;
+  const faltandoCV = [];
+  if (!idade) faltandoCV.push("data de nascimento do paciente");
+  if (!sexo) faltandoCV.push("sexo do paciente");
+  if (!CT) faltandoCV.push("colesterol total (nos Exames)");
+  if (!HDL) faltandoCV.push("HDL (nos Exames)");
+  if (!PAS) faltandoCV.push("PA sentado (no Exame Físico)");
+
+  if (faltandoCV.length > 0) {
+    return (
+      <div style={{ marginBottom: "10px", fontSize: "12px", color: "var(--color-text-tertiary)", padding: "8px 10px", background: "var(--color-background-secondary)", borderRadius: "6px" }}>
+        ❤ Estratificação de risco cardiovascular: preencha {faltandoCV.join(", ")} para calcular.
+      </div>
+    );
+  }
 
   // Framingham simplificado (pontos ATP III)
   function framingham() {
@@ -10527,7 +10545,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   ]});
 
   // Anemia
-  const mHb2 = labs.match(/(?:hb|hemoglobina|hgb)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)(?!\s*a1c|\s*glicada)/i);
+  const mHb2 = labs.match(/(?:hb|hemoglobina|hgb)(?:\s*(?:de|em|[:=])?\s*)(\d+[,.]\d+|\d+)(?!\s*a1c|\s*glicada)/i);
   const hb2 = mHb2 ? parseFloat(mHb2[1].replace(",",".")) : null;
   const sexoPac2 = patient?.ident?.sexo || "";
   const jaInvestigandoAnemia = /ferritina|reticuloc|investiga.{0,15}anemia|ferro s[ée]rico/i.test((consulta.plano || {}).solicito || "");
@@ -10539,7 +10557,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   ]});
 
   // Hiponatremia
-  const mNa2 = labs.match(/\b(?:na\+|na|s[oó]dio)(?:\s*[:=]?\s*)(\d+)/i);
+  const mNa2 = labs.match(/\b(?:na\+|na|s[oó]dio)(?:\s*(?:de|em|[:=])?\s*)(\d+)/i);
   const na2 = mNa2 ? parseInt(mNa2[1]) : null;
   const jaInvestigandoNa = /osmolalidade|s[oó]dio urin[aá]rio/i.test((consulta.plano || {}).solicito || "");
   if (na2 && na2 < 135 && !jaInvestigandoNa) sugestoes.push({ cat: "Hiponatremia", items: [
@@ -10651,7 +10669,7 @@ function SugestoesCondutaIA({ patient, consulta, onClose }) {
   }
 
   // Hipertireoidismo não tratado
-  const mTSH2 = labs.match(/(?:tsh)(?:\s*[:=]?\s*)(\d+[,.]\d+|\d+)/i);
+  const mTSH2 = labs.match(/(?:tsh)(?:\s*(?:de|em|[:=])?\s*)(\d+[,.]\d+|\d+)/i);
   const tsh2 = mTSH2 ? parseFloat(mTSH2[1].replace(",",".")) : null;
   if (tsh2 !== null && tsh2 < 0.1 && !expandirNomesComerciais(garantirString(consulta.medicacoesTexto)).toLowerCase().match(/metimazol|propiltiouracil|tireoidectomia/)) {
     sugestoes.push({ cat: "Hipertireoidismo — avaliar tratamento", items: [
