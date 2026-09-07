@@ -5071,6 +5071,10 @@ const NOME_COMERCIAL_PARA_GENERICO = {
   "rivotril": "clonazepam", "lexotan": "bromazepam", "dienpax": "diazepam",
   "stilnox": "zolpidem",
   "lyrica": "pregabalina", "neurontin": "gabapentina",
+  "dormonid": "midazolam", "lorax": "lorazepam", "insonium": "flurazepam", "dalparan": "flurazepam",
+  "imovane": "zopiclona",
+  "dimorf": "morfina", "oxycontin": "oxicodona", "durogesic": "fentanila",
+  "metadon": "metadona", "palexia": "tapentadol", "tylex": "codeína",
   // Digestivo
   "losec": "omeprazol", "prilosec": "omeprazol", "peptazol": "omeprazol",
   "nexium": "esomeprazol", "pantozol": "pantoprazol", "pantoloc": "pantoprazol",
