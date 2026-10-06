@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef, Component } from 'react';
+import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import { listPatients, savePatient, deletePatient as apiDeletePatient, purgePatient, listarFavoritosMedicacoes, salvarFavoritoMedicacao, removerFavoritoMedicacao } from './api.js';
 import { API_URL } from './config.js';
 import { LOGO_HSE_BASE64, LOGO_GERIATRIA_BASE64 } from './logos.js';
@@ -2384,7 +2386,66 @@ function FavoritosMedicacoes({ onInserir }) {
   );
 }
 
+// Copia texto para a área de transferência (Clipboard API, com fallback execCommand).
+// Retorna true/false. Compartilhado pelo botão da pré-visualização e pelo botão da barra principal.
+async function copiarTextoParaClipboard(texto) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    }
+    throw new Error('clipboard API indisponível');
+  } catch (e) {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = texto;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return ok !== false;
+    } catch (e2) {
+      return false;
+    }
+  }
+}
+
+// Gera o texto da "consulta completa" (idêntico ao da versão de impressão) SEM abrir a
+// pré-visualização: renderiza ConsultaCompletaPrint fora da tela, lê o texto e descarta.
+// Vale igualmente para CEMPRE e Residência (mesmo componente; o cabeçalho muda conforme o ambulatório).
+function gerarTextoConsultaCompleta(patient, consulta, ambulatorio, nomeAmbulatorioSelecionado) {
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:-99999px;top:0;width:720px;background:#fff;color:#111;';
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  try {
+    flushSync(() => {
+      root.render(
+        <ConsultaCompletaPrint patient={patient} consulta={consulta} onClose={() => {}} ambulatorio={ambulatorio} nomeAmbulatorioSelecionado={nomeAmbulatorioSelecionado} />
+      );
+    });
+    const conteudo = container.querySelector('#print-content');
+    return conteudo ? (conteudo.innerText || conteudo.textContent || '') : '';
+  } finally {
+    root.unmount();
+    document.body.removeChild(container);
+  }
+}
+
 function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
+  const [copiado, setCopiado] = useState(false);
+
+  async function handleCopiarTexto() {
+    const conteudo = document.getElementById('print-content');
+    if (!conteudo) { alert('Conteúdo não encontrado para copiar.'); return; }
+    const texto = conteudo.innerText || conteudo.textContent || '';
+    const ok = await copiarTextoParaClipboard(texto);
+    if (ok) { setCopiado(true); setTimeout(() => setCopiado(false), 2000); }
+    else alert('Não foi possível copiar automaticamente. Selecione o texto manualmente e copie (Ctrl+C).');
+  }
+
   function handlePrint() {
     const titleAnterior = document.title;
     if (fileName) document.title = fileName;
@@ -2541,6 +2602,9 @@ function PrintShell({ title, children, onClose, fileName, patient, consulta }) {
               <button onClick={handlePrint} style={{ fontSize: "13px", padding: "5px 12px", border: "1px solid #ccc", borderRadius: "6px", background: "#f5f5f5", cursor: "pointer" }}>
                 <i className="ti ti-printer" aria-hidden="true" style={{ marginRight: "4px" }}></i>Imprimir
               </button>
+              <button onClick={handleCopiarTexto} title="Copiar todo o texto deste documento para colar em outro lugar (e-mail, WhatsApp, outro sistema...)" style={{ fontSize: "13px", padding: "5px 12px", border: copiado ? "1px solid #1e7e34" : "1px solid #ccc", borderRadius: "6px", background: copiado ? "#e6f4ea" : "#f5f5f5", color: copiado ? "#1e7e34" : "#111", cursor: "pointer" }}>
+                <i className={"ti " + (copiado ? "ti-check" : "ti-copy")} aria-hidden="true" style={{ marginRight: "4px" }}></i>{copiado ? "Copiado!" : "Copiar texto"}
+              </button>
               <button onClick={onClose} style={{ fontSize: "13px", padding: "5px 12px", border: "1px solid #ccc", borderRadius: "6px", background: "#f5f5f5", cursor: "pointer" }}>
                 <i className="ti ti-x" aria-hidden="true"></i>
               </button>
@@ -2672,6 +2736,7 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState("idle");
   const [search, setSearch] = useState("");
   const [printDoc, setPrintDoc] = useState(null);
+  const [consultaCopiada, setConsultaCopiada] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [showPrescricaoHeader, setShowPrescricaoHeader] = useState(false);
   const [gerandoExames, setGerandoExames] = useState(false);
@@ -3512,6 +3577,29 @@ export default function App() {
               <i className="ti ti-clipboard-text" aria-hidden="true"></i>Prontuário completo
             </button>
             <button
+              onClick={async () => {
+                try {
+                  const texto = gerarTextoConsultaCompleta(activePatient, activeConsulta, ambulatorio, nomeAmbResidencia);
+                  if (!texto.trim()) { alert('Não foi possível gerar o texto da consulta.'); return; }
+                  const ok = await copiarTextoParaClipboard(texto);
+                  if (ok) { setConsultaCopiada(true); setTimeout(() => setConsultaCopiada(false), 2500); }
+                  else alert('Não foi possível copiar automaticamente. Use "Imprimir consulta completa" e selecione o texto.');
+                } catch (e) {
+                  alert('Erro ao copiar a consulta: ' + e.message);
+                }
+              }}
+              title="Copia a consulta completa (mesmo conteúdo da versão de impressão) para colar em outro lugar"
+              style={{
+                padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
+                border: consultaCopiada ? "0.5px solid var(--color-border-success)" : "0.5px solid var(--color-border-tertiary)",
+                background: consultaCopiada ? "var(--color-background-success)" : "transparent",
+                color: consultaCopiada ? "var(--color-text-success)" : "var(--color-text-primary)",
+                display: "flex", alignItems: "center", gap: "6px"
+              }}
+            >
+              <i className={"ti " + (consultaCopiada ? "ti-check" : "ti-copy")} aria-hidden="true"></i>{consultaCopiada ? "Copiado!" : "Copiar consulta"}
+            </button>
+            <button
               onClick={() => {
                 const medsLista = (activeConsulta?.medicacoesTexto || "").split("\n").filter(l => l.trim());
                 setMedicacoesSelecionadasHeader(medsLista);
@@ -3527,20 +3615,29 @@ export default function App() {
             >
               <i className="ti ti-file-word" aria-hidden="true"></i>Gerar receita
             </button>
-            {activeConsulta && detectarMedicacoesControladas(activeConsulta.medicacoesTexto).length > 0 && (
-              <button
-                onClick={() => setShowReceitaControlada(true)}
-                style={{
-                  padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
-                  border: "0.5px solid var(--color-border-warning)",
-                  background: "var(--color-background-warning)",
-                  color: "var(--color-text-warning)",
-                  display: "flex", alignItems: "center", gap: "6px"
-                }}
-              >
-                <i className="ti ti-shield-lock" aria-hidden="true"></i>Receituário Controlado ({detectarMedicacoesControladas(activeConsulta.medicacoesTexto).length})
-              </button>
-            )}
+            {(() => {
+              const controladasAtuais = detectarMedicacoesControladas(activeConsulta?.medicacoesTexto);
+              const temControladas = controladasAtuais.length > 0;
+              return (
+                <button
+                  onClick={() => {
+                    if (!temControladas) { alert('Nenhuma medicação controlada identificada na lista de medicações desta consulta.\n\nSe você usa uma marca comercial que não está sendo reconhecida, digite o nome genérico (ex: "Clonazepam" em vez de outra marca) ou avise para eu adicionar o reconhecimento dessa marca.'); return; }
+                    setShowReceitaControlada(true);
+                  }}
+                  style={{
+                    padding: "8px 16px", borderRadius: "8px", fontSize: "14px",
+                    border: `0.5px solid ${temControladas ? "var(--color-border-warning)" : "var(--color-border-tertiary)"}`,
+                    background: temControladas ? "var(--color-background-warning)" : "transparent",
+                    color: temControladas ? "var(--color-text-warning)" : "var(--color-text-primary)",
+                    display: "flex", alignItems: "center", gap: "6px",
+                    opacity: temControladas ? 1 : 0.7,
+                  }}
+                  title={temControladas ? "" : "Nenhuma medicação controlada detectada na lista de medicações desta consulta"}
+                >
+                  <i className="ti ti-shield-lock" aria-hidden="true"></i>Receituário Controlado{temControladas ? ` (${controladasAtuais.length})` : ""}
+                </button>
+              );
+            })()}
             <button
               onClick={() => baixarReceituarios(activePatient)}
               style={{
@@ -6071,7 +6168,7 @@ function gerarHipotesesDiagnosticas(consulta, patient) {
 
   if (tem("incontinência urinária", "perde urina", "urinar na roupa")) {
     hipoteses.push({ diag: "Incontinência urinária de urgência (hiperatividade vesical)", prob: "Alta", cor: "info", motivo: "Causa mais comum em idosos" });
-    hipoteses.push({ diag: "Incontinência urinária de esforço", prob: "Moderada", cor: "info", motivo: f ? "Mais comum em mulheres" : "Menos comum em homens" });
+    hipoteses.push({ diag: "Incontinência urinária de esforço", prob: "Moderada", cor: "info", motivo: F ? "Mais comum em mulheres" : "Menos comum em homens" });
     if (!F) hipoteses.push({ diag: "Hiperplasia prostática benigna (HPB)", prob: "Alta", cor: "warning", motivo: "Sintomas urinários em homem idoso" });
   }
 
@@ -6449,6 +6546,24 @@ function sugerirExamePorSintomaTempo(consulta) {
   }
 }
 
+// Lista canônica de sistemas/itens do Interrogatório Sintomatológico por Sistemas (ISDA).
+// Extraída como função compartilhada para que QueixasTab (preenchimento) e ConsultaCompletaPrint
+// (impressão) usem exatamente a mesma lista — evita que a impressão fique desatualizada/divergente.
+function getSistemasISDA(sexoPac) {
+  return [
+    { chave: "geral", label: "Geral", icone: "ti-user", itens: ["Febre", "Calafrios", "Sudorese noturna", "Alteração de peso", "Astenia", "Anorexia", "Edema", "Linfonodomegalia"] },
+    { chave: "pele", label: "Pele e Anexos", icone: "ti-hand-finger", itens: ["Prurido", "Ressecamento", "Lesões de pele", "Alteração de cor", "Alteração ungueal", "Alopecia"] },
+    { chave: "respiratorio", label: "Sistema Respiratório", icone: "ti-lungs", itens: ["Tosse", "Expectoração", "Hemoptise", "Dispneia aos esforços", "Dispneia em repouso", "Chiado torácico", "Dor torácica ventilatório-dependente", "Roncos", "Apneia do sono", "Obstrução nasal", "Coriza", "Espirros", "Epistaxe", "Prurido nasal", "Hiposmia", "Anosmia", "Rinorreia", "Dor facial"] },
+    { chave: "cardio", label: "Sistema Cardiovascular", icone: "ti-heartbeat", itens: ["Dor torácica", "Palpitações", "Dispneia aos esforços", "Dispneia em repouso", "Ortopneia", "Dispneia paroxística noturna", "Edema de membros inferiores", "Claudicação intermitente", "Síncope", "Lipotímia"] },
+    { chave: "gastro", label: "Sistema Gastrointestinal", icone: "ti-stomach", itens: ["Xerostomia", "Sialorreia", "Lesões em cavidade oral", "Sangramento gengival", "Halitose", "Alteração do paladar", "Disfagia", "Odinofagia", "Rouquidão", "Disfonia", "Pirose", "Refluxo", "Regurgitação", "Náuseas", "Vômitos", "Dor abdominal", "Hematêmese", "Melena", "Hematoquezia", "Saciedade precoce", "Distensão abdominal", "Flatulência", "Constipação", "Diarreia", "Alternância do hábito intestinal", "Tenesmo", "Colúria", "Acolia fecal"] },
+    { chave: "urinario", label: "Sistema Geniturinário", icone: "ti-droplet", itens: ["Disúria", "Polaciúria", "Noctúria", "Oligúria", "Anúria", "Poliúria", "Hesitação", "Jato fraco", "Gotejamento", "Sensação de esvaziamento incompleto", "Retenção urinária", "Hematúria", "Incontinência urinária", "Dor lombar"] },
+    ...(sexoPac === "M" ? [{ chave: "masculino", label: "Masculino", icone: "ti-gender-male", itens: ["Disfunção erétil", "Dor testicular", "Massa testicular", "Corrimento uretral"] }] : []),
+    ...(sexoPac === "F" ? [{ chave: "feminino", label: "Feminino", icone: "ti-gender-female", itens: ["Corrimento vaginal", "Sangramento vaginal", "Prurido", "Dor pélvica", "Dispareunia", "Menopausa", "Prolapso vaginal"] }] : []),
+    { chave: "musculo", label: "Sistema Musculoesquelético", icone: "ti-bone", itens: ["Artralgia", "Rigidez matinal", "Edema articular", "Calor local", "Limitação funcional", "Mialgia", "Fraqueza muscular", "Cãibras"] },
+    { chave: "neuro", label: "Sistema Neurológico", icone: "ti-brain", itens: ["Cefaleia", "Tontura", "Síncope", "Lipotímia", "Tremores", "Convulsões", "Alteração de memória", "Alteração da linguagem", "Paresias", "Paralisias", "Dormência", "Formigamentos", "Alteração da marcha", "Incoordenação", "Alteração de equilíbrio", "Movimentos involuntários", "Alteração de sensibilidade"] },
+  ];
+}
+
 function QueixasTab({ consulta, updateConsulta, patient }) {
   const hipoteses = gerarHipotesesDiagnosticas(consulta, patient);
   const examesSugeridos = sugerirExamePorSintomaTempo(consulta);
@@ -6480,18 +6595,7 @@ function QueixasTab({ consulta, updateConsulta, patient }) {
 
           const sexoPac = patient?.ident?.sexo || "";
 
-          const SISTEMAS = [
-            { chave: "geral", label: "Geral", icone: "ti-user", itens: ["Febre", "Calafrios", "Sudorese noturna", "Alteração de peso", "Astenia", "Anorexia", "Edema", "Linfonodomegalia"] },
-            { chave: "pele", label: "Pele e Anexos", icone: "ti-hand-finger", itens: ["Prurido", "Ressecamento", "Lesões de pele", "Alteração de cor", "Alteração ungueal", "Alopecia"] },
-            { chave: "respiratorio", label: "Sistema Respiratório", icone: "ti-lungs", itens: ["Tosse", "Expectoração", "Hemoptise", "Dispneia aos esforços", "Dispneia em repouso", "Chiado torácico", "Dor torácica ventilatório-dependente", "Roncos", "Apneia do sono", "Obstrução nasal", "Coriza", "Espirros", "Epistaxe", "Prurido nasal", "Hiposmia", "Anosmia", "Rinorreia", "Dor facial"] },
-            { chave: "cardio", label: "Sistema Cardiovascular", icone: "ti-heartbeat", itens: ["Dor torácica", "Palpitações", "Dispneia aos esforços", "Dispneia em repouso", "Ortopneia", "Dispneia paroxística noturna", "Edema de membros inferiores", "Claudicação intermitente", "Síncope", "Lipotímia"] },
-            { chave: "gastro", label: "Sistema Gastrointestinal", icone: "ti-stomach", itens: ["Xerostomia", "Sialorreia", "Lesões em cavidade oral", "Sangramento gengival", "Halitose", "Alteração do paladar", "Disfagia", "Odinofagia", "Rouquidão", "Disfonia", "Pirose", "Refluxo", "Regurgitação", "Náuseas", "Vômitos", "Dor abdominal", "Hematêmese", "Melena", "Hematoquezia", "Saciedade precoce", "Distensão abdominal", "Flatulência", "Constipação", "Diarreia", "Alternância do hábito intestinal", "Tenesmo", "Colúria", "Acolia fecal"] },
-            { chave: "urinario", label: "Sistema Geniturinário", icone: "ti-droplet", itens: ["Disúria", "Polaciúria", "Noctúria", "Oligúria", "Anúria", "Poliúria", "Hesitação", "Jato fraco", "Gotejamento", "Sensação de esvaziamento incompleto", "Retenção urinária", "Hematúria", "Incontinência urinária", "Dor lombar"] },
-            ...(sexoPac === "M" ? [{ chave: "masculino", label: "Masculino", icone: "ti-gender-male", itens: ["Disfunção erétil", "Dor testicular", "Massa testicular", "Corrimento uretral"] }] : []),
-            ...(sexoPac === "F" ? [{ chave: "feminino", label: "Feminino", icone: "ti-gender-female", itens: ["Corrimento vaginal", "Sangramento vaginal", "Prurido", "Dor pélvica", "Dispareunia", "Menopausa", "Prolapso vaginal"] }] : []),
-            { chave: "musculo", label: "Sistema Musculoesquelético", icone: "ti-bone", itens: ["Artralgia", "Rigidez matinal", "Edema articular", "Calor local", "Limitação funcional", "Mialgia", "Fraqueza muscular", "Cãibras"] },
-            { chave: "neuro", label: "Sistema Neurológico", icone: "ti-brain", itens: ["Cefaleia", "Tontura", "Síncope", "Lipotímia", "Tremores", "Convulsões", "Alteração de memória", "Alteração da linguagem", "Paresias", "Paralisias", "Dormência", "Formigamentos", "Alteração da marcha", "Incoordenação", "Alteração de equilíbrio", "Movimentos involuntários", "Alteração de sensibilidade"] },
-          ];
+          const SISTEMAS = getSistemasISDA(sexoPac);
 
           return (
             <div style={{ display: "grid", gap: "8px" }}>
@@ -8028,10 +8132,10 @@ function VacinasTab({ patient, consulta, updateConsulta }) {
           }
 
           // Herpes-zóster — dose única (recombinante) ou reforço se vivo atenuada
-          if (vac.zoster?.dose2 === undefined && vac.zoster?.dose1) {
-            const meses = mesesDesde(vac.zoster.dose1, hoje);
-            if (meses !== null && meses >= 3 && !vac.zoster?.dose2) {
-              alertasVac.push({ nome: "Herpes-zóster", msg: `1ª dose há ${meses} meses (${fmtDate(vac.zoster.dose1)}) — verificar se 2ª dose (2–6 meses após) foi aplicada.` });
+          if (vac.vzr?.dose2 === undefined && vac.vzr?.dose1) {
+            const meses = mesesDesde(vac.vzr.dose1, hoje);
+            if (meses !== null && meses >= 3 && !vac.vzr?.dose2) {
+              alertasVac.push({ nome: "Herpes-zóster", msg: `1ª dose há ${meses} meses (${fmtDate(vac.vzr.dose1)}) — verificar se 2ª dose (2–6 meses após) foi aplicada.` });
             }
           }
 
@@ -11505,7 +11609,7 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
       <div style={sectionTitle}>IDENTIFICAÇÃO</div>
       <div>Prontuário: {i.prontuario || "—"} · CPF: {i.cpf || "—"} · Sexo: {i.sexo || "—"} · Data de nascimento: {i.dn ? fmtDate(i.dn) : "—"} · Idade: {idade != null ? idade + " anos" : "—"}</div>
       <div>Nome da mãe: {i.maeNome || "—"} · Naturalidade: {i.natural || "—"} · Procedência: {i.procedente || "—"}</div>
-      <div>Profissão: {i.profissao || "—"} · Escolaridade: {i.escolaridade || "—"} · Estado civil: {i.estadoCivil || "—"}</div>
+      <div>Profissão: {i.profissao || "—"} · Escolaridade: {i.escolaridade || "—"} · Estado civil: {i.estadoCivil || "—"} · Religião: {i.religiao || "—"}</div>
       <div>Acompanhante: {i.acompanhante || "—"} · Cuidador: {i.cuidador || "—"} · Mora com: {i.moraCom || "—"} · Pode contar com: {i.podeContarCom || "—"} · Telefone: {i.telefone || "—"}</div>
 
       <div style={sectionTitle}>LISTA DE PROBLEMAS<SeloSecao campos={[
@@ -11575,6 +11679,33 @@ function ConsultaCompletaPrint({ patient, consulta, onClose, ambulatorio, nomeAm
 
       <div style={sectionTitle}>QUEIXAS<SeloOrigem atual={consulta.queixas} herdadoVal={herdado?.queixas} /></div>
       <div style={{ whiteSpace: "pre-wrap" }}>{consulta.queixas || "—"}</div>
+
+      {(() => {
+        const isda = consulta.isda || {};
+        const isdaHerdado = herdado?.isda || {};
+        const sistemas = getSistemasISDA(i.sexo || "");
+        const sistemasComDados = sistemas.filter(sis => {
+          const d = isda[sis.chave] || {};
+          return sis.itens.some(it => d[it]) || d._obs;
+        });
+        return (
+          <>
+            <div style={sectionTitle}>INTERROGATÓRIO SINTOMATOLÓGICO POR SISTEMAS (ISDA)<SeloSecao campos={[
+              [JSON.stringify(isda), JSON.stringify(isdaHerdado)],
+            ]} /></div>
+            {sistemasComDados.length === 0 ? <div>Sem sintomas positivos registrados no ISDA.</div> : sistemasComDados.map(sis => {
+              const d = isda[sis.chave] || {};
+              const positivos = sis.itens.filter(it => d[it]);
+              return (
+                <div key={sis.chave} style={{ marginBottom: "4px" }}>
+                  <span style={{ fontWeight: 700 }}>{sis.label}:</span> {positivos.join(", ") || "—"}
+                  {d._obs && <span> — {d._obs}</span>}
+                </div>
+              );
+            })}
+          </>
+        );
+      })()}
 
       <div style={sectionTitle}>AVALIAÇÃO GERIÁTRICA AMPLA<SeloSecao campos={[
         [JSON.stringify(aga.aivd), JSON.stringify(agaHerdado.aivd)], [JSON.stringify(aga.abvd), JSON.stringify(agaHerdado.abvd)],
