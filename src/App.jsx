@@ -374,6 +374,28 @@ function transformarPosologiaTexto(medicacoesTexto) {
     .join("\n");
 }
 
+// Insere uma linha em branco entre medicações diferentes. Cada medicação convertida ocupa duas
+// linhas ("NOME DOSE --- CONTÍNUO" + "TOMAR ..."); a linha "TOMAR" continua a medicação anterior,
+// qualquer outra linha inicia uma nova medicação (e portanto recebe um espaço antes dela).
+function separarMedicacoesComEspaco(linhas) {
+  const saida = [];
+  linhas.forEach((linha, idx) => {
+    if (idx > 0 && !/^TOMAR\b/i.test(linha)) saida.push('');
+    saida.push(linha);
+  });
+  return saida;
+}
+
+// Tamanho da fonte (em meios-pontos do Word) para o nome do paciente caber na linha/célula do
+// modelo sem ser cortado: nomes longos usam fonte menor.
+function tamanhoFonteNomePaciente(nome) {
+  const n = String(nome || '').length;
+  if (n <= 48) return 18;
+  if (n <= 58) return 16;
+  if (n <= 68) return 14;
+  return 12;
+}
+
 async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo, medicacoes }) {
   if (!window.JSZip) {
     await new Promise((res, rej) => {
@@ -423,6 +445,7 @@ async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo, m
         const rPr = rPrMatch ? rPrMatch[0] : '';
         let linhas = valor.split('\n').map(l => l.trim()).filter(Boolean);
         if (linhas.length === 0) linhas = ['.'];
+        linhas = separarMedicacoesComEspaco(linhas);
         novoContent = linhas.map((linha, idx) => {
           const escLinha = linha.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
           const quebra = idx > 0 ? ('<w:r>' + rPr + '<w:br/></w:r>') : '';
@@ -435,6 +458,14 @@ async function preencherReceitasDocx({ nome, prontuario, maeNome, idade, sexo, m
           if (first) { first = false; return '<w:t' + attrs + '>' + esc + '</w:t>'; }
           return '<w:t' + attrs + '></w:t>';
         });
+        // Campos do cabeçalho do receituário (dentro de fldSimple REF) vinham sem formatação e
+        // saíam em fonte maior que o resto da linha — o nome longo estourava a célula e ficava
+        // cortado. Aplica Calibri (mesma dos rótulos) e reduz o tamanho conforme o comprimento.
+        if (/<w:fldSimple[^>]*>\s*$/.test(partes[i - 1] || '')) {
+          const sz = alias === 'BM_PACIENTE' || alias === 'BM_MAE' ? tamanhoFonteNomePaciente(valor) : 18;
+          const rPrCampo = '<w:rPr><w:rFonts w:ascii="Calibri" w:eastAsia="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="' + sz + '"/><w:szCs w:val="' + sz + '"/></w:rPr>';
+          novoContent = novoContent.replace(/<w:r( [^>]*)?>(?!<w:rPr>)/g, (m0) => m0 + rPrCampo);
+        }
       }
       return '<w:sdt>' + antes + novoContent + depois;
     }).join('');
@@ -643,6 +674,7 @@ async function preencherReceitaControladaDocx({ medicoNome, medicoCrm, paciente,
           const rPr = rPrMatch ? rPrMatch[0] : '';
           let linhas = String(valor).split('\n').map(l => l.trim()).filter(Boolean);
           if (linhas.length === 0) linhas = ['.'];
+          linhas = separarMedicacoesComEspaco(linhas);
           novoContent = linhas.map((linha, idx) => {
             const escLinha = linha.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
             const quebra = idx > 0 ? ('<w:r>' + rPr + '<w:br/></w:r>') : '';
@@ -1809,9 +1841,14 @@ function storageRemove(storage, key) {
 }
 
 function calcIMC(peso, altura) {
-  const p = parseFloat(peso);
-  const a = parseFloat(altura);
+  // Aceita vírgula decimal ("1,70", "70,5") — parseFloat("1,70") devolvia 1 e o IMC saía 70.
+  const p = parseFloat(String(peso == null ? "" : peso).replace(",", "."));
+  let a = parseFloat(String(altura == null ? "" : altura).replace(",", "."));
   if (!p || !a) return null;
+  // Altura digitada em centímetros (ex: 170) é convertida para metros
+  if (a > 3 && a <= 250) a = a / 100;
+  // Valores fora de faixa fisiológica não geram IMC (evita 0.0 ou valores absurdos)
+  if (p <= 0 || a < 0.5 || a > 2.5) return null;
   return (p / (a * a)).toFixed(1);
 }
 
@@ -1843,6 +1880,14 @@ function normalizarDataOuAno(v) {
 }
 function ehAnoApenas(v) {
   return /^\d{4}$/.test(v || "");
+}
+
+// Data local "AAAA-MM-DD". O padrão new Date().toISOString().slice(0,10) devolve a data em UTC: no Brasil
+// (UTC-3), a partir das 21h a consulta nova nascia com a data de AMANHÃ (e a falta idem).
+function dataLocalISO(d) {
+  const x = d instanceof Date ? d : new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return x.getFullYear() + "-" + pad(x.getMonth() + 1) + "-" + pad(x.getDate());
 }
 
 function fmtDate(iso) {
@@ -2039,7 +2084,7 @@ function emptyConsulta(base) {
     copy._dadosHerdados = JSON.parse(JSON.stringify(base));
     delete copy._dadosHerdados._dadosHerdados; // evita aninhamento recursivo
     copy.id = uid();
-    copy.data = new Date().toISOString().slice(0, 10);
+    copy.data = dataLocalISO();
     copy.createdAt = new Date().toISOString();
     copy.updatedAt = new Date().toISOString();
     copy.pendenciasConsultaAtual = "";
@@ -2060,7 +2105,7 @@ function emptyConsulta(base) {
   return {
     id: uid(),
 
-    data: new Date().toISOString().slice(0, 10),
+    data: dataLocalISO(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     problemas: {},
@@ -2751,12 +2796,21 @@ export default function App() {
 
   const saveTimers = useRef({});
 
+  const [recarregarTick, setRecarregarTick] = useState(0);
+
   useEffect(() => {
     if (!autenticado || !ambulatorio) return;
+    // Guarda contra resposta antiga: se o usuário trocar de ambulatório (ou pedir nova carga)
+    // enquanto uma requisição ainda está em andamento, a resposta atrasada é descartada — antes,
+    // ela podia sobrescrever a lista do ambulatório atual (pacientes "sumindo" ou aparecendo na
+    // aba errada, com risco de salvar o paciente na planilha errada ao editar).
+    let cancelado = false;
     setPatients(null); // reset ao trocar ambulatório
+    setLoadError(null);
     (async () => {
       try {
         const listBruta = await listPatients(ambulatorio);
+        if (cancelado) return;
         // Aplica migração de schema formal (versionada) antes de qualquer outra migração ad-hoc
         const list = listBruta.map(migrarPaciente);
         let anyMigrated = false;
@@ -2963,18 +3017,21 @@ export default function App() {
           return p;
         });
 
+        if (cancelado) return;
         setPatients(sanitizados);
         if (anyMigrated) {
           sanitizados.forEach(p => { savePatient(p, ambulatorio).catch(e => console.error("Falha ao persistir migração", e)); });
         }
         expurgados.forEach(({ id }) => { apiDeletePatient(id, ambulatorio).catch(e => console.error("Falha ao expurgar paciente antigo", e)); });
       } catch (e) {
+        if (cancelado) return;
         console.error(e);
         setLoadError(e.message);
         setPatients([]);
       }
     })();
-  }, [autenticado, ambulatorio]);
+    return () => { cancelado = true; };
+  }, [autenticado, ambulatorio, recarregarTick]);
 
   const [lastSaved, setLastSaved] = useState(null);
   const [filaSincronizacaoQtd, setFilaSincronizacaoQtd] = useState(0);
@@ -3008,8 +3065,14 @@ export default function App() {
     gravarFila(semAntiga);
   }
 
+  // Remove da fila a versão de um paciente — só se ainda for exatamente aquela (timestamp), para não
+  // apagar uma versão mais nova que tenha entrado na fila enquanto o envio estava em andamento.
+  function removerDaFila(id, timestamp) {
+    gravarFila(lerFila().filter(item => !(item.patient.id === id && item.timestamp === timestamp)));
+  }
+
   const sincronizandoRef = useRef(false);
-  async function processarFilaSincronizacao() {
+  async function processarFilaSincronizacao(recarregarAoTerminar) {
     if (sincronizandoRef.current) return;
     const fila = lerFila();
     if (fila.length === 0) return;
@@ -3022,8 +3085,13 @@ export default function App() {
         restantes.push(item); // mantém na fila se ainda falhar
       }
     }
-    gravarFila(restantes);
+    // Preserva também o que entrou na fila durante o envio (antes era sobrescrito e perdido)
+    const novosDuranteEnvio = lerFila().filter(it => !fila.some(f => f.patient.id === it.patient.id && f.timestamp === it.timestamp));
+    gravarFila([...restantes, ...novosDuranteEnvio]);
     sincronizandoRef.current = false;
+    // Ao abrir o app, a lista pode ter sido carregada ANTES de a fila antiga chegar à planilha:
+    // recarrega para não mostrar (e depois sobrescrever ao editar) uma versão desatualizada.
+    if (recarregarAoTerminar && restantes.length < fila.length) setRecarregarTick(t => t + 1);
     if (restantes.length === 0 && fila.length > 0) {
       setSaveStatus('saved');
       setLastSaved(new Date());
@@ -3044,17 +3112,45 @@ export default function App() {
     window.addEventListener('offline', aoFicarOffline);
     // Ao carregar a página, já tenta processar qualquer fila pendente de sessão anterior
     setFilaSincronizacaoQtd(lerFila().length);
-    if (navigator.onLine) processarFilaSincronizacao();
+    if (navigator.onLine) processarFilaSincronizacao(true);
     return () => {
       window.removeEventListener('online', aoFicarOnline);
       window.removeEventListener('offline', aoFicarOffline);
     };
   }, []);
 
+  // Alterações aguardando o "debounce" de 700ms. Se a aba for fechada/escondida (ou o celular
+  // bloquear a tela) nesse intervalo, eram perdidas: agora vão para a fila local e são enviadas.
+  const pendentesRef = useRef({});
+  useEffect(() => {
+    function descarregarPendentes() {
+      const pend = Object.values(pendentesRef.current);
+      if (pend.length === 0) return;
+      pendentesRef.current = {};
+      pend.forEach(({ patient, amb }) => {
+        clearTimeout(saveTimers.current[patient.id]);
+        const ts = Date.now();
+        const fila = lerFila().filter(item => item.patient.id !== patient.id);
+        fila.push({ patient, ambulatorio: amb, timestamp: ts });
+        gravarFila(fila);
+        savePatient(patient, amb).then(() => removerDaFila(patient.id, ts)).catch(() => {});
+      });
+    }
+    function aoMudarVisibilidade() { if (document.visibilityState === 'hidden') descarregarPendentes(); }
+    window.addEventListener('pagehide', descarregarPendentes);
+    document.addEventListener('visibilitychange', aoMudarVisibilidade);
+    return () => {
+      window.removeEventListener('pagehide', descarregarPendentes);
+      document.removeEventListener('visibilitychange', aoMudarVisibilidade);
+    };
+  }, []);
+
   const persistPatient = useCallback((patient) => {
     clearTimeout(saveTimers.current[patient.id]);
     setSaveStatus("saving");
+    pendentesRef.current[patient.id] = { patient, amb: ambulatorio };
     saveTimers.current[patient.id] = setTimeout(async () => {
+      delete pendentesRef.current[patient.id];
       try {
         await savePatient(patient, ambulatorio);
         setSaveStatus("saved");
@@ -3284,6 +3380,20 @@ export default function App() {
     const novoAmbulatorio = ambulatorio === "cempre" ? "residencia" : "cempre";
     try {
       await savePatient(target, novoAmbulatorio);
+      // O salvamento é "no-cors" (sem resposta legível): só apaga da origem depois de CONFIRMAR
+      // que o paciente apareceu na lista do destino. Se não aparecer, aborta e nada é perdido.
+      let confirmado = false;
+      for (let tentativa = 0; tentativa < 4 && !confirmado; tentativa++) {
+        await new Promise(r => setTimeout(r, tentativa === 0 ? 1200 : 1800));
+        try {
+          const listaDestino = await listPatients(novoAmbulatorio);
+          confirmado = listaDestino.some(x => x && x.id === id);
+        } catch (e) { /* tenta de novo */ }
+      }
+      if (!confirmado) {
+        alert("Não foi possível confirmar que o paciente foi copiado para " + (novoAmbulatorio === "cempre" ? "CEMPRE" : "Residência") + ". Por segurança, ele NÃO foi removido de " + (ambulatorio === "cempre" ? "CEMPRE" : "Residência") + ". Verifique a conexão e tente de novo.");
+        return;
+      }
       await purgePatient(id, ambulatorio);
       setPatients(prev => (prev || []).filter(p => p.id !== id));
       if (activeId === id) { setActiveId(null); setView("list"); }
@@ -3301,7 +3411,7 @@ export default function App() {
   function registrarFalta(id) {
     const target = (patients || []).find(p => p.id === id);
     if (!target) return;
-    const novaFalta = { id: uid(), data: new Date().toISOString().slice(0, 10), observacao: "" };
+    const novaFalta = { id: uid(), data: dataLocalISO(), observacao: "" };
     const atualizado = { ...target, faltas: [...(target.faltas || []), novaFalta] };
     setPatients(prev => (prev || []).map(p => p.id === id ? atualizado : p));
     persistPatient(atualizado);
@@ -3522,7 +3632,14 @@ export default function App() {
 
       {loadError && (
         <Alert type="danger">
-          Não foi possível carregar os pacientes ({loadError}). Verifique se a URL da API em src/config.js está correta e se o Apps Script está implantado como "Qualquer pessoa pode acessar".
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: "220px" }}>
+              <strong>A lista de pacientes NÃO foi carregada</strong> — os pacientes continuam salvos, mas não estão aparecendo agora ({loadError}). Não faça alterações nem troque pacientes de local até carregar de novo. Se persistir, verifique a internet e se o Apps Script está implantado como "Qualquer pessoa pode acessar".
+            </div>
+            <button onClick={() => setRecarregarTick(t => t + 1)} style={{ padding: "6px 14px" }}>
+              <i className="ti ti-refresh" aria-hidden="true" style={{ marginRight: "4px" }}></i>Tentar novamente
+            </button>
+          </div>
         </Alert>
       )}
 
@@ -7796,7 +7913,7 @@ function addDays(dateStr, days) {
   const d = new Date(dateStr + "T00:00:00");
   if (isNaN(d.getTime())) return "";
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return dataLocalISO(d);
 }
 
 // Sugere prazo de retorno baseado no perfil clínico do paciente
@@ -7853,7 +7970,7 @@ function addMonths(dateStr, months) {
   d.setMonth(d.getMonth() + months);
   const lastDayOfTargetMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   d.setDate(Math.min(originalDay, lastDayOfTargetMonth));
-  return d.toISOString().slice(0, 10);
+  return dataLocalISO(d);
 }
 
 function addYears(dateStr, years) {
@@ -9249,7 +9366,7 @@ function UploadFotosExame({ consulta, updateConsulta, patient }) {
         const file = files[i];
         setProgresso(`Enviando ${i + 1}/${files.length}: ${file.name}`);
         const nomePaciente = patient?.ident?.nome || "SEM_NOME";
-        const dataConsulta = (consulta.data || new Date().toISOString().slice(0,10)).replace(/-/g, "");
+        const dataConsulta = (consulta.data || dataLocalISO()).replace(/-/g, "");
         const nomeArquivo = `EXAME_${dataConsulta}_${Date.now()}_${file.name}`;
         const result = await salvarNoDrive(file, nomePaciente, nomeArquivo);
         if (!result || !result.ok) {
